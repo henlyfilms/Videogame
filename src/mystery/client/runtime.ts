@@ -191,7 +191,7 @@ export class Runtime {
       const nx = this.input.x / Math.max(1, len);
       const ny = this.input.y / Math.max(1, len);
       const ghost = this.mode === 'match' && this.snap && !this.snap.you.alive;
-      const boost = this.snap?.hns?.final && this.snap.you.role === 'seeker' ? 1.3 : 1;
+      const boost = this.snap?.hns && this.snap.you.role === 'seeker' ? (this.snap.hns.final ? 1.3 : 1.05) : 1;
       const speed = BASE_SPEED * settingsSpeed * (ghost ? 1.25 : 1) * boost * this.speedMul;
       const closed = this.mode === 'match' && this.snap ? new Set(this.snap.sabotage.closedDoors) : undefined;
       const next = moveCircle(m, this.local.pos, nx * speed * dtSec, ny * speed * dtSec, ghost ? 0.05 : undefined, ghost ? undefined : closed);

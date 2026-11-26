@@ -5,7 +5,7 @@
  * match state), so the same code runs on the server, in local play and in tests.
  */
 import { MODES, type ModeCtx } from './modes';
-import { dist, INTERACT_RANGE, lineOfSight, moveCircle, nearestFree, roomAt, type CompiledMap } from './map';
+import { dist, distanceField, INTERACT_RANGE, lineOfSight, moveCircle, nearestFree, roomAt, type CompiledMap } from './map';
 import { assignRoles, ROLES, teamOf } from './roles';
 import { Rng } from './rng';
 import { BASE_SPEED, KILL_RANGE, type Settings } from './settings';
@@ -173,7 +173,7 @@ export function makePlayer(seed: PlayerSeed, pos: Vec2): PlayerState {
 export function speedOf(st: MatchState, ctx: MatchCtx, p: PlayerState): number {
   let s = BASE_SPEED * ctx.settings.playerSpeed;
   if (!p.alive) s *= 1.25; // ghosts float a bit faster
-  if (st.hns && p.role === 'seeker' && st.hns.finalAt) s *= ctx.settings.hnsSeekerBoost;
+  if (st.hns && p.role === 'seeker') s *= st.hns.finalAt ? ctx.settings.hnsSeekerBoost : 1.1;
   return s;
 }
 
@@ -293,6 +293,20 @@ function nearestStationOfKind(ctx: MatchCtx, p: PlayerState, kind: string, range
     if (d <= range && (!best || d < best.d)) best = { id: s.id, d };
   }
   return best;
+}
+
+const floorCache = new WeakMap<CompiledMap, number>();
+/** Minimum critical countdown for a map: ~1.25x the walk from spawn to its farthest corner. */
+export function criticalFloor(m: CompiledMap): number {
+  let v = floorCache.get(m);
+  if (v === undefined) {
+    const d = distanceField(m, m.def.spawn);
+    let max = 0;
+    for (let i = 0; i < d.length; i++) if (d[i]! > max) max = d[i]!;
+    v = Math.round((max / BASE_SPEED) * 1.25);
+    floorCache.set(m, v);
+  }
+  return v;
 }
 
 export function isCritical(k: SabotageId | null): k is 'meltdown' | 'pressure' {
@@ -807,7 +821,7 @@ export function applyAction(st: MatchState, ctx: MatchCtx, pid: string, act: Act
       if (!need.every((k) => ctx.map.def.stations.some((x) => x.kind === k))) return no('not on this map');
       st.sabotage.active = act.kind;
       st.sabotage.startedAt = st.t;
-      st.sabotage.timer = isCritical(act.kind) ? s.criticalTimer : 0;
+      st.sabotage.timer = isCritical(act.kind) ? Math.max(s.criticalTimer, criticalFloor(ctx.map)) : 0;
       st.sabotage.progress = 0;
       st.sabotage.cooldown = s.sabotageCooldown;
       st.fixHold = 0;

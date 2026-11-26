@@ -87,6 +87,8 @@ export interface YouState {
   /** Set when the server overrode the client position. */
   corrected: number;
   poisoned: boolean;
+  /** Lights Out: a killer is lurking close by (flashlight flickers). */
+  dread: number;
 }
 
 export interface Stats {
@@ -262,7 +264,7 @@ export function project(st: MatchState, ctx: MatchCtx, viewerId: string, opts: P
     else if (!p.alive) visible = !viewer.alive; // ghosts only seen by ghosts
     else if (p.inVent) visible = viewer.inVent !== null && viewer.inVent === p.inVent; // vent buddies
     else if (inMeeting || st.phase === 'intro' || st.phase === 'ended') visible = true;
-    else visible = sees(p.pos, p);
+    else visible = sees(p.pos, p) || seekerPing(st, viewer, p);
     if (visible) {
       pub.pos = rv(p.pos);
       pub.facing = r2(p.facing);
@@ -317,6 +319,7 @@ export function project(st: MatchState, ctx: MatchCtx, viewerId: string, opts: P
     ventUses: viewer.ventUses,
     corrected: viewer.corrected,
     poisoned: false,
+    dread: dreadFor(st, viewer),
   };
 
   // Meeting (votes hidden until reveal).
@@ -478,6 +481,24 @@ export function project(st: MatchState, ctx: MatchCtx, viewerId: string, opts: P
     result,
     hns: st.hns ? { hideUntil: r2(st.hns.hideUntil), timer: r2(st.hns.timer), final: !!st.hns.finalAt } : null,
   };
+}
+
+/** Lights Out dread: 0..1 as an unseen killer gets close (crew only). */
+function dreadFor(st: MatchState, viewer: PlayerState): number {
+  if (!MODES[st.modeId].flashlights || !viewer.alive || viewer.team === 'murderers' || st.phase !== 'play') return 0;
+  let d = 0;
+  for (const p of Object.values(st.players)) {
+    if (!p.alive || !ROLES[p.role].killer || p.inVent) continue;
+    const dd = dist(p.pos, viewer.pos);
+    if (dd < 5) d = Math.max(d, 1 - dd / 5);
+  }
+  return Math.round(d * 100) / 100;
+}
+
+/** Hide & Seek final countdown: seekers get a brief ping of every hider every 12 s. */
+export function seekerPing(st: MatchState, viewer: PlayerState, target: PlayerState): boolean {
+  if (!st.hns || !st.hns.finalAt || viewer.role !== 'seeker' || target.role !== 'hider' || !target.alive) return false;
+  return (st.t - st.hns.finalAt) % 12 < 1;
 }
 
 export function isCriticalActive(snap: Snapshot): boolean {

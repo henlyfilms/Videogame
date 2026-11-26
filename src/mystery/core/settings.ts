@@ -182,7 +182,7 @@ export function defaultSettings(): Settings {
     hnsHideTime: 10,
     hnsFinal: 60,
     hnsSeekerBoost: 1.3,
-    hnsTaskBonus: 2,
+    hnsTaskBonus: 1,
     ghostTasks: true,
     ghostChat: true,
     chat: true,

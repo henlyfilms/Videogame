@@ -86,6 +86,7 @@ export class BotBrain {
   update(snap: Snapshot, map: CompiledMap, settings: Settings, dt: number): Action[] {
     const out: Action[] = [];
     const you = snap.you;
+    if (snap.phase !== 'meeting') this.meetingEvaluated = false;
     if (snap.phase === 'meeting' || snap.phase === 'eject') {
       this.path = [];
       this.goal = null;
@@ -218,6 +219,19 @@ export class BotBrain {
     if (snap.gunDrop && you.team === 'crew' && !you.hasGun && dist(snap.gunDrop, this.pos) < 1.5) out.push({ a: 'gun.pickup' });
 
     if (mode === 'hideseek') return this.decideHns(snap, map);
+    // Lights Out dread: something is close. Suspect whoever is nearby and run for company.
+    if (you.dread > 0.35 && you.team !== 'murderers') {
+      for (const p of this.visibleOthers(snap)) if (p.pos && dist(p.pos, this.pos) < 5) this.bump(p.id, 0.6 * you.dread, 'lurked near me in the dark');
+      if (this.goalKind !== 'flee' && this.goalKind !== 'fix' && this.rng.next() < 0.5) {
+        const e = this.nearestStation(map, ['emergency']);
+        const friend = this.visibleOthers(snap).find((p) => p.pos && dist(p.pos, this.pos) > 5);
+        const to = friend?.pos ?? e;
+        if (to) {
+          this.setGoal(map, snap, to, 'flee');
+          return;
+        }
+      }
+    }
     if (you.team === 'murderers') return this.decideMurderer(snap, map, settings, out);
     return this.decideCrew(snap, map, settings, out, d);
   }
@@ -295,8 +309,9 @@ export class BotBrain {
       }
     }
     if (!sab && this.goalKind === 'fix') this.goal = null;
-    if (!this.goal || this.goalKind === 'wander' || this.goalKind === 'body' || this.goalKind === 'recharge') {
+    if (!this.goal || this.goalKind === 'wander' || this.goalKind === 'body' || this.goalKind === 'recharge' || this.goalKind === 'flee') {
       if (this.goalKind === 'recharge' && you.battery < 0.95) return;
+      if (this.goalKind === 'flee' && this.path.length) return;
       this.pickTask(snap, map) || this.wander(snap, map);
     }
   }
@@ -423,7 +438,7 @@ export class BotBrain {
   }
 
   // -------------------------------------------------------------------------
-  private act(snap: Snapshot, _map: CompiledMap, settings: Settings, dt: number, out: Action[]): void {
+  private act(snap: Snapshot, map: CompiledMap, settings: Settings, dt: number, out: Action[]): void {
     const you = snap.you;
     const d = DIFF[this.diff];
     // At a task station: open, wait, complete.
@@ -457,11 +472,27 @@ export class BotBrain {
           this.fixStartedAt = -1;
           this.goal = null;
         }
-      } else if (you.fixing !== this.goalStation) out.push({ a: 'fix', station: this.goalStation, on: true });
+      } else {
+        // Two-person fix: if someone already holds this station, take the other one.
+        const here = map.stationById.get(this.goalStation);
+        const crowd = here
+          ? this.visibleOthers(snap).filter((p) => p.pos && dist(p.pos, here) <= INTERACT_RANGE + 0.3 && (p.kind === 'human' || p.id < this.id))
+          : [];
+        if (here && crowd.length && snap.sabotage.progress < 1) {
+          const pair = here.kind.endsWith('A') ? here.kind.slice(0, -1) + 'B' : here.kind.slice(0, -1) + 'A';
+          const other = this.nearestStation(map, [pair]);
+          if (other) {
+            if (you.fixing) out.push({ a: 'fix', station: this.goalStation, on: false });
+            this.setGoal(map, snap, other, 'fix', other.id);
+            return this.emitMove(snap, out, false);
+          }
+        }
+        if (you.fixing !== this.goalStation) out.push({ a: 'fix', station: this.goalStation, on: true });
+      }
       return this.emitMove(snap, out, false);
     }
     // Follow path.
-    const speed = BASE_SPEED * settings.playerSpeed * (you.alive ? 1 : 1.25) * (snap.hns?.final && you.role === 'seeker' ? settings.hnsSeekerBoost : 1);
+    const speed = BASE_SPEED * settings.playerSpeed * (you.alive ? 1 : 1.25) * (snap.hns && you.role === 'seeker' ? (snap.hns.final ? settings.hnsSeekerBoost : 1.05) : 1);
     let budget = speed * dt;
     let moved = false;
     while (budget > 0 && this.path.length) {
@@ -517,6 +548,12 @@ export class BotBrain {
     const m = snap.meeting;
     if (!m) return;
     const you = snap.you;
+    if (!this.meetingEvaluated) {
+      this.meetingEvaluated = true;
+      this.meetingSaid = 0;
+      this.evaluateMeeting(snap);
+    }
+    this.listen(snap);
     if (this.lastMeetingT !== m.stageEnds && m.stage === 'discuss' && this.lastMeetingT < 0) this.meetingSaid = 0;
     if (this.voteAt < 0 || m.stage === 'discuss') {
       this.voteAt = snap.t + 2 + this.rng.next() * Math.min(12, Math.max(3, (m.stageEnds - snap.t) * 0.5));
@@ -532,6 +569,42 @@ export class BotBrain {
     if (m.stage === 'vote' && !m.myVote && snap.t >= this.voteAt) {
       out.push({ a: 'vote', target: this.chooseVote(snap, settings) });
       this.voteAt = -1;
+    }
+  }
+
+  private meetingEvaluated = false;
+  private heardChat = new Set<number>();
+
+  /** Who was last seen near the victim around the time they vanished? */
+  private evaluateMeeting(snap: Snapshot): void {
+    const victim = snap.meeting?.victimId;
+    if (!victim) return;
+    const v = this.lastSeen.get(victim);
+    if (!v) return;
+    for (const [id, ls] of this.lastSeen) {
+      if (id === victim || id === this.id) continue;
+      if (Math.abs(ls.t - v.t) < 12 && dist(ls.pos, v.pos) < 9) this.bump(id, 2.5, 'was last seen with the victim');
+    }
+  }
+
+  /** Weigh what others say in meeting chat. */
+  private listen(snap: Snapshot): void {
+    for (const c of snap.chat) {
+      if (this.heardChat.has(c.id) || c.from === this.id || c.from === 'system') continue;
+      this.heardChat.add(c.id);
+      if (this.knownKillers.has(c.from)) continue;
+      const speakerSus = this.sus.get(c.from)?.score ?? 0;
+      const trust = speakerSus > 4 ? 0.3 : 1;
+      for (const p of snap.players) {
+        if (p.id === c.from || !c.text.includes(p.name)) continue;
+        if (p.id === this.id) {
+          this.bump(c.from, 1.5, 'accused me');
+          continue;
+        }
+        if (c.quick === 'saw-kill' || c.quick === 'saw-vent') this.bump(p.id, 4 * trust, 'was called out');
+        else if (c.quick === 'sus' || c.quick === 'near-body' || c.quick === 'vote' || c.quick === 'fake-task') this.bump(p.id, 1.5 * trust, 'was called sus');
+        else if (c.quick === 'with' || c.quick === 'clear') this.bump(p.id, -1.5 * trust, 'was vouched for');
+      }
     }
   }
 
