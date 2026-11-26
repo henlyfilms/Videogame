@@ -416,4 +416,6 @@ export interface MatchState {
   /** Critical fix: time both stations have been held together. */
   fixHold: number;
   jesterWin: string | null;
+  /** Freeplay: no win conditions, dummies stand still. */
+  practice?: boolean;
 }

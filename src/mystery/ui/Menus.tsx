@@ -126,6 +126,9 @@ export function TitleScreen() {
             <button className="mm-btn" onClick={() => setScreen('howto')}>
               <MIcon name="help" /> How to Play
             </button>
+            <button className="mm-btn" style={{ gridColumn: '1 / -1' }} onClick={() => setScreen('freeplay')}>
+              🎓 Freeplay & Tutorial
+            </button>
             <button className="mm-btn" onClick={() => setScreen('profile')}>
               <MIcon name="stats" /> Stats
             </button>

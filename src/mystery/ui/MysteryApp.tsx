@@ -21,6 +21,7 @@ import { EjectOverlay, MeetingOverlay, ResultsScreen, RoleReveal, useStage } fro
 
 const Stage3D = lazy(() => import('./Stage3D'));
 import { WaitingRoom } from './WaitingRoom';
+import { FreeplayScreen, TutorialCoach } from './Freeplay';
 import { CustomizeEditor } from './CustomizeEditor';
 import './mystery.css';
 
@@ -146,6 +147,7 @@ function MatchScreen() {
       {snap.phase === 'eject' && snap.eject && <EjectOverlay snap={snap} settings={settings} />}
       {snap.phase === 'ended' && snap.result && <ResultsScreen snap={snap} />}
       <DeathCinematic />
+      {snap.phase === 'play' && <TutorialCoach />}
     </div>
   );
 }
@@ -224,6 +226,7 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       {!inRoom && screen === 'settings' && <SettingsScreen />}
       {!inRoom && screen === 'profile' && <ProfileScreen />}
       {!inRoom && screen === 'howto' && <HowToScreen />}
+      {!inRoom && screen === 'freeplay' && <FreeplayScreen />}
       {!inRoom && screen === 'wardrobe' && <Wardrobe />}
       {!inRoom && screen === 'room' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>

@@ -1211,7 +1211,7 @@ export function tick(st: MatchState, ctx: MatchCtx, dt: number): void {
   }
   mode.tick?.(st, ctx, dt);
   // Time limit.
-  if (st.timeLimit > 0 && st.t >= st.timeLimit) {
+  if (!st.practice && st.timeLimit > 0 && st.t >= st.timeLimit) {
     const team = s.timerOutcome === 'draw' ? 'draw' : s.timerOutcome === 'crew' ? 'crew' : 'murderers';
     endMatch(st, ctx, team, 'timer');
     return;
@@ -1224,6 +1224,7 @@ export function tick(st: MatchState, ctx: MatchCtx, dt: number): void {
 
 export function checkWin(st: MatchState, ctx: MatchCtx): boolean {
   if (st.phase === 'ended') return true;
+  if (st.practice) return false;
   const mode = MODES[st.modeId];
   if (st.jesterWin) {
     endMatch(st, ctx, 'neutral', 'jester');

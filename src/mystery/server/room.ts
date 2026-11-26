@@ -10,7 +10,8 @@ import { applyAction, createMatch, dropPlayer, sanitizeChat, tick, type MatchCtx
 import { project } from '../core/project';
 import { Rng, hashString } from '../core/rng';
 import { BASE_SPEED, defaultSettings, sanitizeSettings, validateSettings, type Settings } from '../core/settings';
-import type { Cosmetics, MatchState, Platform, PlayerKind, ViewMode } from '../core/types';
+import { ROLES, teamOf } from '../core/roles';
+import type { Cosmetics, MatchState, Platform, PlayerKind, RoleId, ViewMode } from '../core/types';
 import {
   CODE_LENGTH,
   isValidCode,
@@ -97,6 +98,8 @@ export class Room {
   chat: LobbyChat[] = [];
   chatSeq = 0;
   banned = new Set<string>();
+  /** Freeplay practice: the role the host wants to practise. */
+  practice: RoleId | null = null;
   private snapAcc = 0;
   private lobbyAcc = 0;
   private resultsAt = 0;
@@ -349,6 +352,7 @@ export class Room {
   }
 
   validation() {
+    if (this.practice) return { ok: this.order.length >= 1, errors: [], warnings: [] };
     return validateSettings(this.settings, this.order.length);
   }
 
@@ -376,6 +380,21 @@ export class Room {
     this.ctx = { map, settings: this.settings };
     const seed = (this.opts.seed ?? hashString(this.code)) ^ this.rng.int(1e9);
     this.match = createMatch(seeds, this.ctx, seed >>> 0);
+    if (this.practice) {
+      const st = this.match;
+      st.practice = true;
+      for (const p of Object.values(st.players)) {
+        const host = p.id === this.hostId;
+        p.role = host ? this.practice : 'crewmate';
+        p.team = teamOf(p.role);
+        p.hasGun = p.role === 'sheriff';
+        p.killCd = host ? 0 : p.killCd;
+        p.emergencyLeft = 9;
+      }
+      st.sabotage.cooldown = 0;
+      st.sabotage.doorCd = 0;
+      st.emergencyReadyAt = 0;
+    }
     for (const m of this.members.values()) {
       m.chatSince = 0;
       m.witnessed = new Set();
@@ -477,7 +496,7 @@ export class Room {
     const ctx = this.ctx!;
     // Bots act on their own fair projection.
     for (const m of this.members.values()) {
-      if (!m.bot) continue;
+      if (!m.bot || st.practice) continue;
       const p = st.players[m.pid];
       if (!p) continue;
       const snap = project(st, ctx, m.pid, { chatSince: st.chatSeq, witnessed: m.witnessed });
@@ -545,6 +564,7 @@ export class Room {
       chat: this.chat.slice(-30),
       now: this.time,
       lan: !!this.opts.lan,
+      practice: this.practice,
     };
   }
 
@@ -682,6 +702,10 @@ export class GameServer {
         const code = this.newCode();
         const room = new Room(code, this.opts, this.rng.int(1e9));
         if (msg.settings) room.settings = sanitizeSettings({ ...room.settings, ...msg.settings });
+        if (msg.practice && ROLES[msg.practice.role as RoleId]) {
+          room.practice = msg.practice.role as RoleId;
+          room.settings = sanitizeSettings({ ...room.settings, durationMin: 0, discussionTime: 15, votingTime: 30 });
+        }
         this.rooms.set(code, room);
         this.enter(cs, room);
         return;

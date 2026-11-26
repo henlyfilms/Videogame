@@ -6,13 +6,13 @@ import type { Action } from '../core/match';
 import type { Snapshot } from '../core/project';
 import type { Settings } from '../core/settings';
 import type { RoleValidation } from '../core/roles';
-import type { Cosmetics, MapId, ModeId, Platform, PlayerKind, ViewMode } from '../core/types';
+import type { Cosmetics, MapId, ModeId, Platform, PlayerKind, RoleId, ViewMode } from '../core/types';
 
 export const PROTOCOL_VERSION = 1;
 
 export type ClientMsg =
   | { t: 'hello'; v: number; name: string; platform: Platform; kind: 'human' | 'agent'; token?: string; cosmetics?: Cosmetics; view?: ViewMode; resume?: { code: string; pid: string; secret: string } }
-  | { t: 'create'; settings?: Partial<Settings> }
+  | { t: 'create'; settings?: Partial<Settings>; practice?: { role: RoleId } }
   | { t: 'join'; code: string }
   | { t: 'list' }
   | { t: 'leave' }
@@ -66,6 +66,8 @@ export interface RoomInfo {
   /** Server clock (s) for countdowns. */
   now: number;
   lan: boolean;
+  /** Freeplay practice room (role to practise). */
+  practice: RoleId | null;
 }
 
 export interface RoomListing {

@@ -7,13 +7,13 @@ import { create } from 'zustand';
 import type { Action } from '../core/match';
 import type { Snapshot } from '../core/project';
 import type { Settings } from '../core/settings';
-import type { ChatMsg, ViewMode } from '../core/types';
+import type { ChatMsg, MapId, ModeId, RoleId, ViewMode } from '../core/types';
 import type { ClientMsg, RoomInfo, RoomListing, ServerMsg } from '../net/protocol';
 import { loadPrefs, savePrefs, type Prefs } from './prefs';
 import { runtime } from './runtime';
 import { defaultServerUrl, LocalTransport, WsTransport, type ConnState, type Transport } from './transport';
 
-export type Screen = 'title' | 'play' | 'join' | 'browse' | 'settings' | 'profile' | 'wardrobe' | 'room' | 'howto';
+export type Screen = 'title' | 'play' | 'join' | 'browse' | 'settings' | 'profile' | 'wardrobe' | 'room' | 'howto' | 'freeplay';
 
 export interface Toast {
   id: number;
@@ -45,6 +45,7 @@ export interface MysteryState {
   setPrefs(p: Partial<Prefs>): void;
   connectOnline(url?: string): void;
   startSolo(): void;
+  startFreeplay(o: { map: MapId; mode: ModeId; role: RoleId }): void;
   createRoom(settings?: Partial<Settings>): void;
   joinRoom(code: string): void;
   listRooms(): void;
@@ -199,7 +200,7 @@ export const useMystery = create<MysteryState>((set, get) => {
   let recordedFor = '';
   function recordResult(s: Snapshot) {
     const key = `${get().room?.code}-${s.result!.endedAt}`;
-    if (recordedFor === key) return;
+    if (recordedFor === key || get().room?.practice) return;
     recordedFor = key;
     const p = get().prefs;
     const st = { ...p.stats, byRole: { ...p.stats.byRole }, byMode: { ...p.stats.byMode } };
@@ -267,6 +268,13 @@ export const useMystery = create<MysteryState>((set, get) => {
       sendOrQueue({ t: 'create', settings: { bots: 7, privacy: 'code' } });
       // Marion agents join the waiting room straight away in solo play.
       for (const look of ['daniel', 'moose', 'kanye', 'barry', 'greek', 'quill', 'sift']) sendOrQueue({ t: 'host.addBot', look });
+    },
+    startFreeplay: ({ map, mode, role }) => {
+      ensure('local');
+      pendingAfterHello = [];
+      sendOrQueue({ t: 'create', settings: { map, mode, bots: 0, privacy: 'code' }, practice: { role } });
+      for (const look of ['daniel', 'moose', 'kanye']) sendOrQueue({ t: 'host.addBot', look });
+      sendOrQueue({ t: 'host.start' });
     },
     createRoom: (settings) => {
       ensure('ws');
