@@ -116,10 +116,11 @@ export class ThreeDView implements ViewRenderer {
   private batteryMeshes = new Map<string, THREE.Mesh>();
   private trackRing: THREE.Mesh;
   private fader = new PromptFader();
-  private inkHull = hullMaterial(WORLD.ink, 0.032, false);
-  private killHull = hullMaterial(WORLD.kill, 0.06, false);
-  private inkMats: HullMats = { main: this.inkHull, thin: hullMaterial(WORLD.ink, 0.022, false) };
-  private killMats: HullMats = { main: this.killHull, thin: hullMaterial(WORLD.kill, 0.045, false) };
+  // Character hulls stay just above the floor (y = 0) so soles get a clean line.
+  private inkHull = hullMaterial(WORLD.ink, 0.032, false, 0.004);
+  private killHull = hullMaterial(WORLD.kill, 0.06, false, 0.004);
+  private inkMats: HullMats = { main: this.inkHull, thin: hullMaterial(WORLD.ink, 0.022, false, 0.004) };
+  private killMats: HullMats = { main: this.killHull, thin: hullMaterial(WORLD.kill, 0.045, false, 0.004) };
   private promptObjs = new Map<string, THREE.Object3D>();
   private promptTex = new Map<string, { tex: THREE.CanvasTexture; aspect: number }>();
   private ringTex = dottedRingTexture();

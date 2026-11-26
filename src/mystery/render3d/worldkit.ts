@@ -19,16 +19,19 @@ const hullCache = new Map<string, THREE.ShaderMaterial>();
  * Back-face hull pushed out along the view-space normal (scaled by the
  * normal attribute's length, 1 for ordinary meshes). Thickness grows a
  * little with distance so lines stay readable; works with InstancedMesh and
- * scene fog. Shared per (colour, thickness).
+ * scene fog. Shared per (colour, thickness). `floorY` (characters) keeps the
+ * pushed hull above the floor plane, so soles don't get a ragged line where
+ * the floor would clip it.
  */
-export function hullMaterial(color: string, thickness = 0.03, shared = true): THREE.ShaderMaterial {
-  const key = `${color}|${thickness}`;
+export function hullMaterial(color: string, thickness = 0.03, shared = true, floorY?: number): THREE.ShaderMaterial {
+  const key = `${color}|${thickness}|${floorY ?? ''}`;
   const hit = shared ? hullCache.get(key) : undefined;
   if (hit) return hit;
   const m = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uColor: { value: new THREE.Color(color) }, uThick: { value: thickness }, uAlpha: { value: 1 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uColor: { value: new THREE.Color(color) }, uThick: { value: thickness }, uAlpha: { value: 1 }, uFloor: { value: floorY ?? -1e4 } }]),
     vertexShader: /* glsl */ `
       uniform float uThick;
+      uniform float uFloor;
       #include <fog_pars_vertex>
       void main() {
         vec4 pos = vec4(position, 1.0);
@@ -42,6 +45,12 @@ export function hullMaterial(color: string, thickness = 0.03, shared = true): TH
         vec3 vn = normalize(normalMatrix * n) * length(normal);
         float k = clamp(-mvPosition.z * 0.12, 0.7, 2.2);
         mvPosition.xyz += vn * uThick * k;
+        if (uFloor > -1e3) {
+          // Back to world space (the view matrix is rigid), lift to the floor, and back.
+          vec3 w = transpose(mat3(viewMatrix)) * (mvPosition.xyz - viewMatrix[3].xyz);
+          w.y = max(w.y, uFloor);
+          mvPosition = viewMatrix * vec4(w, 1.0);
+        }
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,

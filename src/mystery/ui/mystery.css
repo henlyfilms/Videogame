@@ -1657,7 +1657,14 @@
   white-space: nowrap;
 }
 .mmh-big-label {
+  position: relative;
+  z-index: 4;
   font-size: calc(28px * var(--mm-scale));
+  transition: transform 0.25s var(--ease-spring);
+}
+/* The ready burst spills past the disc: lift the label over it and nudge it clear. */
+.mmh-big[data-ready='true'] .mmh-big-label {
+  transform: translateY(6px);
 }
 .mmh-small-label {
   font-size: calc(13px * var(--mm-scale));
