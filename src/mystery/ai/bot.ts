@@ -671,7 +671,7 @@ export class BotBrain {
     if (!settings.quickChat) return;
     if (top && top.s.score >= 6 && this.knownKillers.has(top.id)) out.push({ a: 'quick', id: 'saw-kill', target: top.id });
     else if (top && top.s.score >= 2) out.push({ a: 'quick', id: this.rng.pick(['sus', 'near-body']), target: top.id });
-    else out.push({ a: 'quick', id: this.rng.pick(QUICK_CHAT.filter((q) => !q.target && q.group !== 'accuse')).id });
+    else out.push({ a: 'quick', id: this.rng.pick(QUICK_CHAT.filter((q) => !q.target && (q.group === 'info' || q.group === 'defend'))).id });
   }
 
   /** Lines produced asynchronously by the chat provider, drained by the host. */
