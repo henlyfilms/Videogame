@@ -379,7 +379,14 @@ const BLUEPRINTS: RoomBlueprint[] = [
     h: 11,
     corners: { bl: chamfer(2), br: chamfer(2) },
     doors: [d('n', 13), d('w', 4), d('e', 6)],
-    props: [p('table', 'huddle-table', 5, 4, 8, 3, 'huddle', true, 'Huddle'), p('wb', 'whiteboard', 2, 1, 4, 1, 'huddle', true), p('plant1', 'plant', 15, 1, 1, 1, undefined, true)],
+    props: [
+      p('table', 'huddle-table', 5, 4, 8, 3, 'huddle', true, 'Huddle'),
+      p('wb', 'whiteboard', 2, 1, 4, 1, 'huddle', true),
+      p('plant1', 'plant', 15, 1, 1, 1, undefined, true),
+      p('couch', 'couch', 2, 8, 3, 1, undefined, true),
+      p('plant2', 'plant', 15, 7, 1, 1, undefined, true),
+      p('plant3', 'plant', 1, 8, 1, 1, undefined, true),
+    ],
     spots: [...HUDDLE_SEATS, sp('center', 9, 9)],
   },
   {
@@ -400,6 +407,10 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('pod', 'spawn-pod', 8, 6, 3, 3, 'pod', true, 'Spawn Pod'),
       p('retired', 'retired-shelf', 15, 9, 3, 2, 'retired', true, '30-Day Vault'),
       p('plant1', 'plant', 2, 13, 1, 1, undefined, true),
+      p('couch', 'couch', 2, 8, 4, 1, undefined, true),
+      p('plant2', 'plant', 18, 4, 1, 1, undefined, true),
+      p('conduit', 'conduit', 11, 12, 6, 1, undefined, false),
+      p('plant3', 'plant', 6, 13, 1, 1, undefined, true),
     ],
     spots: [
       sp('desk', 7, 4),

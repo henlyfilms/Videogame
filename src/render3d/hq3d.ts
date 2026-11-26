@@ -594,7 +594,7 @@ export class HQ3DRenderer {
   /** Place the perspective camera from the shared HQ camera (centre + zoom). */
   private placeCamera(cam: Camera): void {
     const visibleTiles = cam.vh / cam.zoom / TILE;
-    const dist = Math.max(5, (visibleTiles / 2 / Math.tan(((FOV / 2) * Math.PI) / 180)) * 0.92);
+    const dist = Math.max(5, (visibleTiles / 2 / Math.tan(((FOV / 2) * Math.PI) / 180)) * 1.04);
     const tx = cam.x * U;
     const tz = cam.y * U;
     this.camera.position.set(tx, Math.sin(PITCH) * dist, tz + Math.cos(PITCH) * dist);
