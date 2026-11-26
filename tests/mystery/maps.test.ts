@@ -1,4 +1,4 @@
-import { compileMap, isFloor } from '../../src/mystery/core/map';
+import { compileMap, findPath, isFloor, nearestFree } from '../../src/mystery/core/map';
 import { LOBBY_MAP, MAP_DEFS, MAP_ORDER } from '../../src/mystery/core/maps/index';
 import { validateMap } from '../../src/mystery/core/maps/validate';
 import { availableTasks, TASKS } from '../../src/mystery/core/tasks';
@@ -53,6 +53,21 @@ describe.each(MAP_ORDER)('map %s', (id) => {
     expect(m.meetingSeats.length).toBeGreaterThan(0);
     for (const p of m.meetingSeats) expect(isFloor(m, Math.floor(p.x), Math.floor(p.y))).toBe(true);
     expect(isFloor(m, Math.floor(def!.spawn.x), Math.floor(def!.spawn.y))).toBe(true);
+  });
+
+  it('keeps doorways clear and never lets door sabotage seal a sabotage-fix room', () => {
+    const m = compileMap(def!);
+    for (const d of def!.doors) {
+      const [x, y, w, h] = d.rect;
+      for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) expect(isFloor(m, tx, ty)).toBe(true);
+    }
+    const fixKinds = new Set<StationKind>(['emergency', 'lightsPanel', 'commsPanel', 'meltdownA', 'meltdownB', 'pressureA', 'pressureB']);
+    for (const room of def!.rooms) {
+      const doors = def!.doors.filter((d) => d.room === room.id).map((d) => d.id);
+      if (!doors.length || !def!.stations.some((s) => s.room === room.id && fixKinds.has(s.kind))) continue;
+      const [x, y, w, h] = room.rect;
+      expect(findPath(m, nearestFree(m, { x: x + w / 2, y: y + h / 2 }), def!.spawn, new Set(doors), 100000), room.id).not.toBeNull();
+    }
   });
 
   it('has bidirectional vent links', () => {
