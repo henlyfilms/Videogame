@@ -9,6 +9,12 @@ mood, layout and interaction patterns only**. Do not copy that game's character 
 (the bean/visor body shape), names, logos, specific cosmetics or artwork. Marion's own bots
 and rooms stay the characters and setting.
 
+## UI direction (from the project owner)
+
+**The game's UI should match the UI in these references as closely as possible**: same layout,
+placement, component shapes, hierarchy, colour treatment and flow. Rebuild each element with
+Marion's own icons, wording, branding and characters; don't copy their exact icons, logos or text.
+
 ## What to take from them
 
 - **Rendering:** cel-shaded / flat colour with thick dark ink outlines on every shape;
@@ -82,3 +88,17 @@ and rooms stay the characters and setting.
 | 32-hud-crewmate-nametags.jpg | IMG_2308 | Crewmate HUD in a dark room, name tags, report icon |
 | 33-scene-medbay-corridor.webp | IMG_2305 | Corridor: riveted teal walls, yellow/pink guide stripes, lit ceiling strips, medbay cross sign |
 | 34-scene-o2-room-body-found.jpg | IMG_2304 | O2 room: tanks, green fan wall, plant pond under floor glass; body found, killer fleeing |
+| 35-hud-report-body-prompt.jpg | IMG_2355 | Report prompt: megaphone burst with key hint over a body |
+| 36-hud-kill-target.jpg | IMG_2354 | Kill target: red outline on player, skull badge, name tag |
+| 37-hud-vent-prompt.jpg | IMG_2353 | Vent highlighted in orange with key hint |
+| 38-hud-vent-travel.jpg | IMG_2352 | Inside a vent: left/right arrows to linked vents |
+| 39-hud-sabotage-countdown.jpg | IMG_2351 | "Fix Sabotage" countdown banner, task arrow, admin room |
+| 40-scene-hall-task-marker.jpg | IMG_2350 | Round hall, floating arrow plus dotted ring marking a task |
+| 41-ui-settings-menu.jpg | IMG_2349 | Settings: Audio/Gameplay/Controls/Match tabs, Leave Game |
+| 42-ui-lobby-host-board.jpg | IMG_2348 | Lobby board: player count, code, public toggle, wardrobe, invite, host prompt |
+| 43-ui-wrist-map.jpg | IMG_2347 | Wrist tablet: map, total tasks bar, side buttons |
+| 44-ui-nametags-tablet.jpg | IMG_2346 | Lobby name-tag pills over players, tablet open |
+| 45-ui-tablet-task-list.jpg | IMG_2345 | Tablet: task list panel expanded, map with task pins |
+| 46-ui-customize-hats.jpg | IMG_2344 | Customize panel: hats tab, item slots |
+| 47-ui-customize-colours.jpg | IMG_2343 | Customize panel: colour swatches tab |
+| 48-ui-dead-body-reported.jpg | IMG_2342 | "Dead Body Reported" banner with hazard stripes |
