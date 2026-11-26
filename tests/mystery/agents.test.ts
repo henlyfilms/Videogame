@@ -23,13 +23,14 @@ async function playMatch(mode: ModeId, map: 'hq' | 'greenhouse' | 'express' | 'm
   const host = new MysteryAgent({ name: 'Host Agent', transport: memTransport(srv, 'host') });
   runExampleAgent(host);
   await host.create({ mode, map, bots: 6, maxPlayers: 12, durationMin: 6 });
-  await Promise.resolve();
+  srv.update(1 / 30);
   const code = host.room!.code;
   const guests = [1, 2].map((i) => new MysteryAgent({ name: `Guest ${i}`, transport: memTransport(srv, `g${i}`) }));
   for (const g of guests) {
     runExampleAgent(g);
     await g.join(code);
   }
+  srv.update(1 / 30);
   host.start();
   let leaked = false;
   for (const a of [host, ...guests])
@@ -74,7 +75,7 @@ describe('agent protocol', () => {
     const srv = new GameServer({ seed: 9, chatProvider: async (ctx) => `${ctx.botName} here — I was in my room.` });
     const host = new MysteryAgent({ name: 'Host', transport: memTransport(srv, 'h') });
     await host.create({ bots: 5, discussionTime: 30 });
-    await Promise.resolve();
+    srv.update(1 / 30);
     host.start();
     for (let i = 0; i < 30 * 12; i++) srv.update(1 / 30);
     // Call a meeting from the button.
