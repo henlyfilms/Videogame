@@ -499,7 +499,9 @@ export class Room {
       if (!m.bot || st.practice) continue;
       const p = st.players[m.pid];
       if (!p) continue;
-      const snap = project(st, ctx, m.pid, { chatSince: st.chatSeq, witnessed: m.witnessed });
+      // Bots hear chat too (meeting accusations feed their suspicion); they keep their own cursor.
+      const snap = project(st, ctx, m.pid, { chatSince: m.chatSince, witnessed: m.witnessed });
+      if (snap.chat.length) m.chatSince = snap.chat[snap.chat.length - 1]!.id;
       // Bots never consume the pending event queue (projection is read-only).
       const acts = m.bot.update(snap, ctx.map, ctx.settings, dt);
       for (const a of acts) applyAction(st, ctx, m.pid, a);

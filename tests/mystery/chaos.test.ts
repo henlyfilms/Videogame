@@ -48,7 +48,9 @@ describe('network chaos', () => {
       srv.update(1 / 30);
       const room = [...srv.rooms.values()][0];
       const s = agent.snap;
-      if (room?.match && s && s.phase === 'play' && s.you.alive) {
+      // Compare only while both sides are in play: a meeting teleports everyone to their
+      // seats, and the lagged snapshot can still say 'play' for a moment after that.
+      if (room?.match && room.match.phase === 'play' && s && s.phase === 'play' && s.you.alive) {
         const sp = room.match.players[agent.pid]!.pos;
         maxDrift = Math.max(maxDrift, Math.hypot(sp.x - s.you.pos.x, sp.y - s.you.pos.y));
       }

@@ -18,7 +18,7 @@ Good social-deduction maps have: loops (no long dead-end chases), chokepoints, v
 
 ## Pacing for 4 vs 20 players
 
-Murderer-team cap is `ceil(n/2) − 1`; critical-sabotage timers scale with map size (`criticalFloor`); discussion/voting times and task counts are host-tunable with presets (Quick Match for short games). Bot balance was tuned with all-bot simulations (see PROGRESS.md): Classic ≈ 42 % crew wins, Lights Out ≈ 38 %, Hide & Seek ≈ 33 % hider wins with bots (humans hide better than bots).
+Murderer-team cap is `ceil(n/2) − 1`; critical-sabotage timers scale with map size (`criticalFloor`); discussion/voting times and task counts are host-tunable with presets (Quick Match for short games). Pressure/meltdown floors also cover the walk between that sabotage's two stations. Bot balance is measured with `npx tsx scripts/balance.ts` (see PROGRESS.md): over 8/10/12-player lobbies on all four maps, Classic ≈ 49 % crew wins, Lights Out ≈ 42 %, Hide & Seek ≈ 42 % hider wins. With the fixed default of 2 murderers (1 seeker), small lobbies lean murderer and big ones lean crew.
 
 ## Onboarding
 
