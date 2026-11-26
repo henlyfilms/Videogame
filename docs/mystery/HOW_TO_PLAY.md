@@ -28,6 +28,18 @@ Neutral: Jester (wants to be voted out), Survivor (just stay alive).
 - **Timer** (if set): the host picks murderers / crew / draw.
 - **Jester**: gets ejected. **Survivor**: alive at the end (wins with whoever won).
 
+## Seeds and the Shop
+
+Every finished match pays **Seeds** (shown on the results board): 10 for playing, +3 per task (up to 10),
++4 per elimination (up to 5), +2 per body report, sabotage fix or correct vote (up to 8), +5 for surviving,
++15 for winning and +10 for MVP. Practice rounds pay nothing. New players start with 60.
+
+Spend them in the **Shop** tab of the Wardrobe (main menu): about half of every cosmetic slot is free; the rest
+cost 25 / 50 / 90 / 150 Seeds (common / rare / epic / legendary), and **Featured** has discounted bundles.
+Locked items in the Wardrobe show a lock and price; tap one to jump to it in the Shop (in the lobby mirror you
+can buy it on the spot). Anything you were already wearing stays yours. Seeds are earned only by playing:
+no real money, no ads. They are stored on this device (all numbers live in `src/mystery/characters/shop.ts`).
+
 ## Controls
 
 | | Keyboard & mouse | Touch (iPhone) | Controller |

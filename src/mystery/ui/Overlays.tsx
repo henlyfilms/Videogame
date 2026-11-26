@@ -13,6 +13,7 @@ export function useStage(): boolean {
   const v = useMystery((s) => s.matchView ?? s.prefs.view);
   return v !== '2d';
 }
+import { matchEarnings } from '../characters/shop';
 import { drawBerry, drawBody } from '../characters/draw2d';
 import { getMap } from '../core/maps';
 import { MODES } from '../core/modes';
@@ -26,6 +27,7 @@ import { filterProfanity } from '../client/prefs';
 import { useMystery } from '../client/store';
 import { BerryAvatar, Bar, colorHex, fmtTime, MIcon, readable, teamColors } from './common';
 import { Hazard, Presence, SchematicMap, starfield, STREAKS, Tick, useViewport } from './kit';
+import { SeedsEarned } from './Shop';
 
 const STARS = starfield(11, 90);
 
@@ -649,6 +651,8 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
     return t ? c / t : 0;
   })();
   const mine = res.stats[pid];
+  const practice = !!room.practice;
+  const earnings = useMemo(() => matchEarnings({ stats: res.stats[pid], won: res.winners.includes(pid), mvp: res.mvp === pid, practice }), [res, pid, practice]);
   return (
     <div className="mmr mm-safe" style={{ backgroundImage: STARS, ['--win' as string]: col }}>
       <div className="mmr-top">
@@ -681,6 +685,7 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
       </div>
       {tab === 'summary' && (
         <div className="mmr-grid">
+          <SeedsEarned earnings={earnings} balance={prefs.seeds} />
           <div className="mmr-left">
             {total > 0 && (
               <div className="mmr-total">

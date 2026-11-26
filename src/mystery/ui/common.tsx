@@ -1,7 +1,7 @@
 /**
  * Shared UI bits for Marion Mystery: icons, berry avatars, modals, bars.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { PALETTE } from '../characters/catalog';
 import { drawBerry } from '../characters/draw2d';
 import type { Cosmetics } from '../core/types';
@@ -82,6 +82,8 @@ const P: Record<string, string> = {
   tag: 'M3 12V4h8l10 10-8 8z M7.5 7.5h.01',
   sparkle: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z',
   trophy: 'M8 4h8v5a4 4 0 0 1-8 0z M8 6H4a3 3 0 0 0 4 4 M16 6h4a3 3 0 0 1-4 4 M12 13v4 M8 21h8 M9 17h6',
+  gift: 'M4 11h16v10H4z M3 7h18v4H3z M12 7v14 M12 7C10.5 3.5 6.5 3.5 7.5 6.2 8 7 12 7 12 7z M12 7c1.5-3.5 5.5-3.5 4.5-.8C16 7 12 7 12 7z',
+  bag: 'M5 8h14l-1.2 13H6.2z M9 10V6.5a3 3 0 0 1 6 0V10',
   // --- task icons ---
   mail: 'M3 6h18v12H3z M3 7l9 6 9-6',
   clip: 'M8 12V6a4 4 0 0 1 8 0v10a2.5 2.5 0 0 1-5 0V8',
@@ -113,6 +115,26 @@ export function MIcon({ name, size = 20, className = '', stroke = 2 }: { name: s
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <path d={P[name] ?? P.help} />
+    </svg>
+  );
+}
+
+/** The shop currency glyph: an original inked seed with a little sprout leaf. */
+export function SeedGlyph({ size = 18, className = '' }: { size?: number; className?: string }) {
+  const id = useId().replace(/:/g, '');
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={`mm-seed ${className}`} aria-hidden>
+      <defs>
+        <linearGradient id={`sg${id}`} x1="0.2" y1="0.1" x2="0.8" y2="1">
+          <stop offset="0" stopColor="#ffe9a3" />
+          <stop offset="0.45" stopColor="#f2b544" />
+          <stop offset="1" stopColor="#b9671f" />
+        </linearGradient>
+      </defs>
+      <path d="M12.6 6.2c3.6 1.4 5.6 5.3 4.6 9-.9 3.4-3.8 5.6-6.4 5.1-2.7-.5-4.3-3.6-3.6-7.2.7-3.5 2.8-6.1 5.4-6.9z" fill={`url(#sg${id})`} stroke="#2a1606" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M12.3 8.6c-1.6 2.6-2.2 6.2-1.4 9.7" fill="none" stroke="#8a4a16" strokeWidth="1.2" strokeLinecap="round" opacity=".75" />
+      <path d="M14.4 9.4c.9.8 1.4 1.9 1.5 3" fill="none" stroke="#fff6d6" strokeWidth="1.3" strokeLinecap="round" opacity=".9" />
+      <path d="M12.7 6.3c-.1-1.8.6-3.4 2.2-4.2 1.9-.9 3.8-.4 4.6.4-1 1.6-3.3 2.9-6.8 3.8z" fill="#5fd36a" stroke="#123b17" strokeWidth="1.3" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -206,6 +228,8 @@ export function Modal({ children, onClose, wide = false, title }: { children: Re
     // not also reach the game's input layer and open the pause menu).
     const k = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // A nested layer (e.g. the buy confirmation) handles its own Escape.
+      if ((e.target as Element | null)?.closest?.('[data-own-escape]')) return;
       e.stopPropagation();
       close();
     };

@@ -24,6 +24,7 @@ const Stage3D = lazy(() => import('./Stage3D'));
 import { WaitingRoom } from './WaitingRoom';
 import { FreeplayScreen, TutorialCoach } from './Freeplay';
 import { CustomizeEditor } from './CustomizeEditor';
+import { SeedCounter, ShopPanel } from './Shop';
 import './mystery.css';
 
 const MenuBackdrop3D = lazy(() => import('../render3d/backdrop3d').then((m) => ({ default: m.MenuBackdrop3D })));
@@ -158,25 +159,66 @@ function Wardrobe() {
   const prefs = useMystery((s) => s.prefs);
   const setPrefs = useMystery((s) => s.setPrefs);
   const setScreen = useMystery((s) => s.setScreen);
+  const [tab, setTab] = useState<'shop' | 'wardrobe'>('wardrobe');
+  const [leaving, setLeaving] = useState(false);
+  /** Item handed from the Wardrobe tab (a locked tile) to the Shop. */
+  const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && setScreen('title');
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [setScreen]);
+  const go = (t: 'shop' | 'wardrobe') => {
+    if (t === tab || leaving) return;
+    if (useMystery.getState().prefs.reducedMotion) return setTab(t);
+    setLeaving(true);
+    setTimeout(() => {
+      setTab(t);
+      setLeaving(false);
+    }, 150);
+  };
+  const onTabKey = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const t = tab === 'shop' ? 'wardrobe' : 'shop';
+    go(t);
+    (document.getElementById(`mmw-tab-${t}`) as HTMLElement | null)?.focus();
+  };
+  const preview = prefs.view === '2d' ? '2d' : '3d';
   return (
     <div className="mm-safe mmw">
       <div className="mmw-top mm-in-down">
         <button className="mm-round" onClick={() => setScreen('title')} aria-label="Back">
           <MIcon name="back" />
         </button>
-        <div className="mmw-tabs" role="presentation">
-          <span className="mmw-tab" data-on="true">
-            Wardrobe
-          </span>
+        <div className="mmw-tabs" role="tablist" aria-label="Shop and wardrobe" onKeyDown={onTabKey}>
+          {(['shop', 'wardrobe'] as const).map((t) => (
+            <button key={t} id={`mmw-tab-${t}`} type="button" role="tab" className="mmw-tab" data-on={tab === t} aria-selected={tab === t} aria-controls="mmw-body" tabIndex={tab === t ? 0 : -1} onClick={() => go(t)}>
+              <MIcon name={t === 'shop' ? 'bag' : 'hanger'} size={18} />
+              {t === 'shop' ? 'Shop' : 'Wardrobe'}
+            </button>
+          ))}
         </div>
+        <SeedCounter value={prefs.seeds} className="mmw-wallet" />
       </div>
-      <div className="mmw-body mm-in-up">
-        <CustomizeEditor value={prefs.cosmetics} onChange={(c) => setPrefs({ cosmetics: c })} name={prefs.name} onNameChange={(n) => setPrefs({ name: n.slice(0, 16) })} preview={prefs.view === '2d' ? '2d' : '3d'} onDone={() => setScreen('title')} />
+      <div className="mmw-body mm-in-up" id="mmw-body" role="tabpanel" aria-labelledby={`mmw-tab-${tab}`} key={tab} data-state={leaving ? 'out' : 'in'}>
+        {tab === 'shop' ? (
+          <ShopPanel focusKey={focus} preview={preview} />
+        ) : (
+          <CustomizeEditor
+            value={prefs.cosmetics}
+            onChange={(c) => setPrefs({ cosmetics: c })}
+            name={prefs.name}
+            onNameChange={(n) => setPrefs({ name: n.slice(0, 16) })}
+            preview={preview}
+            onDone={() => setScreen('title')}
+            owned={prefs.owned}
+            onLocked={(k) => {
+              setFocus(k);
+              go('shop');
+            }}
+          />
+        )}
       </div>
     </div>
   );

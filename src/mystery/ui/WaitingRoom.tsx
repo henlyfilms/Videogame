@@ -17,6 +17,7 @@ import { filterProfanity } from '../client/prefs';
 import { useMystery } from '../client/store';
 import { BerryAvatar, colorHex, MIcon, Modal, PLATFORM_ICON, readable, teamColors } from './common';
 import { CustomizeEditor } from './CustomizeEditor';
+import { QuickBuy, SeedCounter } from './Shop';
 import { GameView } from './GameView';
 import { Hazard, Kbd, Presence, useViewport } from './kit';
 import { MatchSettingsPanel } from './MatchSettingsPanel';
@@ -96,6 +97,8 @@ export function WaitingRoom() {
   const [now, setNow] = useState(0);
   const [copied, setCopied] = useState(false);
   const [showBots, setShowBots] = useState(false);
+  /** Locked wardrobe item offered for purchase. */
+  const [buyKey, setBuyKey] = useState<string | null>(null);
   const tc = teamColors(prefs.colorblind !== 'none');
   const link = inviteLink(room.code);
   const mapName = useMemo(() => availableMaps().find((m) => m.id === room.settings.map)?.name ?? room.settings.map, [room.settings.map]);
@@ -399,6 +402,7 @@ export function WaitingRoom() {
 
       {panel === 'wardrobe' && (
         <Modal title="Wardrobe" onClose={() => setPanel(null)} wide>
+          <SeedCounter value={prefs.seeds} className="mml-wallet" />
           <CustomizeEditor
             value={prefs.cosmetics}
             onChange={(c) => setPrefs({ cosmetics: c })}
@@ -407,7 +411,10 @@ export function WaitingRoom() {
             preview={prefs.view === '2d' ? '2d' : '3d'}
             takenColors={room.players.filter((p) => p.id !== pid).map((p) => p.cosmetics.color)}
             onDone={() => setPanel(null)}
+            owned={prefs.owned}
+            onLocked={setBuyKey}
           />
+          {buyKey && <QuickBuy itemKey={buyKey} onClose={() => setBuyKey(null)} />}
         </Modal>
       )}
       {panel === 'settings' && (
