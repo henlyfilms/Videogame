@@ -10,7 +10,7 @@ import { applyAction, createMatch, criticalFloor, taskProgress, tick, type Actio
 import { project } from '../../src/mystery/core/project';
 import { assignRoles, maxMurderers, validateRoles } from '../../src/mystery/core/roles';
 import { Rng } from '../../src/mystery/core/rng';
-import { decodeSettings, defaultSettings, encodeSettings, migrateSettings, PRESETS, sanitizeSettings, validateSettings, type Settings } from '../../src/mystery/core/settings';
+import { BASE_SPEED, decodeSettings, defaultSettings, encodeSettings, migrateSettings, PRESETS, sanitizeSettings, validateSettings, type Settings } from '../../src/mystery/core/settings';
 import type { MatchState, RoleId } from '../../src/mystery/core/types';
 import { randomCosmetics } from '../../src/mystery/characters/catalog';
 
@@ -293,6 +293,18 @@ describe('sabotage', () => {
     ok(st, ctx, 'p0', { a: 'sabotage', kind: 'pressure' });
     for (let i = 0; i < 200 && st.phase !== 'ended'; i++) tick(st, ctx, 1);
     expect(st.result!.reason).toBe('critical');
+  });
+  it('a critical countdown leaves time to walk from one of its stations to the other', () => {
+    for (const id of ['hq', 'greenhouse', 'express', 'manor'] as const) {
+      const m = getMap(id);
+      for (const kind of ['meltdown', 'pressure'] as const) {
+        const a = m.def.stations.find((s) => s.kind === `${kind}A`)!;
+        const b = m.def.stations.find((s) => s.kind === `${kind}B`)!;
+        expect(criticalFloor(m, kind)).toBeGreaterThanOrEqual(criticalFloor(m));
+        // Straight-line distance is a lower bound on the walk.
+        expect(criticalFloor(m, kind)).toBeGreaterThan(Math.hypot(a.x - b.x, a.y - b.y) / BASE_SPEED);
+      }
+    }
   });
   it('doors close for a while and block movement', () => {
     const { st, ctx } = setup(6, { p0: 'murderer' });

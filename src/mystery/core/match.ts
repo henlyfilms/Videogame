@@ -295,16 +295,32 @@ function nearestStationOfKind(ctx: MatchCtx, p: PlayerState, kind: string, range
   return best;
 }
 
-const floorCache = new WeakMap<CompiledMap, number>();
-/** Minimum critical countdown for a map: ~1.25x the walk from spawn to its farthest corner. */
-export function criticalFloor(m: CompiledMap): number {
-  let v = floorCache.get(m);
+const floorCache = new WeakMap<CompiledMap, Map<string, number>>();
+/**
+ * Minimum critical countdown for a map: ~1.25x the walk from spawn to its
+ * farthest corner. With `kind`, also long enough (~1.4x) to walk from one of
+ * that sabotage's two stations to the other: the crew is often bunched at one
+ * end, and on the long maps the pair can be 150 m apart.
+ */
+export function criticalFloor(m: CompiledMap, kind?: 'meltdown' | 'pressure'): number {
+  let cache = floorCache.get(m);
+  if (!cache) floorCache.set(m, (cache = new Map()));
+  const key = kind ?? '';
+  let v = cache.get(key);
   if (v === undefined) {
     const d = distanceField(m, m.def.spawn);
     let max = 0;
     for (let i = 0; i < d.length; i++) if (d[i]! > max) max = d[i]!;
     v = Math.round((max / BASE_SPEED) * 1.25);
-    floorCache.set(m, v);
+    const a = kind && m.def.stations.find((s) => s.kind === `${kind}A`);
+    const b = kind && m.def.stations.find((s) => s.kind === `${kind}B`);
+    if (a && b) {
+      const da = distanceField(m, nearestFree(m, a));
+      const fb = nearestFree(m, b);
+      const walk = da[Math.floor(fb.y) * m.w + Math.floor(fb.x)]!;
+      if (walk > 0) v = Math.max(v, Math.round((walk / BASE_SPEED) * 1.4));
+    }
+    cache.set(key, v);
   }
   return v;
 }
@@ -821,7 +837,7 @@ export function applyAction(st: MatchState, ctx: MatchCtx, pid: string, act: Act
       if (!need.every((k) => ctx.map.def.stations.some((x) => x.kind === k))) return no('not on this map');
       st.sabotage.active = act.kind;
       st.sabotage.startedAt = st.t;
-      st.sabotage.timer = isCritical(act.kind) ? Math.max(s.criticalTimer, criticalFloor(ctx.map)) : 0;
+      st.sabotage.timer = isCritical(act.kind) ? Math.max(s.criticalTimer, criticalFloor(ctx.map, act.kind)) : 0;
       st.sabotage.progress = 0;
       st.sabotage.cooldown = s.sabotageCooldown;
       st.fixHold = 0;

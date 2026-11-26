@@ -59,7 +59,9 @@ try {
   await host.getByText('Phone').first().waitFor({ timeout: 15000 });
   check('iPhone joins the same room by invite link', true);
 
-  // Host tunes settings: quick 2-minute match, fill with bots.
+  // Host tunes settings: quick 3-minute match, fill with bots. (The clock runs during
+  // meetings and is checked when play resumes: with 2 minutes, a meeting called early
+  // by the bots could end the match before the HUD ever came back for the Stats step.)
   await host.getByRole('button', { name: 'Edit match settings' }).click();
   await host.getByText('Rules').click();
   const setRange = async (label, value) => {
@@ -70,7 +72,7 @@ try {
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }, value);
   };
-  await setRange('Match duration', 2);
+  await setRange('Match duration', 3);
   await setRange('Fill with Marion bots', 6);
   await host.keyboard.press('Escape');
   await sleep(500);
@@ -103,8 +105,8 @@ try {
   await phone.keyboard.press('Escape');
   check('iPhone stats panel opens', true);
 
-  // Wait for the match to end (timer 2 min or earlier).
-  await host.getByText(/Crew wins!|Murderers win!|Jester wins!|Draw!/).waitFor({ timeout: 240000 });
+  // Wait for the match to end (timer 3 min, plus a meeting in progress, or earlier).
+  await host.getByText(/Crew wins!|Murderers win!|Jester wins!|Draw!/).waitFor({ timeout: 330000 });
   check('match reaches the results screen', true);
   await host.getByText('Timeline').click();
   await host.getByText('Heatmap').click();
