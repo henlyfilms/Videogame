@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { CORE_BOTS } from '../data/bots';
+import { useArcade } from '../arcade/state';
 import { actions } from '../game/actions';
 import { hq } from '../game/hq';
 import { useGame } from '../store/gameStore';
@@ -26,6 +27,8 @@ function isTyping(e: KeyboardEvent): boolean {
 export function useShortcuts(toast: (m: string) => void): void {
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
+      // A full-screen Arcade game owns the keyboard while it is open.
+      if (useArcade.getState().open) return;
       const s = useGame.getState();
       const key = e.key.toLowerCase();
       const mod = e.metaKey || e.ctrlKey;

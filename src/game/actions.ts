@@ -2,6 +2,7 @@
  * Player actions. Each action only publishes MarionEvents; the mechanics
  * reducer and the simulation react to them like any other event source.
  */
+import { launchMystery } from '../arcade/state';
 import { nextId, type ClipBin, type MailSlot, type PlannerLane, type RelayModel, type SkillId } from '../adapters/events';
 import { BOT_SHAPES, CORE_BOTS, FOUNDRY_COLORS, type BotShape, type RoomId } from '../data/bots';
 import type { HotspotAction } from '../engine/world';
@@ -219,6 +220,9 @@ export function createActions(hq: HQ, get = useGame.getState) {
         case 'tubes':
           a.requestMail();
           return 'Mail incoming';
+        case 'arcade':
+          launchMystery({ kind: 'menu' });
+          return 'Booting Marion Mystery…';
         case 'timeline':
         case 'bins':
           if (!mech().cutting.queue.length) a.requestClip();

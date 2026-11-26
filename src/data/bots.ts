@@ -22,7 +22,8 @@ export type RoomId =
   | 'media'
   | 'cutting'
   | 'mail'
-  | 'foundry';
+  | 'foundry'
+  | 'arcade';
 
 export interface BotDef {
   id: string;

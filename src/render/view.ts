@@ -27,6 +27,14 @@ export interface RenderView {
   engine: { queue: number; polaroids: number; activeModels: RelayModel[] };
   foundry: { skills: SkillId[]; custom: number };
   command: { releases: number; brain: number; huddling: boolean };
+  arcade: {
+    /** Top of the arcade leaderboard (id, wins, games). */
+    top: { id: string; wins: number; games: number }[];
+    /** A Marion Mystery match is running right now. */
+    live: boolean;
+    liveMode: string | null;
+    matches: number;
+  };
 }
 
 export function emptyView(theme: ThemeName = 'light'): RenderView {
@@ -39,6 +47,7 @@ export function emptyView(theme: ThemeName = 'light'): RenderView {
     engine: { queue: 0, polaroids: 0, activeModels: [] },
     foundry: { skills: [], custom: 0 },
     command: { releases: 0, brain: 0, huddling: false },
+    arcade: { top: [], live: false, liveMode: null, matches: 0 },
   };
 }
 

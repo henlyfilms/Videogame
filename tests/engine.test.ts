@@ -33,9 +33,9 @@ function seeded(seed = 42) {
 
 describe('world / floorplan', () => {
   const grid = buildGrid();
-  it('has 9 rooms: 7 wings + bridge + huddle', () => {
-    expect(ROOMS).toHaveLength(9);
-    expect(new Set(ROOMS.map((r) => r.id)).size).toBe(9);
+  it('has 10 rooms: 7 wings + bridge + huddle + arcade', () => {
+    expect(ROOMS).toHaveLength(10);
+    expect(new Set(ROOMS.map((r) => r.id)).size).toBe(10);
   });
   it('every named spot is walkable and reachable from command', () => {
     const pf = new Pathfinder(grid);
@@ -58,7 +58,7 @@ describe('world / floorplan', () => {
       }
     }
     const doors = grid.tiles.filter((t) => t === Tile.Door).length;
-    expect(doors).toBe(9 * 8);
+    expect(doors).toBe(10 * 8);
   });
   it('hotspots resolve from world coords', () => {
     const mail = ROOMS.find((r) => r.id === 'mail')!;
@@ -171,7 +171,7 @@ describe('A* pathfinding', () => {
     const t0 = performance.now();
     for (let i = 0; i < 50; i++) findPath(g, spotTile('engine', 't1'), spotTile('foundry', 'retired'));
     expect(performance.now() - t0).toBeLessThan(1500);
-    expect(MAP_W * MAP_H).toBe(66 * 48);
+    expect(MAP_W * MAP_H).toBe(66 * 63);
   });
 });
 

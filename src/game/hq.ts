@@ -23,6 +23,8 @@ export class HQ {
   renderer: Renderer | null = null;
   paused = false;
   speed = 1;
+  /** True while a full-screen Arcade game covers the HQ: simulate, don't paint. */
+  renderSuspended = false;
   /** Keys currently held for WASD/arrow panning. */
   readonly keys = new Set<string>();
   ui: RenderOptions = { selectedBot: null, selectedRoom: null, hoverRoom: null, hoverHotspot: null, showNames: true };
@@ -63,7 +65,7 @@ export class HQ {
       if (dx || dy) this.camera.panBy(dx, dy, false);
     }
     this.camera.update(frameDt);
-    if (this.renderer) this.renderer.render(this.sim, this.camera, this.getView(), this.paused ? 1 : alpha, this.ui);
+    if (this.renderer && !this.renderSuspended) this.renderer.render(this.sim, this.camera, this.getView(), this.paused ? 1 : alpha, this.ui);
     if (++this.frameCount % 15 === 0) this.frameListeners.forEach((fn) => fn(this.loop.fps));
   }
 

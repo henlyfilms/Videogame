@@ -3,6 +3,7 @@
  * operate room mechanics autonomously when backlogs grow — except the Approval
  * Stamp, which always waits for the human.
  */
+import { planBotMatch } from '../arcade/botMatch';
 import { CORE_BOTS } from '../data/bots';
 import {
   CHATTER,
@@ -88,6 +89,7 @@ export class LiveSimAdapter implements EventSourceAdapter {
     this.every('huddleEnd', 3, 3, () => this.endHuddles());
     this.every('dictation', 35, 55, () => this.dictation(), 18);
     this.every('sleep', 18, 30, () => this.sleepCycle());
+    this.every('arcade', 75, 130, () => this.arcadeMatch(), 40);
 
     if (this.seedBacklog) {
       for (let i = 0; i < 3; i++) this.newMail();
@@ -267,6 +269,20 @@ export class LiveSimAdapter implements EventSourceAdapter {
       this.emit('relay.queued', { commandId: nextId('cmd'), kind: this.rng() < 0.3 ? 'polaroid' : 'wave', text });
     });
   }
+
+  /** Bots sneak off to the Arcade for a quick Marion Mystery round. */
+  private arcadeMatch(): void {
+    const m = this.mech();
+    if (m.arcade.live || this.clock < this.arcadeUntil) return;
+    this.arcadeUntil = this.clock + 50000;
+    const busy = new Set([...m.command.tasks.filter((t) => t.status === 'open').map((t) => t.botId), ...m.command.huddles.flatMap((h) => h.botIds)]);
+    const plan = planBotMatch(this.rng, [...busy]);
+    plan.joins.forEach((j, i) => this.later(i * 1400, () => this.emit('arcade.player_joined', j)));
+    this.later(9000, () => this.emit('arcade.match_started', plan.started));
+    this.later(9000 + 26000 + this.rng() * 10000, () => this.emit('arcade.match_ended', plan.ended));
+  }
+
+  private arcadeUntil = 0;
 
   private sleepCycle(): void {
     const open = new Set(this.mech().command.tasks.filter((t) => t.status === 'open').map((t) => t.botId));

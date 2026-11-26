@@ -21,6 +21,18 @@ export type RelayModel = 'claude-opus-auto' | 'codex' | 'gemini';
 export type SkillId = 'token-optimizer' | 'claude-auto-mode' | 'prompt-craft' | 'zero-fluff-comms';
 export type DictationSource = 'bridge' | 'life' | 'engine';
 export type PlannerLane = 'work' | 'ai';
+/** Arcade game modes / teams (mirrors Marion Mystery, kept as plain strings). */
+export type ArcadeMode = 'classic' | 'lightsout' | 'hideseek';
+export type ArcadeTeam = 'crew' | 'murderers' | 'neutral' | 'draw';
+export interface ArcadeResultRow {
+  /** Marion bot id, or 'you' for the human player. */
+  botId: string;
+  won: boolean;
+  /** Role played (e.g. 'crewmate', 'murderer', 'sheriff'). */
+  role: string;
+}
+export const ARCADE_MODES: readonly ArcadeMode[] = ['classic', 'lightsout', 'hideseek'];
+export const ARCADE_TEAMS: readonly ArcadeTeam[] = ['crew', 'murderers', 'neutral', 'draw'];
 
 export interface EventPayloads {
   // ---- core contract ----
@@ -53,6 +65,18 @@ export interface EventPayloads {
   'release.shipped': { version: string };
   'bot.spawned': { botId: string; name: string; job: string; shape: string; color: string; glowColor: string };
   'settings.llm': { mode: 'local' | 'cloud' };
+  // ---- arcade (HQ ↔ Marion Mystery bridge) ----
+  'arcade.match_started': { matchId?: string; mode: ArcadeMode; map: string; players: number; bots: string[] };
+  'arcade.player_joined': { botId: string; name: string; matchId?: string };
+  'arcade.match_ended': {
+    matchId?: string;
+    mode: ArcadeMode;
+    map: string;
+    winningTeam: ArcadeTeam;
+    reason: string;
+    mvp?: string;
+    results: ArcadeResultRow[];
+  };
 }
 
 export type MarionEventType = keyof EventPayloads;
@@ -62,6 +86,9 @@ export type MarionEvent = {
 }[MarionEventType];
 
 export type EventOf<K extends MarionEventType> = Extract<MarionEvent, { type: K }>;
+
+/** The arcade bridge events (Marion Mystery → HQ). */
+export const ARCADE_EVENT_TYPES: readonly MarionEventType[] = ['arcade.match_started', 'arcade.player_joined', 'arcade.match_ended'];
 
 /** The 13 event types that form the public, documented core contract. */
 export const CORE_EVENT_TYPES: readonly MarionEventType[] = [
@@ -94,8 +121,17 @@ export function makeEvent<K extends MarionEventType>(type: K, payload: EventPayl
 // Runtime schema validation (for untrusted sources such as the WebSocket).
 // ---------------------------------------------------------------------------
 
-type FieldKind = 'string' | 'number' | 'boolean' | 'string[]';
-type FieldSpec = { kind: FieldKind; optional?: boolean; oneOf?: readonly string[] };
+type FieldKind = 'string' | 'number' | 'boolean' | 'string[]' | 'object[]';
+type FieldSpec = {
+  kind: FieldKind;
+  optional?: boolean;
+  oneOf?: readonly string[];
+  /** For 'object[]': the shape of each element (unknown keys are stripped). */
+  fields?: Record<string, FieldSpec>;
+  /** For 'number': inclusive bounds. */
+  min?: number;
+  max?: number;
+};
 type Schema = { [K in MarionEventType]: Record<string, FieldSpec> };
 
 const s = (oneOf?: readonly string[]): FieldSpec => ({ kind: 'string', oneOf });
@@ -138,6 +174,17 @@ export const EVENT_SCHEMA: Schema = {
   'release.shipped': { version: s() },
   'bot.spawned': { botId: s(), name: s(), job: s(), shape: s(), color: s(), glowColor: s() },
   'settings.llm': { mode: s(['local', 'cloud']) },
+  'arcade.match_started': { matchId: so(), mode: s(ARCADE_MODES), map: s(), players: { kind: 'number', min: 0, max: 64 }, bots: { kind: 'string[]' } },
+  'arcade.player_joined': { botId: s(), name: s(), matchId: so() },
+  'arcade.match_ended': {
+    matchId: so(),
+    mode: s(ARCADE_MODES),
+    map: s(),
+    winningTeam: s(ARCADE_TEAMS),
+    reason: s(),
+    mvp: so(),
+    results: { kind: 'object[]', fields: { botId: s(), won: b, role: s() } },
+  },
 };
 
 export function isEventType(t: unknown): t is MarionEventType {
@@ -150,13 +197,29 @@ function checkField(value: unknown, spec: FieldSpec): boolean {
     case 'string':
       if (typeof value !== 'string' || value.length > 2000) return false;
       return !spec.oneOf || spec.oneOf.includes(value);
-    case 'number':
-      return typeof value === 'number' && Number.isFinite(value);
     case 'boolean':
       return typeof value === 'boolean';
+    case 'number':
+      break;
     case 'string[]':
       return Array.isArray(value) && value.length <= 64 && value.every((v) => typeof v === 'string');
+    case 'object[]':
+      return Array.isArray(value) && value.length <= 64 && value.every((v) => !!cleanObject(v, spec.fields ?? {}));
   }
+  return typeof value === 'number' && Number.isFinite(value) && (spec.min === undefined || value >= spec.min) && (spec.max === undefined || value <= spec.max);
+}
+
+/** Validate a plain object against `fields`; returns a copy without unknown keys, or null. */
+function cleanObject(raw: unknown, fields: Record<string, FieldSpec>): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, fs] of Object.entries(fields)) {
+    const v = obj[key];
+    if (!checkField(v, fs)) return null;
+    if (v !== undefined) out[key] = fs.kind === 'object[]' ? (v as unknown[]).map((x) => cleanObject(x, fs.fields ?? {})) : v;
+  }
+  return out;
 }
 
 /**
@@ -176,13 +239,8 @@ export function parseMarionEvent(raw: unknown): MarionEvent | null {
   if (!isEventType(obj.type)) return null;
   const payloadIn = (obj.payload ?? {}) as Record<string, unknown>;
   if (typeof payloadIn !== 'object' || Array.isArray(payloadIn)) return null;
-  const spec = EVENT_SCHEMA[obj.type];
-  const payload: Record<string, unknown> = {};
-  for (const [key, fs] of Object.entries(spec)) {
-    const v = payloadIn[key];
-    if (!checkField(v, fs)) return null;
-    if (v !== undefined) payload[key] = v;
-  }
+  const payload = cleanObject(payloadIn, EVENT_SCHEMA[obj.type]);
+  if (!payload) return null;
   const id = typeof obj.id === 'string' ? obj.id : nextId('ws');
   const ts = typeof obj.ts === 'number' && Number.isFinite(obj.ts) ? obj.ts : Date.now();
   return { id, ts, type: obj.type, payload } as MarionEvent;
@@ -222,6 +280,10 @@ export function eventRoom(ev: MarionEvent): RoomId | null {
       return 'huddle';
     case 'release.shipped':
       return 'command';
+    case 'arcade.match_started':
+    case 'arcade.player_joined':
+    case 'arcade.match_ended':
+      return 'arcade';
     default:
       return null;
   }

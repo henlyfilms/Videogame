@@ -7,7 +7,7 @@ import type { MarionEvent } from '../adapters/events';
 import { eventBot, eventRoom } from '../adapters/events';
 import { CORE_BOTS, type RoomId } from '../data/bots';
 import { describeEvent, isQuietEvent } from '../game/describe';
-import { initialMechanics, reduceMechanics, type MechanicsState } from '../game/mechanics';
+import { ARCADE_RECENT, initialMechanics, reduceMechanics, type MechanicsState } from '../game/mechanics';
 import { nextTheme, type ThemeName } from '../theme/tokens';
 
 import type { AdapterKind, ConnStatus } from '../adapters/types';
@@ -93,6 +93,7 @@ export interface Persisted {
   customBots: MechanicsState['foundry']['customBots'];
   progress: MechanicsState['progress'];
   cards: MechanicsState['life']['cards'];
+  arcade: Pick<MechanicsState['arcade'], 'leaderboard' | 'recent'>;
 }
 
 function storage(): Storage | null {
@@ -125,6 +126,7 @@ export function persistedFrom(s: GameState): Persisted {
     customBots: s.mech.foundry.customBots,
     progress: s.mech.progress,
     cards: s.mech.life.cards,
+    arcade: { leaderboard: s.mech.arcade.leaderboard, recent: s.mech.arcade.recent },
   };
 }
 
@@ -143,10 +145,33 @@ function hydrateMechanics(p: Partial<Persisted>): MechanicsState {
   if (valid<Persisted['customBots']>(p.customBots, Array.isArray)) m.foundry.customBots = p.customBots.filter((b) => b && typeof b.botId === 'string').slice(0, 4);
   if (p.progress && typeof p.progress.streak === 'number') m.progress = { ...m.progress, ...p.progress };
   if (valid<Persisted['cards']>(p.cards, Array.isArray) && p.cards.length) m.life.cards = p.cards.filter((c) => c && typeof c.id === 'string');
+  m.arcade = { ...m.arcade, ...hydrateArcade(p.arcade) };
   return m;
 }
 
+function hydrateArcade(raw: unknown): Persisted['arcade'] {
+  const out: Persisted['arcade'] = { leaderboard: {}, recent: [] };
+  if (!raw || typeof raw !== 'object') return out;
+  const a = raw as Partial<Persisted['arcade']>;
+  if (a.leaderboard && typeof a.leaderboard === 'object') {
+    for (const [id, st] of Object.entries(a.leaderboard)) {
+      if (!st || typeof st.wins !== 'number' || typeof st.games !== 'number') continue;
+      out.leaderboard[id] = { wins: Math.max(0, st.wins | 0), games: Math.max(0, st.games | 0), mvps: typeof st.mvps === 'number' ? Math.max(0, st.mvps | 0) : 0 };
+    }
+  }
+  if (Array.isArray(a.recent)) {
+    out.recent = a.recent
+      .filter((r) => r && typeof r.id === 'string' && typeof r.mode === 'string' && Array.isArray(r.results))
+      .slice(-ARCADE_RECENT);
+  }
+  return out;
+}
+
 const nameCache = new Map<string, string>([...CORE_BOTS.map((b) => [b.id, b.name] as [string, string]), ['you', 'You']]);
+/** Remember display names for non-HQ ids (e.g. arcade players). */
+export function rememberName(id: string, name: string): void {
+  if (!nameCache.has(id)) nameCache.set(id, name);
+}
 export function botName(id: string): string {
   return nameCache.get(id) ?? id;
 }
@@ -178,6 +203,7 @@ function makeStore() {
 
     ingest: (ev) => {
       if (ev.type === 'bot.spawned') nameCache.set(ev.payload.botId, ev.payload.name);
+      if (ev.type === 'arcade.player_joined') rememberName(ev.payload.botId, ev.payload.name);
       const s = get();
       const mech = reduceMechanics(s.mech, ev);
       let feed = s.feed;
@@ -203,6 +229,7 @@ function makeStore() {
       if (keepPersistent) {
         m.foundry = s.mech.foundry;
         m.progress = s.mech.progress;
+        m.arcade = { ...m.arcade, leaderboard: s.mech.arcade.leaderboard, recent: s.mech.arcade.recent };
       }
       set({ mech: m, feed: [], bridgeDictating: false });
     },

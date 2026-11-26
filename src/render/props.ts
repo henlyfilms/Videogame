@@ -7,6 +7,7 @@ import { RETIRED_BOTS } from '../data/bots';
 import type { Simulation } from '../engine/sim';
 import { propRect, TILE, type PropDef, type RoomDef } from '../engine/world';
 import type { ThemeTokens } from '../theme/tokens';
+import { drawArcadeDynamic, drawArcadeStatic } from './arcadeProps';
 import { drawBotSprite, hexA, roundRect, traceShape } from './sprites';
 import { MODEL_COLORS, SKILL_COLORS, type RenderView } from './view';
 import type { RelayModel, SkillId } from '../adapters/events';
@@ -24,6 +25,7 @@ export const ROOM_ACCENT: Record<RoomId, string> = {
   cutting: '#d946ef',
   mail: '#2f6fed',
   foundry: '#f97316',
+  arcade: '#ec4899',
 };
 
 export interface DynCtx {
@@ -67,6 +69,11 @@ export function drawPropStatic(ctx: Ctx, room: RoomDef, prop: PropDef, th: Theme
   const cx = r.x + r.w / 2;
   const cy = r.y + r.h / 2;
   switch (prop.kind) {
+    case 'arcade-cabinet':
+    case 'leaderboard':
+    case 'neon-sign':
+      drawArcadeStatic(ctx, prop, r, th);
+      break;
     case 'command-desk': {
       slab(ctx, r, th, 2, 8);
       screen(ctx, r.x + 14, r.y + 8, 40, 22, th);
@@ -294,7 +301,7 @@ export function drawPropStatic(ctx: Ctx, room: RoomDef, prop: PropDef, th: Theme
     }
     case 'couch': {
       roundRect(ctx, r.x + 2, r.y + 4, r.w - 4, r.h - 6, 8);
-      ctx.fillStyle = th.name === 'dark' ? '#3b2a1a' : '#e8c9a0';
+      ctx.fillStyle = room.id === 'arcade' ? '#6d28d9' : th.name === 'dark' ? '#3b2a1a' : '#e8c9a0';
       ctx.fill();
       ctx.strokeStyle = th.world.propLine;
       ctx.stroke();
@@ -458,6 +465,11 @@ export function drawPropDynamic(ctx: Ctx, room: RoomDef, prop: PropDef, d: DynCt
   const cy = r.y + r.h / 2;
   const { t, theme: th, view, sim } = d;
   switch (prop.kind) {
+    case 'arcade-cabinet':
+    case 'leaderboard':
+    case 'neon-sign':
+      drawArcadeDynamic(ctx, prop, r, d);
+      break;
     case 'command-desk': {
       const daniel = sim.getBot('daniel');
       const active = daniel && daniel.state !== 'asleep';

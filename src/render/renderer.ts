@@ -9,8 +9,6 @@ import type { Camera } from '../engine/camera';
 import type { Simulation, SimBot } from '../engine/sim';
 import {
   doorTilesLocal,
-  MAP_H,
-  MAP_W,
   propCenter,
   roomRect,
   ROOMS,
@@ -23,6 +21,7 @@ import {
   type Point,
 } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
+import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
 import { drawBotSprite, drawGlow, hexA, roundRect } from './sprites';
 import { MODEL_COLORS, type RenderView } from './view';
@@ -342,30 +341,27 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Bots (y-sorted), glow first for a soft neon bloom.
+    // Bots (y-sorted), glow first for a soft neon bloom. At overview zoom the
+    // sprites keep a minimum on-screen size so the crew stays readable.
     const bots = [...sim.bots.values()].sort((a, b) => a.y - b.y);
+    const botScale = Math.min(1.8, Math.max(1, 0.62 / cam.zoom));
+    const radius = 11 * botScale;
     const prevComp = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = theme.name === 'light' ? 'source-over' : 'lighter';
     for (const bot of bots) {
       const p = lerpPos(bot, alpha);
       if (!inView(p.x, p.y)) continue;
-      drawGlow(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts));
+      drawGlow(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts, radius));
     }
     ctx.globalCompositeOperation = prevComp;
     this.stats.botsDrawn = 0;
+    const namesOn = cam.zoom >= 0.55;
     for (const bot of bots) {
       const p = lerpPos(bot, alpha);
       if (!inView(p.x, p.y)) continue;
-      drawBotSprite(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts));
+      drawBotSprite(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts, radius));
       this.stats.botsDrawn++;
-      if (opts.showNames || bot.def.id === opts.selectedBot) {
-        ctx.save();
-        ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = theme.world.label;
-        ctx.fillText(bot.def.name, p.x, p.y + 24);
-        ctx.restore();
-      }
+      if ((opts.showNames && namesOn) || bot.def.id === opts.selectedBot) drawNameTag(ctx, bot.def.name, p.x, p.y + radius + 12, theme, bot.def.id === opts.selectedBot);
     }
 
     // Particles.
@@ -394,8 +390,48 @@ export class Renderer {
       ctx.restore();
     }
 
+    // Room name chips (screen space) once baked labels get too small to read.
+    this.drawRoomChips(cam, theme, opts);
+
     // Speech bubbles in screen space (crisp text at any zoom).
     this.drawBubbles(sim, cam, theme, alpha);
+  }
+
+  private drawRoomChips(cam: Camera, theme: ThemeTokens, opts: RenderOptions): void {
+    const fade = Math.max(0, Math.min(1, (0.8 - cam.zoom) / 0.2));
+    if (fade <= 0) return;
+    const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.font = '650 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    for (const room of ROOMS) {
+      const r = roomRect(room);
+      // Sits exactly over the baked legend label (top-left, in the corridor) so the two never double up.
+      const s = cam.worldToScreen(r.x, r.y - 12);
+      if (s.x < -200 || s.x > this.cssW + 20 || s.y < -20 || s.y > this.cssH + 20) continue;
+      const label = room.short;
+      const tw = ctx.measureText(label).width;
+      const w = tw + 24;
+      const x = Math.round(s.x - 4);
+      const y = Math.round(s.y - 9);
+      const accent = ROOM_ACCENT[room.id];
+      const sel = room.id === opts.selectedRoom;
+      ctx.globalAlpha = fade;
+      roundRect(ctx, x, y, w, 18, 9);
+      ctx.fillStyle = hexA(theme.world.bubbleBg, 0.94);
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = sel ? theme.accent : hexA(accent, 0.55);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(x + 9, y + 9, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.world.bubbleInk;
+      ctx.fillText(label, x + 16, y + 9.5);
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawWaves(ctx: Ctx, sim: Simulation, view: RenderView, theme: ThemeTokens, t: number): void {
@@ -493,8 +529,29 @@ export function lerpPos(bot: SimBot, alpha: number): Point {
   return { x: bot.prevX + (bot.x - bot.prevX) * alpha, y: bot.prevY + (bot.y - bot.prevY) * alpha };
 }
 
-function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOptions) {
+/** Name tag under a bot: a small pill so it reads on any floor (dark Arcade carpet included). */
+function drawNameTag(ctx: Ctx, name: string, x: number, y: number, theme: ThemeTokens, selected: boolean): void {
+  ctx.save();
+  ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+  const w = ctx.measureText(name).width + 8;
+  roundRect(ctx, x - w / 2, y - 6.5, w, 12, 6);
+  ctx.fillStyle = hexA(theme.world.bubbleBg, theme.name === 'dark' ? 0.82 : 0.88);
+  ctx.fill();
+  if (selected) {
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = selected ? theme.accent : theme.world.bubbleInk;
+  ctx.fillText(name, x, y + 0.5);
+  ctx.restore();
+}
+
+function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOptions, radius = 11) {
   return {
+    radius,
     shape: bot.def.shape,
     color: bot.def.color,
     glowColor: bot.def.glowColor,
@@ -564,8 +621,11 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // Corridor slab.
-  roundRect(ctx, TILE * 0.5, TILE * 0.5, (MAP_W - 1) * TILE, (MAP_H - 1) * TILE, 18);
+  // Outdoor terrace garden on the annex Void cells.
+  drawTerrace(ctx, theme, region);
+
+  // Corridor slab (core block + the corridor ring around the Arcade).
+  traceBuildingOutline(ctx);
   ctx.fillStyle = w.corridor;
   ctx.fill();
   ctx.strokeStyle = w.corridorLine;
@@ -579,11 +639,15 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     // Floor.
     let floor = w.floor;
     if (room.id === 'cutting') floor = theme.name === 'light' ? '#20242f' : theme.name === 'soft' ? '#262a33' : '#0c0f16';
-    ctx.fillStyle = floor;
-    roundRect(ctx, r.x, r.y, r.w, r.h, 10);
-    ctx.fill();
-    ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.035);
-    ctx.fill();
+    if (room.id === 'arcade') {
+      drawArcadeCarpet(ctx, room, theme);
+    } else {
+      ctx.fillStyle = floor;
+      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+      ctx.fill();
+      ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.035);
+      ctx.fill();
+    }
     // Floor tile grid.
     ctx.save();
     roundRect(ctx, r.x, r.y, r.w, r.h, 10);
@@ -601,8 +665,8 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     ctx.stroke();
     ctx.restore();
 
-    // Walls (with door gaps).
-    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, w.door);
+    // Walls (with door gaps; thresholds match this room's floor).
+    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door);
     // Accent strip along the top wall.
     ctx.fillStyle = hexA(accent, 0.75);
     roundRect(ctx, r.x + TILE * 0.6, r.y + 4, TILE * 2.2, 3, 1.5);

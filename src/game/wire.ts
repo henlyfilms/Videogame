@@ -7,7 +7,7 @@ import type { RenderView } from '../render/view';
 import { applyThemeToDocument } from '../theme/tokens';
 import { useGame, type GameState } from '../store/gameStore';
 import type { HQ } from './hq';
-import { redPenWords, throughputFor } from './mechanics';
+import { arcadeRanking, redPenWords, throughputFor } from './mechanics';
 
 export function buildView(s: GameState, now = Date.now()): RenderView {
   const m = s.mech;
@@ -39,6 +39,14 @@ export function buildView(s: GameState, now = Date.now()): RenderView {
     engine: { queue: m.engine.commands.filter((c) => c.status !== 'done').length, polaroids: m.engine.polaroids, activeModels: [...active] },
     foundry: { skills: m.foundry.skills, custom: m.foundry.customBots.length },
     command: { releases: m.command.releases, brain: m.command.brain, huddling: m.command.huddles.length > 0 },
+    arcade: {
+      top: arcadeRanking(m.arcade)
+        .slice(0, 4)
+        .map((r) => ({ id: r.id, wins: r.wins, games: r.games })),
+      live: !!m.arcade.live,
+      liveMode: m.arcade.live?.mode ?? null,
+      matches: m.arcade.recent.length,
+    },
   };
 }
 

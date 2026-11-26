@@ -18,6 +18,8 @@ export class Camera {
   vw = 800;
   vh = 600;
   follow: (() => Point | null) | null = null;
+  /** Screen-space HUD insets (CSS px) that overview framing keeps clear. */
+  insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
   constructor(
     public worldW: number,
@@ -35,14 +37,19 @@ export class Camera {
 
   /** Zoom that fits the whole world in the viewport (with margin). */
   fitZoom(margin = 40): number {
-    return clamp(Math.min((this.vw - margin * 2) / this.worldW, (this.vh - margin * 2) / this.worldH), MIN_ZOOM, MAX_ZOOM);
+    const i = this.insets;
+    const w = Math.max(80, this.vw - i.left - i.right - margin * 2);
+    const h = Math.max(80, this.vh - i.top - i.bottom - margin * 2);
+    return clamp(Math.min(w / this.worldW, h / this.worldH), MIN_ZOOM, MAX_ZOOM);
   }
 
+  /** Frame the whole world inside the area the HUD leaves free. */
   overview(): void {
     this.follow = null;
-    this.targetX = this.worldW / 2;
-    this.targetY = this.worldH / 2;
     this.targetZoom = this.fitZoom();
+    const i = this.insets;
+    this.targetX = this.worldW / 2 - (i.left - i.right) / 2 / this.targetZoom;
+    this.targetY = this.worldH / 2 - (i.top - i.bottom) / 2 / this.targetZoom;
   }
 
   snap(): void {

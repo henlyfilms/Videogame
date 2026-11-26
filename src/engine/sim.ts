@@ -9,6 +9,7 @@ import { BubbleSystem } from './bubbles';
 import { forceTransition, transition } from './fsm';
 import { Pathfinder, simplifyPath } from './pathfinding';
 import {
+  ARCADE_SEATS,
   buildGrid,
   intakeRoute,
   pointAlong,
@@ -62,7 +63,14 @@ export interface SimBot {
   wanderIn: number;
   task: string | null;
   lastActive: number;
+  /** Short-lived expressive pose (arcade play, celebrate, sulk). */
+  mood: { kind: BotMood; until: number } | null;
 }
+
+export type BotMood = 'play' | 'cheer' | 'sulk';
+
+const SULK_LINES = ['Rematch?', 'I was framed 😤', 'Sus lobby…', 'Next one’s mine', 'Lag. Definitely lag.'];
+const CHEER_LINES = ['GG! 🏆', 'Too easy ✨', 'Called it!', 'Victory berry 🫐', 'Crew diff'];
 
 export type PacketKind = 'mail' | 'capsule' | 'card' | 'msg' | 'reel' | 'clip' | 'command';
 
@@ -134,7 +142,7 @@ export class Simulation {
   /** Global throughput multiplier (Universal Skill Wall + buffs). */
   throughput = 1;
   /** Moments of visual events the renderer animates against. */
-  marks = { release: -99, skill: -99, stamp: -99, spawn: -99, distill: -99, sorted: -99, restored: -99 };
+  marks = { release: -99, skill: -99, stamp: -99, spawn: -99, distill: -99, sorted: -99, restored: -99, arcade: -99, arcadeStart: -99 };
   onEffect: ((e: SimEffect) => void) | null = null;
   private packetSeq = 0;
   private huddles = new Map<string, string[]>();
@@ -179,6 +187,7 @@ export class Simulation {
       wanderIn: 3 + this.random() * 6,
       task: null,
       lastActive: 0,
+      mood: null,
     };
     this.bots.set(def.id, bot);
     return bot;
@@ -298,6 +307,7 @@ export class Simulation {
     bot.stateTime += dt;
     bot.phase += dt * (bot.state === 'working' ? 6 : bot.state === 'asleep' ? 1 : 3);
     if (bot.tether && bot.tether.until < this.time) bot.tether = null;
+    if (bot.mood && bot.mood.until < this.time) bot.mood = null;
 
     if (bot.state === 'walking' && bot.path.length > 0) {
       const speed = WALK_SPEED * this.throughput * (bot.buffUntil > this.time ? BUFF_MULT : 1);
@@ -330,6 +340,7 @@ export class Simulation {
         const intent = bot.intent;
         bot.intent = null;
         bot.carry = null;
+        if (bot.mood?.kind === 'play') bot.mood = null;
         if (intent?.then === 'home') this.sendHome(bot.def.id, 'working');
         else transition(bot, 'idle');
       }
@@ -709,10 +720,86 @@ export class Simulation {
         this.onEffect?.('spawn');
         return;
       }
+      case 'arcade.player_joined': {
+        const { botId } = ev.payload;
+        if (this.goPlay(botId)) this.say(botId, '🕹 Joining Marion Mystery!');
+        return;
+      }
+      case 'arcade.match_started': {
+        this.marks.arcadeStart = this.time;
+        const { bots, mode } = ev.payload;
+        for (const id of bots) this.goPlay(id);
+        const first = bots.find((id) => this.bots.has(id));
+        if (first) this.say(first, mode === 'lightsout' ? 'Lights out… 👀' : mode === 'hideseek' ? 'Ready or not! 🙈' : 'Who’s sus? 🔍', true);
+        const c = propCenter('arcade', 'mystery');
+        this.burst(c.x, c.y, '#e879f9', 14, 70);
+        this.onEffect?.('chime');
+        return;
+      }
+      case 'arcade.match_ended': {
+        this.marks.arcade = this.time;
+        const { results, mvp } = ev.payload;
+        const board = propCenter('arcade', 'board');
+        this.burst(board.x, board.y, '#fbbf24', 18, 90);
+        let celebrated = false;
+        for (const r of results) {
+          const bot = this.bots.get(r.botId);
+          if (!bot) continue;
+          if (r.won) {
+            bot.mood = { kind: 'cheer', until: this.time + 4.5 };
+            this.burst(bot.x, bot.y - 6, bot.def.glowColor, 16, 90);
+            this.burst(bot.x, bot.y - 6, '#fbbf24', 8, 60);
+            this.floatText(bot.x, bot.y - 30, mvp === r.botId ? 'MVP ★' : 'WIN!', '#fbbf24');
+            this.say(r.botId, CHEER_LINES[Math.floor(this.random() * CHEER_LINES.length)]!);
+            celebrated = true;
+          } else {
+            bot.mood = { kind: 'sulk', until: this.time + 5 };
+            this.say(r.botId, SULK_LINES[Math.floor(this.random() * SULK_LINES.length)]!);
+          }
+          // Wrap up the session: linger a moment, then head home.
+          if (bot.intent?.room === 'arcade') {
+            if (bot.state === 'walking') bot.intent.dwell = 6;
+            else bot.dwell = Math.min(bot.dwell || 6, 6);
+          }
+        }
+        this.onEffect?.(celebrated ? 'deliver' : 'pop');
+        return;
+      }
       case 'planner.added':
       case 'settings.llm':
         return;
     }
+  }
+
+  /** Bots currently at (or walking to) an Arcade cabinet. */
+  arcadePlayers(): SimBot[] {
+    return [...this.bots.values()].filter((b) => b.intent?.room === 'arcade');
+  }
+
+  /** Walk a bot to a free Arcade cabinet and "play" there for a while. */
+  goPlay(botId: string, minutes = 0.75): boolean {
+    const bot = this.bots.get(botId);
+    if (!bot || bot.huddleId) return false;
+    if (bot.intent?.room === 'arcade') return false; // already there / on the way
+    const taken = new Set<number>();
+    for (const b of this.bots.values()) if (b !== bot && b.goal) taken.add(b.goal.y * this.grid.w + b.goal.x);
+    const seat = ARCADE_SEATS.find((name) => {
+      const t = spotTile('arcade', name);
+      return !taken.has(t.y * this.grid.w + t.x);
+    }) ?? 'center';
+    const dwell = minutes * 60 * (0.8 + this.random() * 0.4);
+    return this.send(botId, {
+      room: 'arcade',
+      spot: seat,
+      arrive: 'working',
+      dwell,
+      then: 'home',
+      onArrive: (b) => {
+        if (!b.mood || b.mood.kind === 'play') b.mood = { kind: 'play', until: this.time + (b.intent?.dwell ?? dwell) + 1 };
+        b.facing = seat === 'p6' || seat === 'p7' ? 1 : b.facing;
+        this.burst(b.x, b.y - 10, '#e879f9', 6, 40);
+      },
+    });
   }
 
   /** Remove every bot and transient effect (caller re-populates). */
