@@ -149,7 +149,7 @@ Done since the first handoff: Practice map thumbnails, tablet map and sabotage m
 the new maps (they use the new painter); meeting-seat rings and extra props in every map hub;
 3D first-person ceilings with light panels and corridor strips; the sabotage arrow follows the
 3D camera; HQ room hover/click uses the real room outline; fuller HQ Huddle and Foundry; and the
-HQ 3D overview frames the whole station.
+HQ 3D overview frames the whole station; HQ tube ports sit on hall-facing walls and tubes no longer cross open ground.
 
 1. **Visual QA on real screens.** Check every Mystery screen on desktop and phone against the
    references (`git show` them from the reference branch). Room-name floor labels may clip in
@@ -159,11 +159,10 @@ HQ 3D overview frames the whole station.
 3. **Minimap and tablet** show room names, not per-room icons (`ui/Hud.tsx`,
    `render2d/overview.ts`).
 4. **No phone screenshot of the elimination cutscene** has been checked yet.
-5. **A few HQ pneumatic tubes cross open ground** (`src/engine/world.ts`, the tube routing).
-6. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
+5. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
    2D first-time chunk bakes can hitch (about 130 ms). Test on Mac, Windows and iPhone.
-7. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
-8. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
+6. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
+7. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
    layouts. The tuning knobs are in `ai/bot.ts` and `core/settings.ts`.
 
 ## Gotchas

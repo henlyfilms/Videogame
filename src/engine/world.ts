@@ -763,62 +763,51 @@ export function propCenter(roomId: RoomId, propId: string): Point {
 // follow the station's winding halls.
 // ---------------------------------------------------------------------------
 
-const portCache = new Map<RoomId, Point>();
+const portCache = new Map<RoomId, Point & { d: Point }>();
 
 /**
- * Top-wall tile (local x, y) where a room's tube port sits: above its
- * tube-port prop if it has one, else on the topmost wall run at the column
- * whose outside is nearest a corridor (so tubes leave straight into a hall).
+ * Wall tile (local x, y) where a room's tube port sits, plus the outward
+ * direction `d` its tube leaves in. Ports sit on a wall whose outside is a
+ * corridor (preferring the north wall and the tube-port prop's column), so
+ * tubes leave straight into a hall instead of crossing open ground.
  */
-function tubePortTile(room: RoomDef): Point {
+function tubePortTile(room: RoomDef): Point & { d: Point } {
   const hit = portCache.get(room.id);
   if (hit) return hit;
-  const topOf = (lx: number) => {
-    let ly = 0;
-    while (ly < room.h && roomTileKind(room, lx, ly) === 'out') ly++;
-    return ly;
-  };
+  const grid = baseGrid();
+  const doors = doorTilesLocal(room);
   const port = room.props.find((q) => q.kind === 'tube-port');
-  let best: Point;
-  if (port) {
-    const lx = port.x + Math.floor(port.w / 2);
-    best = { x: lx, y: topOf(lx) };
-  } else {
-    const grid = baseGrid();
-    const doors = doorTilesLocal(room);
-    const minTop = Math.min(...Array.from({ length: room.w }, (_, lx) => topOf(lx)));
-    let bestScore = Infinity;
-    best = { x: room.w - 5, y: topOf(room.w - 5) };
-    for (let lx = 2; lx < room.w - 2; lx++) {
-      const ly = topOf(lx);
-      if (ly !== minTop || roomTileKind(room, lx, ly) !== 'wall') continue;
-      if (doors.some((q) => Math.abs(q.x - lx) <= 1 && q.y === ly)) continue;
-      const gx = room.x + lx;
-      const gy = room.y + ly - 1;
-      let dist = 99;
-      for (let r = 0; r < 12 && dist === 99; r++)
-        for (let dy = -r; dy <= r; dy++)
-          for (let dx = -r; dx <= r; dx++) {
-            const x = gx + dx;
-            const y = gy + dy;
-            if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid.tiles[y * MAP_W + x] === Tile.Corridor) dist = Math.min(dist, r);
-          }
-      const score = dist + Math.abs(lx - (room.w - 5)) * 0.05;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { x: lx, y: ly };
+  const prefer = port ? port.x + Math.floor(port.w / 2) : room.w - 5;
+  const sideCost: Record<string, number> = { '0,-1': 0, '1,0': 2, '-1,0': 2, '0,1': 4 };
+  let best: (Point & { d: Point }) | null = null;
+  let bestScore = Infinity;
+  for (let ly = 0; ly < room.h; ly++)
+    for (let lx = 0; lx < room.w; lx++) {
+      if (roomTileKind(room, lx, ly) !== 'wall') continue;
+      if (doors.some((q) => q.x === lx && q.y === ly)) continue;
+      for (const d of [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }]) {
+        if (roomTileKind(room, lx + d.x, ly + d.y) !== 'out' || roomTileKind(room, lx - d.x, ly - d.y) !== 'floor') continue;
+        const gx = room.x + lx + d.x;
+        const gy = room.y + ly + d.y;
+        if (gx < 0 || gy < 0 || gx >= MAP_W || gy >= MAP_H) continue;
+        const corridor = grid.tiles[gy * MAP_W + gx] === Tile.Corridor;
+        const score = (corridor ? 0 : 20) + sideCost[`${d.x},${d.y}`]! + Math.abs((d.y !== 0 ? lx : ly) - (d.y !== 0 ? prefer : room.h / 2)) * 0.08;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { x: lx, y: ly, d };
+        }
       }
     }
-  }
-  portCache.set(room.id, best);
-  return best;
+  const out = best ?? { x: Math.max(1, Math.min(room.w - 2, prefer)), y: 0, d: { x: 0, y: -1 } };
+  portCache.set(room.id, out);
+  return out;
 }
 
-/** The port (world px) where overhead tubes enter a room: on its top wall. */
+/** The port (world px) where overhead tubes enter a room, on the wall that faces a hall. */
 export function tubePort(roomId: RoomId): Point {
   const room = ROOM_BY_ID[roomId];
   const t = tubePortTile(room);
-  return { x: (room.x + t.x + 0.5) * TILE, y: (room.y + t.y) * TILE + 4 };
+  return { x: (room.x + t.x + 0.5 + t.d.x * 0.38) * TILE, y: (room.y + t.y + 0.5 + t.d.y * 0.38) * TILE };
 }
 
 const DIRS: readonly Point[] = [
@@ -876,10 +865,10 @@ function tubeSearch(starts: readonly Point[], goal: Point): Point[] | null {
   const cost = (x: number, y: number) => {
     const i = y * W + x;
     const t = grid.tiles[i];
-    if ((grid.roomIndex[i] ?? -1) >= 0) return 16;
+    if ((grid.roomIndex[i] ?? -1) >= 0) return 7;
     if (tubeUse[i]) return 0.3;
     if (t === Tile.Corridor) return 1;
-    if (t === Tile.Void) return isTerraceRaw(x, y) ? 9 : 5;
+    if (t === Tile.Void) return isTerraceRaw(x, y) ? 40 : 24;
     return 2;
   };
   for (const s of starts)
@@ -908,7 +897,7 @@ function tubeSearch(starts: readonly Point[], goal: Point): Point[] | null {
       const ny = y + DIRS[nd]!.y;
       if (nx < 0 || ny < 0 || nx >= W || ny >= MAP_H) continue;
       const nk = (ny * W + nx) * 4 + nd;
-      const nc = c + cost(nx, ny) + (nd !== dir ? 6 : 0);
+      const nc = c + cost(nx, ny) + (nd !== dir ? 3 : 0);
       if (nc < dist[nk]!) {
         dist[nk] = nc;
         prev[nk] = k;
@@ -943,15 +932,15 @@ function simplifyPolyline(pts: Point[]): Point[] {
 
 const routeCache = new Map<string, Point[]>();
 
-/** Tile just above a room's tube port (where its tube leaves the room). */
+/** Tile just outside a room's tube port (where its tube leaves the room). */
 function portExit(room: RoomDef): Point {
   const t = tubePortTile(room);
-  return { x: room.x + t.x, y: room.y + t.y - 1 };
+  return { x: room.x + t.x + t.d.x, y: room.y + t.y + t.d.y };
 }
 
 /**
- * Axis-aligned overhead tube route between two rooms' ports: up out of the
- * source's top wall, along the halls, and down into the target's top wall.
+ * Axis-aligned overhead tube route between two rooms' ports: out of the
+ * source's port wall, along the halls, and into the target's port wall.
  */
 export function tubeRoute(from: RoomId, to: RoomId): Point[] {
   const key = `${from}>${to}`;
