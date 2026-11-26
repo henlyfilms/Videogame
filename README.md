@@ -165,3 +165,32 @@ On frame time: in headless Chromium at 2× DPR, the renderer's JavaScript takes 
 - **Replays are sandboxed.** Persistence pauses during a replay, and leaving it restores your saved HQ.
 - **Human‑in‑the‑loop is enforced by design.** No adapter or bot emits `mail.sent`; only the stamp (or an explicit injected event) does.
 - **No external runtime assets or fonts** and no icon libraries. Icons are inline SVG paths.
+
+---
+
+# Marion Mystery (the Arcade's social-deduction game)
+
+A multiplayer murder-mystery for **4–20 players** — humans on Mac, Windows and iPhone, Marion agents (the HQ bots) and any external agent — played as animated berry characters in **3D third person, 3D first person or 2D**, chosen before the match and locked once it starts.
+
+```bash
+npm install
+npm run dev        # client on :5173 (open /?mystery)
+npm run server     # authoritative game server on :8787
+# LAN party: npm run build && npm run start:server  → phones open http://<your-mac>:8787
+```
+
+| Script | What it does |
+| --- | --- |
+| `npm run server` / `start:server` | WebSocket game server (+ serves `dist/`) |
+| `npm run e2e` | Playwright end-to-end (desktop + iPhone in one room, 2D/3D, full match) — run after `npm run build` |
+| `npx tsx scripts/soak.ts 20` | 20 simulated hours of 20-bot matches across every mode/map |
+| `npm run icons` | Regenerate the procedural PWA icons |
+
+- **Modes:** Classic (bright; dark only when Lights are sabotaged), Lights Out (flashlights, batteries, dread, Blackout), Hide & Seek.
+- **Maps:** Marion HQ After Hours, Orbital Greenhouse, Midnight Express, Hollowberry Manor — 15–18 rooms each, 46–67 s to cross, 9–18 loops, 4 vent networks, cameras, admin, vitals, door logs.
+- **Roles:** Crewmate, Sheriff (+ Hero gun pickup), Detective, Medic, Engineer, Lookout, Tracker, Mayor, Murderer, Poisoner, Accomplice, Jester, Survivor (+ Seeker/Hider); every count, chance and rule is host-configurable, with presets and shareable settings codes.
+- **Everything else:** 29 task mini-games, sabotage (lights, comms, doors, two themed criticals), emergency button + meetings with quick chat, ejection cinematics per map, role-filtered live stats, results with timeline/heatmap/awards, lifetime stats, waiting room with wardrobe (12 berries, 23 hairstyles, 35 hats, outfits, pets, nameplates, emotes), QR/invite links, reconnects, host migration, PWA offline shell, accessibility options.
+
+Docs: [How to play](docs/mystery/HOW_TO_PLAY.md) · [Hosting](docs/mystery/HOSTING.md) · [Agent Protocol](docs/mystery/AGENT_PROTOCOL.md) · [Research & decisions](docs/mystery/RESEARCH.md) · [Progress](docs/mystery/PROGRESS.md) · [Art passes](docs/art-passes/)
+
+Architecture: `src/mystery/core` is a DOM-free deterministic rules engine (settings, roles, maps, vision, match reducer, per-player projection). `src/mystery/server/room.ts` hosts rooms over any transport — the Node WebSocket server (`server/index.ts`) and the in-browser solo mode use the same code. Clients predict their own movement with the same collision code and interpolate everyone else; the server never sends hidden information.
