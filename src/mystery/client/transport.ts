@@ -121,11 +121,17 @@ export class LocalTransport implements Transport {
       this.h.onOpen();
       for (const m of this.pending.splice(0)) srv.receive('local', m);
       let last = performance.now();
+      let acc = 0;
+      const step = 1 / TICK_HZ;
       this.interval = setInterval(() => {
         const now = performance.now();
-        const dt = Math.min(0.1, (now - last) / 1000);
+        acc = Math.min(0.5, acc + (now - last) / 1000);
         last = now;
-        srv.update(dt);
+        // Fixed steps so slow frames never slow the simulation down.
+        while (acc >= step) {
+          srv.update(step);
+          acc -= step;
+        }
       }, 1000 / TICK_HZ);
     });
   }
