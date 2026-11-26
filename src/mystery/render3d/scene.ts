@@ -8,8 +8,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CompiledMap, FloorStyle, PropDef, PropKind, Rect } from '../core/map';
 import { rectsOf } from '../core/map';
-import { floorBase, mix, paintFloorTile } from '../render2d/paint';
-import { stationStyle } from '../render2d/paint';
+import { mix, paintWorldFloor, stationStyle, WORLD, worldFloorBase } from '../render2d/paint';
+import { Diag, worldInfo, type WallKind } from '../render2d/world';
+import { addHull, cornerPoints, diagPrisms, groundTexture, hallStrips, hullMaterial, inkLines, roomNameDecals, solidRingTexture, ventGlowTexture, ventTexture, wallBoundary, wallTexture } from './worldkit';
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -38,9 +39,9 @@ function floorTexture(style: FloorStyle, night: boolean): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = s * n;
   const g = c.getContext('2d')!;
-  // Neutral-ish base: room colour is applied with vertex colours.
-  const base = floorBase(style, '#ffffff', false);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) paintFloorTile(g, style, x, y, s, base);
+  // Cel floor colours; the room accent is applied (subtly) with vertex colours.
+  const base = worldFloorBase(style, '#8f99a5', false);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) paintWorldFloor(g, style, x, y, s, base);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -69,9 +70,34 @@ function planeForRect(r: Rect, y: number, color: THREE.Color): THREE.BufferGeome
 }
 
 function tint(accent: string, style: FloorStyle): THREE.Color {
-  // Vertex colour multiplies the neutral texture toward the room accent.
-  const t = style === 'grass' || style === 'snow' || style === 'wood' || style === 'stone' ? 0.16 : 0.32;
+  // Vertex colour nudges the cel texture toward the room accent (subtle).
+  const t = style === 'grass' || style === 'snow' || style === 'stone' ? 0.06 : 0.16;
   return new THREE.Color(mix('#ffffff', accent, t));
+}
+
+function triForDiag(x: number, z: number, code: number, color: THREE.Color): THREE.BufferGeometry {
+  const pts: Record<number, [number, number][]> = {
+    [Diag.SE]: [[x + 1, z], [x, z + 1], [x + 1, z + 1]],
+    [Diag.SW]: [[x, z], [x, z + 1], [x + 1, z + 1]],
+    [Diag.NE]: [[x, z], [x + 1, z + 1], [x + 1, z]],
+    [Diag.NW]: [[x, z], [x, z + 1], [x + 1, z]],
+  };
+  const tri = pts[code]!;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const col: number[] = [];
+  for (const [px, pz] of tri) {
+    pos.push(px, 0, pz);
+    uv.push(px / 4, -pz / 4);
+    col.push(color.r, color.g, color.b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex([0, 1, 2]);
+  return g;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,79 +144,79 @@ function shapeFor(kind: PropKind): PropShape {
     case 'counter':
       s = {
         parts: [
-          { geo: rbox(1, 0.08, 1, 0.03, 0.72), color: kind === 'counter' ? '#cbd5e1' : '#d29a64', height: 0.8 },
+          { geo: rbox(1, 0.08, 1, 0.03, 0.72), color: kind === 'counter' ? '#a9b5c3' : '#c99b6e', height: 0.8 },
           { geo: merge([cyl(0.04, 0.04, 0.72, 0, 6).translate(-0.4, 0, -0.4), cyl(0.04, 0.04, 0.72, 0, 6).translate(0.4, 0, -0.4), cyl(0.04, 0.04, 0.72, 0, 6).translate(-0.4, 0, 0.4), cyl(0.04, 0.04, 0.72, 0, 6).translate(0.4, 0, 0.4)]), color: '#5b4636', height: 0.72 },
-          ...(kind === 'desk' ? [{ geo: rbox(0.55, 0.36, 0.06, 0.03, 0.82).translate(0, 0, -0.25), color: '#1e293b', emissive: '#3b82f6', height: 1.2 }] : []),
+          ...(kind === 'desk' ? [{ geo: rbox(0.55, 0.36, 0.06, 0.03, 0.82).translate(0, 0, -0.25), color: '#1d2635', emissive: '#7fe3c4', height: 1.2 }] : []),
         ],
       };
       break;
     case 'roundTable':
-      s = { parts: [{ geo: cyl(0.5, 0.5, 0.08, 0.72, 28), color: '#e2e8f0', height: 0.8 }, { geo: cyl(0.12, 0.2, 0.72, 0, 12), color: '#94a3b8', height: 0.72 }] };
+      s = { parts: [{ geo: cyl(0.5, 0.5, 0.08, 0.72, 28), color: '#4f9cb8', height: 0.8 }, { geo: cyl(0.12, 0.2, 0.72, 0, 12), color: '#3d4b5c', height: 0.72 }] };
       break;
     case 'chair':
     case 'seat':
-      s = { parts: [{ geo: merge([rbox(0.5, 0.08, 0.5, 0.03, 0.42), rbox(0.5, 0.5, 0.08, 0.03, 0.46).translate(0, 0, -0.22), cyl(0.05, 0.05, 0.42, 0, 6)]), color: '#475569', height: 0.95 }] };
+      s = { parts: [{ geo: merge([rbox(0.5, 0.08, 0.5, 0.03, 0.42), rbox(0.5, 0.5, 0.08, 0.03, 0.46).translate(0, 0, -0.22), cyl(0.05, 0.05, 0.42, 0, 6)]), color: '#46566a', height: 0.95 }] };
       break;
     case 'sofa':
     case 'bench':
-      s = { parts: [{ geo: merge([rbox(1, 0.4, 1, 0.12, 0), rbox(1, 0.45, 0.28, 0.12, 0.35).translate(0, 0, -0.36)]), color: kind === 'sofa' ? '#6366f1' : '#a16207', height: 0.8 }] };
+      s = { parts: [{ geo: merge([rbox(1, 0.4, 1, 0.12, 0), rbox(1, 0.45, 0.28, 0.12, 0.35).translate(0, 0, -0.36)]), color: kind === 'sofa' ? '#b39a7c' : '#8a6446', height: 0.8 }] };
       break;
     case 'bed':
-      s = { parts: [{ geo: rbox(1, 0.45, 1, 0.1), color: '#f1f5f9', height: 0.45 }, { geo: rbox(0.98, 0.12, 0.65, 0.06, 0.42).translate(0, 0, 0.17), color: '#6366f1', height: 0.55 }] };
+      s = { parts: [{ geo: rbox(1, 0.45, 1, 0.1), color: '#e9e4dc', height: 0.45 }, { geo: rbox(0.98, 0.12, 0.65, 0.06, 0.42).translate(0, 0, 0.17), color: '#7d8fb8', height: 0.55 }] };
       break;
     case 'shelf':
     case 'bookshelf':
       s = {
         parts: [
-          { geo: rbox(1, 2, 1, 0.04), color: '#7c4a26', height: 2 },
-          { geo: merge([0.35, 0.85, 1.35].map((y) => rbox(0.9, 0.36, 0.9, 0.02, y))), color: '#3b82f6', height: 1.8 },
+          { geo: rbox(1, 2, 1, 0.04), color: '#5c3d2a', height: 2 },
+          { geo: merge([0.35, 0.85, 1.35].map((y) => rbox(0.9, 0.36, 0.9, 0.02, y))), color: '#c9637f', height: 1.8 },
         ],
       };
       break;
     case 'crate':
     case 'cart':
-      s = { parts: [{ geo: rbox(0.9, 0.9, 0.9, 0.06), color: '#b7814f', height: 0.9 }] };
+      s = { parts: [{ geo: rbox(0.9, 0.9, 0.9, 0.06), color: '#b0804f', height: 0.9 }] };
       break;
     case 'barrel':
       s = { parts: [{ geo: cyl(0.42, 0.42, 0.95, 0, 14), color: '#8b5a2b', height: 0.95 }] };
       break;
     case 'plant':
-      s = { parts: [{ geo: cyl(0.22, 0.17, 0.4, 0, 10), color: '#c2410c', height: 0.4 }, { geo: merge([sph(0.32, 0.75), sph(0.22, 0.95, 1, 1, 1, 0.15, 0.1), sph(0.2, 0.9, 1, 1, 1, -0.15, -0.05)]), color: '#22c55e', height: 1.1 }] };
+      s = { parts: [{ geo: cyl(0.22, 0.17, 0.4, 0, 10), color: '#8a5a3c', height: 0.4 }, { geo: merge([sph(0.32, 0.75), sph(0.22, 0.95, 1, 1, 1, 0.15, 0.1), sph(0.2, 0.9, 1, 1, 1, -0.15, -0.05)]), color: '#4fa06d', height: 1.1 }] };
       break;
     case 'planter':
-      s = { parts: [{ geo: rbox(1, 0.45, 1, 0.08), color: '#a16207', height: 0.45 }, { geo: merge([sph(0.3, 0.6, 1.5, 0.8, 1), sph(0.24, 0.7, 1, 1, 1, 0.3, 0.1)]), color: '#16a34a', height: 0.9 }] };
+      s = { parts: [{ geo: rbox(1, 0.45, 1, 0.08), color: '#a16207', height: 0.45 }, { geo: merge([sph(0.3, 0.6, 1.5, 0.8, 1), sph(0.24, 0.7, 1, 1, 1, 0.3, 0.1)]), color: '#3c8a5e', height: 0.9 }] };
       break;
     case 'tree':
-      s = { parts: [{ geo: cyl(0.12, 0.18, 1.6, 0, 8), color: '#7c4a26', height: 1.6 }, { geo: merge([sph(0.7, 2, 1, 0.9, 1), sph(0.5, 2.4, 1, 1, 1, 0.3, 0.2), sph(0.45, 2.3, 1, 1, 1, -0.35, -0.1)]), color: '#15803d', height: 3 }] };
+      s = { parts: [{ geo: cyl(0.12, 0.18, 1.6, 0, 8), color: '#7c4a26', height: 1.6 }, { geo: merge([sph(0.7, 2, 1, 0.9, 1), sph(0.5, 2.4, 1, 1, 1, 0.3, 0.2), sph(0.45, 2.3, 1, 1, 1, -0.35, -0.1)]), color: '#3a7d5c', height: 3 }] };
       break;
     case 'hedge':
-      s = { parts: [{ geo: rbox(1, 1.6, 1, 0.25), color: '#166534', height: 1.6 }] };
+      s = { parts: [{ geo: rbox(1, 1.6, 1, 0.25), color: '#2f6b4f', height: 1.6 }] };
       break;
     case 'console':
-      s = { parts: [{ geo: rbox(1, 0.9, 0.7, 0.08), color: '#334155', height: 0.9 }, { geo: rbox(0.9, 0.04, 0.55, 0.02, 0.9).rotateX(-0.25), color: '#0f172a', emissive: '#38bdf8', height: 1 }] };
+      s = { parts: [{ geo: rbox(1, 0.9, 0.7, 0.08), color: '#3a4a5c', height: 0.9 }, { geo: rbox(0.9, 0.04, 0.55, 0.02, 0.9).rotateX(-0.25), color: '#0f172a', emissive: '#6fd9b6', height: 1 }] };
       break;
     case 'screen':
     case 'window':
     case 'poster':
-      s = { parts: [{ geo: rbox(1, 0.9, 0.08, 0.03, 1.1), color: kind === 'poster' ? '#2f6fed' : '#0f172a', emissive: kind === 'screen' ? '#60a5fa' : kind === 'window' ? '#93c5fd' : undefined, height: 2 }] };
+      s = { parts: [{ geo: rbox(1, 0.9, 0.08, 0.03, 1.1), color: kind === 'poster' ? '#2f6fed' : '#0f172a', emissive: kind === 'screen' ? '#79c7dd' : kind === 'window' ? '#93c5fd' : undefined, height: 2 }] };
       break;
     case 'server':
-      s = { parts: [{ geo: rbox(0.9, 2, 0.9, 0.05), color: '#1e293b', height: 2 }, { geo: merge([0.4, 0.8, 1.2, 1.6].map((y) => rbox(0.6, 0.05, 0.02, 0.01, y).translate(0, 0, 0.46))), color: '#0f172a', emissive: '#22d3ee', height: 1.7 }] };
+      s = { parts: [{ geo: rbox(0.9, 2, 0.9, 0.05), color: '#28313f', height: 2 }, { geo: merge([0.4, 0.8, 1.2, 1.6].map((y) => rbox(0.6, 0.05, 0.02, 0.01, y).translate(0, 0, 0.46))), color: '#0f172a', emissive: '#22d3ee', height: 1.7 }] };
       break;
     case 'locker':
     case 'fridge':
-      s = { parts: [{ geo: rbox(0.9, 1.9, 0.9, 0.05), color: kind === 'fridge' ? '#e2e8f0' : '#64748b', height: 1.9 }] };
+      s = { parts: [{ geo: rbox(0.9, 1.9, 0.9, 0.05), color: kind === 'fridge' ? '#e6e8ee' : '#5a8a86', height: 1.9 }] };
       break;
     case 'stove':
     case 'generator':
     case 'engine':
-      s = { parts: [{ geo: rbox(1, 1, 1, 0.12), color: '#475569', height: 1 }, { geo: rbox(0.6, 0.4, 0.06, 0.04, 0.35).translate(0, 0, 0.5), color: '#7c2d12', emissive: kind === 'engine' ? '#f97316' : kind === 'stove' ? '#ef4444' : '#facc15', height: 0.8 }] };
+      s = { parts: [{ geo: rbox(1, 1, 1, 0.12), color: '#4a5868', height: 1 }, { geo: rbox(0.6, 0.4, 0.06, 0.04, 0.35).translate(0, 0, 0.5), color: '#7c2d12', emissive: kind === 'engine' ? '#f97316' : kind === 'stove' ? '#ef4444' : '#facc15', height: 0.8 }] };
       break;
     case 'tank':
-      s = { parts: [{ geo: cyl(0.48, 0.48, 1.4, 0, 18), color: '#94a3b8', height: 1.4 }, { geo: sph(0.48, 1.4, 1, 0.5, 1), color: '#cbd5e1', height: 1.6 }] };
+      s = { parts: [{ geo: cyl(0.48, 0.48, 1.4, 0, 18), color: '#5fc9a0', height: 1.4 }, { geo: sph(0.48, 1.4, 1, 0.5, 1), color: '#5e6c7c', height: 1.6 }] };
       break;
     case 'pillar':
-      s = { parts: [{ geo: cyl(0.4, 0.45, 2.6, 0, 16), color: '#e2e8f0', height: 2.6 }] };
+      s = { parts: [{ geo: cyl(0.4, 0.45, 2.6, 0, 16), color: '#5d7480', height: 2.6 }] };
       break;
     case 'statue':
       s = { parts: [{ geo: rbox(0.9, 0.5, 0.9, 0.06), color: '#cbd5e1', height: 0.5 }, { geo: merge([sph(0.36, 1.0, 1, 1.15, 1), sph(0.12, 1.5)]), color: '#2f6fed', emissive: '#1d4ed8', height: 1.6 }] };
@@ -199,7 +225,7 @@ function shapeFor(kind: PropKind): PropShape {
       s = { parts: [{ geo: cyl(0.5, 0.5, 0.4, 0, 24), color: '#cbd5e1', height: 0.4 }, { geo: cyl(0.42, 0.42, 0.05, 0.36, 24), color: '#38bdf8', emissive: '#0ea5e9', height: 0.42 }] };
       break;
     case 'rock':
-      s = { parts: [{ geo: sph(0.5, 0.25, 1, 0.6, 0.9), color: '#78716c', height: 0.55 }] };
+      s = { parts: [{ geo: sph(0.5, 0.25, 1, 0.6, 0.9), color: '#6c5b80', height: 0.55 }] };
       break;
     case 'snowpile':
       s = { parts: [{ geo: sph(0.5, 0.1, 1, 0.5, 1), color: '#f8fafc', height: 0.35 }] };
@@ -208,13 +234,13 @@ function shapeFor(kind: PropKind): PropShape {
       s = { parts: [{ geo: rbox(1, 0.02, 1, 0.01, 0.01), color: '#ec4899', height: 0.03 }] };
       break;
     case 'arcade':
-      s = { parts: [{ geo: rbox(0.8, 1.7, 0.8, 0.08), color: '#7c3aed', height: 1.7 }, { geo: rbox(0.6, 0.45, 0.04, 0.03, 1.05).translate(0, 0, 0.41), color: '#111827', emissive: '#e879f9', height: 1.5 }] };
+      s = { parts: [{ geo: rbox(0.8, 1.7, 0.8, 0.08), color: '#6c4bb8', height: 1.7 }, { geo: rbox(0.6, 0.45, 0.04, 0.03, 1.05).translate(0, 0, 0.41), color: '#111827', emissive: '#e879f9', height: 1.5 }] };
       break;
     case 'piano':
       s = { parts: [{ geo: rbox(1, 1, 1, 0.08), color: '#111827', height: 1 }, { geo: rbox(0.9, 0.04, 0.2, 0.02, 0.75).translate(0, 0, 0.45), color: '#f8fafc', height: 0.8 }] };
       break;
     case 'clock':
-      s = { parts: [{ geo: rbox(0.5, 2, 0.4, 0.06), color: '#7c4a26', height: 2 }, { geo: cyl(0.18, 0.18, 0.04, 0, 20).rotateX(Math.PI / 2).translate(0, 1.6, 0.21), color: '#fef3c7', height: 1.8 }] };
+      s = { parts: [{ geo: rbox(0.5, 2, 0.4, 0.06), color: '#5c3d2a', height: 2 }, { geo: cyl(0.18, 0.18, 0.04, 0, 20).rotateX(Math.PI / 2).translate(0, 1.6, 0.21), color: '#fef3c7', height: 1.8 }] };
       break;
     case 'fireplace':
       s = { parts: [{ geo: rbox(1, 1.3, 0.6, 0.06), color: '#78350f', height: 1.3 }, { geo: rbox(0.55, 0.45, 0.05, 0.04, 0.15).translate(0, 0, 0.3), color: '#7c2d12', emissive: '#fb923c', height: 0.6 }] };
@@ -249,6 +275,8 @@ export interface MapScene {
   highlight: THREE.Mesh;
   doorMeshes: Map<string, THREE.Mesh>;
   lanterns: Map<string, THREE.Mesh>;
+  /** Vent lids + their (hidden) orange highlight hulls. */
+  vents: Map<string, { mesh: THREE.Mesh; glow: THREE.Mesh }>;
   wallHeight: number;
   lamps: { pos: THREE.Vector3; color: THREE.Color; r: number }[];
   dispose(): void;
@@ -256,9 +284,12 @@ export interface MapScene {
 
 export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean): MapScene {
   const group = new THREE.Group();
-  const theme = map.def.theme;
+  const info = worldInfo(map);
   const disposables: { dispose(): void }[] = [];
   const track = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
+  const inkOn = quality !== 'low';
+  const ink = hullMaterial(night ? '#04060c' : WORLD.ink, 0.04);
+  const inkThin = hullMaterial(night ? '#04060c' : WORLD.ink, 0.028);
   // Floors: one merged mesh per floor style.
   const byStyle = new Map<FloorStyle, THREE.BufferGeometry[]>();
   const add = (style: FloorStyle, geo: THREE.BufferGeometry) => {
@@ -267,7 +298,18 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     arr.push(geo);
   };
   for (const room of map.def.rooms) for (const r of rectsOf(room)) add(room.floor, planeForRect(r, 0, tint(room.color, room.floor)));
-  for (const h of map.def.halls) add(h.floor ?? 'tile', planeForRect(h.rect, -0.004, new THREE.Color(theme.hall)));
+  for (const h of map.def.halls) add(h.floor ?? 'tile', planeForRect(h.rect, -0.004, new THREE.Color('#ffffff')));
+  // Floor halves under 45° staircase walls.
+  for (const i of map.walls) {
+    const d = info.diag[i]!;
+    if (!d) continue;
+    const x = i % map.w;
+    const z = (i / map.w) | 0;
+    const nz = d === Diag.SE || d === Diag.SW ? z + 1 : z - 1;
+    const ri = map.roomIdx[nz * map.w + x]!;
+    const room = ri >= 0 ? map.def.rooms[ri]! : null;
+    add(room?.floor ?? 'tile', triForDiag(x, z, d, room ? tint(room.color, room.floor) : new THREE.Color('#ffffff')));
+  }
   for (const [style, geos] of byStyle) {
     const geo = track(mergeGeometries(geos)!);
     const mat = track(
@@ -275,74 +317,105 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
         map: floorTexture(style, night),
         vertexColors: true,
         gradientMap: toonGradient(),
+        side: THREE.DoubleSide,
       }),
     );
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = quality === 'high';
     group.add(mesh);
   }
-  // Ground plane below everything (void).
-  const ground = new THREE.Mesh(track(new THREE.PlaneGeometry(map.w * 3, map.h * 3)), track(new THREE.MeshBasicMaterial({ color: night ? '#04060d' : mix(theme.void, '#1b2540', 0.3) })));
+  // Ground below everything: deep void far out, purple rock + lava near exteriors.
+  const ground = new THREE.Mesh(track(new THREE.PlaneGeometry(map.w * 3, map.h * 3)), track(new THREE.MeshBasicMaterial({ color: night ? '#04060d' : '#121a2c' })));
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(map.w / 2, -0.05, map.h / 2);
+  ground.position.set(map.w / 2, -0.06, map.h / 2);
   group.add(ground);
-  // Walls.
+  const gt = groundTexture(map, info, night);
+  track(gt.tex);
+  const terrain = new THREE.Mesh(track(new THREE.PlaneGeometry(map.w, map.h)), track(new THREE.MeshBasicMaterial({ map: gt.tex })));
+  terrain.rotation.x = -Math.PI / 2;
+  terrain.position.set(map.w / 2, -0.03, map.h / 2);
+  group.add(terrain);
+  // Walls: textured instanced boxes per kind (room / corridor / exterior rock).
   const wallH = 2.3;
-  const walls = map.walls;
+  const kindOf = (i: number): WallKind => (info.wallExt[i] ? 'ext' : info.wallRoom[i]! >= 0 ? 'room' : 'hall');
+  const byKind = new Map<WallKind, number[]>();
+  for (const wi of map.walls) {
+    if (info.diag[wi]) continue;
+    const k = kindOf(wi);
+    let arr = byKind.get(k);
+    if (!arr) byKind.set(k, (arr = []));
+    arr.push(wi);
+  }
   const wallGeo = track(new THREE.BoxGeometry(1, wallH, 1));
   wallGeo.translate(0, wallH / 2, 0);
-  const wallMat = track(toon('#ffffff'));
-  const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, walls.length);
-  const capGeo = track(new THREE.BoxGeometry(1.02, 0.12, 1.02));
-  capGeo.translate(0, wallH + 0.06, 0);
-  const capMat = track(toon(night ? mix(theme.wallTop, '#0b1022', 0.4) : theme.wallTop));
-  const capMesh = new THREE.InstancedMesh(capGeo, capMat, walls.length);
-  const trimGeo = track(new THREE.BoxGeometry(1.01, 0.12, 1.01));
-  trimGeo.translate(0, 0.06, 0);
-  const trimMesh = new THREE.InstancedMesh(trimGeo, track(toon('#ffffff', { emissive: new THREE.Color(night ? '#334155' : '#000000') })), walls.length);
+  const capGeo = track(new THREE.BoxGeometry(1, 0.08, 1));
+  capGeo.translate(0, wallH + 0.04, 0);
   const m4 = new THREE.Matrix4();
-  const baseWall = new THREE.Color(night ? mix(theme.wall, '#0b1022', 0.55) : theme.wall);
   const tmp = new THREE.Color();
-  walls.forEach((wi, i) => {
-    const wx = wi % map.w;
-    const wz = Math.floor(wi / map.w);
-    m4.makeTranslation(wx + 0.5, 0, wz + 0.5);
-    wallMesh.setMatrixAt(i, m4);
-    capMesh.setMatrixAt(i, m4);
-    trimMesh.setMatrixAt(i, m4);
-    // Tint each wall toward the room it faces so every room has its own colour.
-    let room = -1;
-    for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const) {
-      const nx = wx + dx;
-      const nz = wz + dz;
-      if (nx < 0 || nz < 0 || nx >= map.w || nz >= map.h) continue;
-      const ri = map.roomIdx[nz * map.w + nx]!;
-      if (ri >= 0) {
-        room = ri;
-        break;
-      }
+  const wallMats = new Map<WallKind, THREE.Material>();
+  const wallMat = (k: WallKind) => {
+    let m = wallMats.get(k);
+    if (!m) {
+      const t = track(wallTexture(k, wallH));
+      m = track(toon(night ? '#7d8597' : '#ffffff', { map: t }));
+      wallMats.set(k, m);
     }
-    tmp.copy(baseWall);
-    if (room >= 0) tmp.lerp(new THREE.Color(map.def.rooms[room]!.color), night ? 0.18 : 0.3);
-    wallMesh.setColorAt(i, tmp);
-    trimMesh.setColorAt(i, room >= 0 ? new THREE.Color(map.def.rooms[room]!.color) : new THREE.Color(theme.trim));
-  });
-  if (wallMesh.instanceColor) wallMesh.instanceColor.needsUpdate = true;
-  if (trimMesh.instanceColor) trimMesh.instanceColor.needsUpdate = true;
-  wallMesh.castShadow = quality === 'high';
-  wallMesh.receiveShadow = quality === 'high';
-  group.add(wallMesh, capMesh, trimMesh);
-  // Props (instanced by kind/part).
-  const byKind = new Map<PropKind, PropDef[]>();
+    return m;
+  };
+  const capCol = (k: WallKind) => (k === 'ext' ? (night ? mix(WORLD.snow, '#0b1022', 0.5) : WORLD.snow) : night ? mix(WORLD.capTop, '#0b1022', 0.4) : WORLD.capTop);
+  for (const [k, list] of byKind) {
+    const wm = new THREE.InstancedMesh(wallGeo, wallMat(k), list.length);
+    const cm = new THREE.InstancedMesh(capGeo, track(toon(capCol(k))), list.length);
+    list.forEach((wi, i) => {
+      m4.makeTranslation((wi % map.w) + 0.5, 0, Math.floor(wi / map.w) + 0.5);
+      wm.setMatrixAt(i, m4);
+      cm.setMatrixAt(i, m4);
+      const ri = info.wallRoom[wi]!;
+      tmp.set('#ffffff');
+      if (k === 'room' && ri >= 0) tmp.lerp(new THREE.Color(map.def.rooms[ri]!.color), 0.1);
+      wm.setColorAt(i, tmp);
+    });
+    if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
+    wm.castShadow = quality === 'high';
+    wm.receiveShadow = quality === 'high';
+    group.add(wm, cm);
+  }
+  for (const [k, geo] of diagPrisms(map, info, wallH, kindOf)) {
+    track(geo);
+    const m = new THREE.Mesh(geo, wallMat(k));
+    (m.material as THREE.Material).side = THREE.DoubleSide;
+    m.castShadow = quality === 'high';
+    group.add(m);
+  }
+  // Ink edge lines along the wall mass: floor contact, top edge, corners.
+  {
+    const { floorSide, outer } = wallBoundary(map, info);
+    const inkMat = track(new THREE.MeshBasicMaterial({ color: night ? '#04060c' : WORLD.ink }));
+    const lw = 0.055;
+    const corners = cornerPoints(floorSide);
+    group.add(inkLines(floorSide, 0.015, lw, corners, wallH + 0.08, inkMat));
+    group.add(inkLines([...floorSide, ...outer], wallH + 0.08, lw, [], 0, inkMat));
+    group.add(inkLines(floorSide, wallH, lw * 0.8, [], 0, inkMat));
+  }
+  // Corridor dressing: guide stripes + dashed light strips.
+  const strips = hallStrips(map, info);
+  if (strips) {
+    track(strips);
+    group.add(new THREE.Mesh(strips, track(new THREE.MeshBasicMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }))));
+  }
+  // Room names painted on the floor.
+  group.add(roomNameDecals(map, night, track));
+  // Props (instanced by kind/part), each part with an ink hull.
+  const propsByKind = new Map<PropKind, PropDef[]>();
   for (const p of map.def.props) {
-    let arr = byKind.get(p.kind);
-    if (!arr) byKind.set(p.kind, (arr = []));
+    let arr = propsByKind.get(p.kind);
+    if (!arr) propsByKind.set(p.kind, (arr = []));
     arr.push(p);
   }
   const q = new THREE.Quaternion();
   const sc = new THREE.Vector3();
   const pos = new THREE.Vector3();
-  for (const [kind, props] of byKind) {
+  for (const [kind, props] of propsByKind) {
     const shape = shapeFor(kind);
     shape.parts.forEach((part, pi) => {
       const mat = track(
@@ -359,11 +432,13 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
         pos.set(p.x, 0, p.y);
         m4.compose(pos, q, sc);
         inst.setMatrixAt(i, m4);
-        if (pi === 0 && (p.color || kind === 'sofa' || kind === 'rug')) inst.setColorAt(i, new THREE.Color(p.color ?? (kind === 'rug' ? '#ec4899' : '#6366f1')));
+        if (pi === 0 && (p.color || kind === 'sofa' || kind === 'rug'))
+          inst.setColorAt(i, new THREE.Color(kind === 'roundTable' ? mix(p.color ?? '#4f9cb8', '#3f8fb3', 0.65) : mix(p.color ?? (kind === 'rug' ? '#9a7280' : '#b39a7c'), '#9a8a7a', 0.25)));
       });
       if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
       inst.castShadow = quality === 'high' && part.height > 0.5;
       group.add(inst);
+      if (inkOn && part.height > 0.12) group.add(addHull(inst, part.height > 1.2 ? ink : inkThin));
     });
   }
   // Stations: themed consoles with glowing screens.
@@ -372,19 +447,26 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
   const stScreen = track(rbox(0.48, 0.32, 0.04, 0.03, 0.62).translate(0, 0, 0.22));
   const btnBase = track(cyl(0.38, 0.44, 0.9, 0, 20));
   const btnDome = track(sph(0.26, 0.92, 1, 0.6, 1));
+  const stBaseMat = track(toon(night ? '#243040' : '#3d4b5c'));
   for (const st of map.def.stations) {
     const style = stationStyle(st.kind);
     const g = new THREE.Group();
+    let body: THREE.Mesh;
     if (style.icon === 'button') {
-      g.add(new THREE.Mesh(btnBase, track(toon('#334155'))));
-      g.add(new THREE.Mesh(btnDome, track(toon('#ef4444', { emissive: new THREE.Color('#ef4444'), emissiveIntensity: 0.5 }))));
+      body = new THREE.Mesh(btnBase, track(toon(WORLD.guideYellow)));
+      g.add(body);
+      g.add(new THREE.Mesh(btnDome, track(toon('#e8364a', { emissive: new THREE.Color('#ef4444'), emissiveIntensity: 0.5 }))));
     } else if (style.icon === 'mirror') {
-      g.add(new THREE.Mesh(track(rbox(0.9, 1.8, 0.12, 0.3)), track(toon('#f9a8d4'))));
+      body = new THREE.Mesh(track(rbox(0.9, 1.8, 0.12, 0.3)), track(toon(WORLD.pink)));
+      g.add(body);
       g.add(new THREE.Mesh(track(rbox(0.7, 1.5, 0.04, 0.25, 0.15).translate(0, 0, 0.07)), track(new THREE.MeshStandardMaterial({ color: '#dbeafe', metalness: 0.9, roughness: 0.1 }))));
     } else {
-      g.add(new THREE.Mesh(stBase, track(toon(night ? '#1e293b' : '#475569'))));
-      g.add(new THREE.Mesh(stScreen, track(toon('#0f172a', { emissive: new THREE.Color(style.color), emissiveIntensity: 0.9 }))));
+      body = new THREE.Mesh(stBase, stBaseMat);
+      g.add(body);
+      const scr = style.icon === 'task' ? '#7fe3c4' : style.color;
+      g.add(new THREE.Mesh(stScreen, track(toon('#0f172a', { emissive: new THREE.Color(scr), emissiveIntensity: 0.9 }))));
     }
+    if (inkOn) g.add(addHull(body, ink));
     g.position.set(st.x, 0, st.y);
     // Face the nearest open floor direction (towards the room centre).
     const room = map.roomById.get(st.room);
@@ -405,29 +487,44 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     group.add(bulb);
     lanterns.set(st.id, bulb);
   }
-  // Vents.
-  const ventGeo = track(rbox(0.9, 0.06, 0.65, 0.03));
-  const ventMat = track(toon(night ? '#1e293b' : '#64748b'));
+  // Vents: textured lids with an ink hull and a hidden orange highlight hull.
+  const ventGeo = track(new THREE.BoxGeometry(1, 0.07, 0.72));
+  ventGeo.translate(0, 0.035, 0);
+  const ventMat = track(toon(night ? '#8a90a0' : '#ffffff', { map: track(ventTexture()) }));
+  const glowTexV = track(ventGlowTexture());
+  const glowGeo = track(new THREE.PlaneGeometry(1.36, 1.08).rotateX(-Math.PI / 2));
+  const vents = new Map<string, { mesh: THREE.Mesh; glow: THREE.Mesh }>();
   for (const v of map.def.vents) {
     const m = new THREE.Mesh(ventGeo, ventMat);
     m.position.set(v.x, 0, v.y);
     group.add(m);
+    // Orange outline decal (shown when the vent is in reach / occupied).
+    const glow = new THREE.Mesh(glowGeo, track(new THREE.MeshBasicMaterial({ map: glowTexV, transparent: true, depthWrite: false })));
+    glow.position.set(v.x, 0.075, v.y);
+    glow.renderOrder = 3;
+    glow.visible = false;
+    group.add(glow);
+    vents.set(v.id, { mesh: m, glow });
   }
-  // Door shutters (hidden until closed).
+  // Door shutters (hidden until closed): hazard-yellow with ink.
   const doorMeshes = new Map<string, THREE.Mesh>();
-  const shutterMat = track(toon('#334155', { emissive: new THREE.Color('#ff4d5e'), emissiveIntensity: 0.25 }));
+  const shutterMat = track(toon(WORLD.guideYellow, { emissive: new THREE.Color('#ff4d5e'), emissiveIntensity: 0.12 }));
   for (const d of map.def.doors) {
     const [x, z, w, h] = d.rect;
     const m = new THREE.Mesh(track(new THREE.BoxGeometry(w, wallH, h)), shutterMat);
     m.position.set(x + w / 2, wallH / 2, z + h / 2);
     m.visible = false;
+    if (inkOn) m.add(addHull(new THREE.Mesh(m.geometry), ink));
     group.add(m);
     doorMeshes.set(d.id, m);
   }
-  // Highlight ring for interactables.
-  const highlight = new THREE.Mesh(track(new THREE.TorusGeometry(0.55, 0.05, 8, 32)), track(new THREE.MeshBasicMaterial({ color: '#fde047', transparent: true, opacity: 0.9 })));
-  highlight.rotation.x = -Math.PI / 2;
+  // Highlight ring for the interactable in reach (solid ring decal).
+  const highlight = new THREE.Mesh(
+    track(new THREE.PlaneGeometry(1.5, 1.5).rotateX(-Math.PI / 2)),
+    track(new THREE.MeshBasicMaterial({ map: track(solidRingTexture(WORLD.task)), transparent: true, depthWrite: false, opacity: 1 })),
+  );
   highlight.visible = false;
+  highlight.renderOrder = 2;
   group.add(highlight);
   // Lamp glows (cheap additive sprites).
   const lamps = map.def.lamps.map((l) => ({ pos: new THREE.Vector3(l.x, 2.1, l.y), color: new THREE.Color(l.color), r: l.r }));
@@ -447,6 +544,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     highlight,
     doorMeshes,
     lanterns,
+    vents,
     wallHeight: wallH,
     lamps,
     dispose: () => {

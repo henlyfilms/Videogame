@@ -10,6 +10,7 @@ import { BASE_VISION, type Settings } from '../core/settings';
 import type { Vec2 } from '../core/types';
 import type { VisionShape } from '../core/vision';
 import type { RoomInfo } from '../net/protocol';
+import { keyLabel } from '../render2d/prompts';
 import type { DrawPlayer, FrameData } from '../render2d/renderer';
 import type { Context } from './context';
 import type { Prefs } from './prefs';
@@ -89,6 +90,7 @@ export function buildFrame(opts: {
       footprints: false,
       trackPos: null,
       zoom: opts.zoom,
+      prompts: { kill: null, report: null, vent: null, inVent: null, keys: promptKeys(prefs) },
     };
   }
   const s = snap!;
@@ -154,5 +156,23 @@ export function buildFrame(opts: {
     footprints: me.role === 'detective' && me.alive,
     trackPos: me.trackPos as Vec2 | null,
     zoom: opts.zoom,
+    prompts: {
+      kill: ctx.kill,
+      report: ctx.report,
+      vent: me.inVent ? null : ctx.vent,
+      inVent: me.inVent ?? null,
+      keys: promptKeys(prefs),
+    },
   };
+}
+
+function promptKeys(prefs: Prefs): { use: string; kill: string; report: string; vent: string } {
+  if (touchUi()) return { use: '', kill: '', report: '', vent: '' };
+  return { use: keyLabel(prefs.keys.use), kill: keyLabel(prefs.keys.kill), report: keyLabel(prefs.keys.report), vent: keyLabel(prefs.keys.vent) };
+}
+
+let coarse: boolean | null = null;
+function touchUi(): boolean {
+  if (coarse === null) coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  return coarse;
 }
