@@ -17,6 +17,7 @@ import { isFixStation, useMystery } from '../client/store';
 import { Bar, colorHex, fmtTime, MIcon, Modal, teamColors } from './common';
 import { MapThumb, type MapMarker } from './MapThumb';
 import { TaskModal } from './tasks/TaskModal';
+import type { MiniGameKind } from './tasks/types';
 import { Joystick, TouchLook, useCoarsePointer } from './TouchControls';
 
 function useTick(ms: number) {
@@ -430,7 +431,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       {taskStation && station && snap.phase === 'play' && (
         <div style={{ pointerEvents: 'auto' }}>
           <TaskModal
-            kind={station.kind}
+            kind={station.kind as MiniGameKind}
             seed={hashStr(station.id + you.id)}
             title={isFixStation(taskStation) ? (station.kind === 'lightsPanel' ? 'Fix the lights' : 'Fix comms') : openTask?.def?.name ?? 'Task'}
             step={openTask && openTask.t.stations.length > 1 ? `${openTask.t.step + 1}/${openTask.t.stations.length}` : undefined}
