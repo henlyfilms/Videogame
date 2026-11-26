@@ -61,6 +61,9 @@ export class BotBrain {
   private knownKillers = new Set<string>();
   private lastSeen = new Map<string, { pos: Vec2; t: number }>();
   private stuck = 0;
+  /** Re-plan timer for a goal whose route was empty (e.g. doors were shut). */
+  private replanAt = 0;
+  private noRouteSince = -1;
   private lastPos: Vec2 = { x: 0, y: 0 };
   private meetingSaid = 0;
   private voteAt = -1;
@@ -516,6 +519,21 @@ export class BotBrain {
         this.goal = null;
       }
     }
+    // A goal with no route (doors were shut when it was planned): re-plan every
+    // second; give the goal up after 8 s so the bot does something else.
+    if (!this.path.length && this.goal && dist(this.goal, this.pos) > INTERACT_RANGE * 0.9) {
+      if (this.noRouteSince < 0) this.noRouteSince = snap.t;
+      if (snap.t >= this.replanAt) {
+        this.replanAt = snap.t + 1;
+        this.setGoal(map, snap, this.goal, this.goalKind, this.goalStation);
+      }
+      if (!this.path.length && snap.t - this.noRouteSince > 8) {
+        this.goal = null;
+        this.goalKind = null;
+        this.goalStation = null;
+        this.noRouteSince = -1;
+      }
+    } else this.noRouteSince = -1;
     // Stuck detection.
     if (moved && dist(this.lastPos, you.pos) < 0.01) this.stuck += dt;
     else this.stuck = 0;
