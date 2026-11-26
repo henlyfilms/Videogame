@@ -36,6 +36,14 @@ and rooms stay the characters and setting.
 - **End-of-round board:** total task progress bar, per-player progress rows, trap / sabotage /
   kill stamps.
 
+## Video reference
+
+- https://youtu.be/V7Pxcujhr94 — gameplay video supplied by the project owner. Use it for motion,
+  pacing and how rooms, tasks, meetings and HUD fit together in play. Same rule as the photos:
+  style and flow only, no copied characters, names or art. (YouTube is blocked from the cloud
+  sessions, so frames could not be extracted here; owner-supplied screenshots of key moments
+  go in this folder.)
+
 ## Index
 
 | File | Original | Shows |
