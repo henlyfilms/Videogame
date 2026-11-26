@@ -106,7 +106,8 @@ export function TutorialCoach() {
   const showMap = useMystery((s) => s.showMap);
   const leave = useMystery((s) => s.leave);
   const [done, setDone] = useState<Set<string>>(new Set());
-  const [open, setOpen] = useState(true);
+  // Phones start collapsed (one 'next step' line) so the coach doesn't cover play.
+  const [open, setOpen] = useState(() => typeof innerWidth === 'undefined' || innerWidth >= 640);
   const walked = useRef(0);
   const last = useRef<{ x: number; y: number } | null>(null);
   const role = room?.practice ?? 'crewmate';
@@ -152,6 +153,9 @@ export function TutorialCoach() {
             {open ? 'Hide' : 'Show'}
           </button>
         </div>
+        {!open && steps.find((s) => !done.has(s.id)) && (
+          <div style={{ marginTop: 6, fontSize: '0.82em', opacity: 0.85 }}>Next: {steps.find((s) => !done.has(s.id))!.text}</div>
+        )}
         {open && (
           <ol style={{ margin: '8px 0 0', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.88em' }}>
             {steps.map((s) => (
@@ -163,9 +167,11 @@ export function TutorialCoach() {
           </ol>
         )}
         {all && <div style={{ marginTop: 8, color: '#4ade80', fontWeight: 800 }}>All done — you’re ready for a real match!</div>}
-        <button className="mm-btn" style={{ marginTop: 8, minHeight: 36, width: '100%' }} onClick={leave}>
-          End practice
-        </button>
+        {open && (
+          <button className="mm-btn" style={{ marginTop: 8, minHeight: 36, width: '100%' }} onClick={leave}>
+            End practice
+          </button>
+        )}
       </div>
     </div>
   );

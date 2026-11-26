@@ -4446,6 +4446,27 @@
   pointer-events: none;
   max-width: min(360px, 92vw);
 }
+@media (max-width: 640px) {
+  .mm-coach {
+    top: auto;
+    right: auto;
+    left: 0;
+    bottom: calc(205px + env(safe-area-inset-bottom, 0px));
+    max-width: min(250px, 58vw);
+    font-size: 0.78em;
+  }
+  .mm-coach .mm-panel {
+    padding: 8px 10px !important;
+  }
+  .mm-coach .mm-btn {
+    min-height: 28px !important;
+  }
+  /* Elimination cast: shrink so killer + victim both fit on a phone. */
+  .mmd-cast {
+    scale: 0.7;
+    gap: 10px;
+  }
+}
 
 /* ============================================ task modal chrome overrides */
 .mm-root .mmg-overlay {
