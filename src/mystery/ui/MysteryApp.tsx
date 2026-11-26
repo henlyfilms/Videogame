@@ -4,6 +4,7 @@
  * (invite links, iOS background/resume, audio unlock).
  */
 import { lazy, Suspense, useEffect, useState } from 'react';
+import type { StagePose } from './Stage3D';
 import { MODES } from '../core/modes';
 import type { MatchEvent } from '../core/types';
 import { wireInput } from '../client/controls';
@@ -16,7 +17,9 @@ import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { BrowseScreen, HowToScreen, JoinScreen, ProfileScreen, SettingsScreen, TitleScreen } from './Menus';
 import { MenuBackdrop2D } from './MenuBackdrop';
-import { EjectOverlay, MeetingOverlay, ResultsScreen, RoleReveal } from './Overlays';
+import { EjectOverlay, MeetingOverlay, ResultsScreen, RoleReveal, useStage } from './Overlays';
+
+const Stage3D = lazy(() => import('./Stage3D'));
 import { WaitingRoom } from './WaitingRoom';
 import { CustomizeEditor } from './CustomizeEditor';
 import './mystery.css';
@@ -38,9 +41,28 @@ function DeathCinematic() {
     [pid, reduced],
   );
   const snap = useMystery((s) => s.snap);
+  const use3d = useStage();
   if (!ev || !snap) return null;
   const killer = ev.killer ? snap.players.find((p) => p.id === ev.killer) : null;
   const me = snap.players.find((p) => p.id === pid);
+  if (use3d && me)
+    return (
+      <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 47, background: 'radial-gradient(circle, rgba(120,10,30,0.85), rgba(5,3,10,0.95))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+        <Suspense fallback={null}>
+          <Stage3D
+            actors={[...(killer ? [{ cosmetics: killer.cosmetics, pose: (ev.weapon === 'gun' ? 'gun-spin' : 'kill-lunge') as StagePose, x: -0.9, fromX: -6, enter: 0.6 }] : []), { cosmetics: me.cosmetics, pose: 'squish' as StagePose, x: 0.9 }]}
+            width={Math.min(560, innerWidth - 24)}
+            height={260}
+            light="#ff8a8a"
+            reducedMotion={reduced}
+          />
+        </Suspense>
+        <div className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(36px, 8vw, 72px)', background: 'linear-gradient(180deg,#fff,#ff4d5e)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
+          {ev.weapon === 'tag' ? 'FOUND!' : ev.weapon === 'poison' ? 'POISONED' : 'ELIMINATED'}
+        </div>
+        <div style={{ fontWeight: 700 }}>{ev.weapon === 'tag' ? 'The seeker got you.' : 'You’re a ghost now — keep helping your team.'}</div>
+      </div>
+    );
   return (
     <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 47, background: 'radial-gradient(circle, rgba(120,10,30,0.85), rgba(5,3,10,0.95))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 30, animation: reduced ? undefined : 'mm-shake 0.35s 2' }}>

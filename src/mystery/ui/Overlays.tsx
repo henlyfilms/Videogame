@@ -3,7 +3,16 @@
  * sequences (per-map style) and the results screen. All have reduced-motion
  * fallbacks; 3D players get the same moments framed for their view.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { StageActor, StagePose } from './Stage3D';
+
+const Stage3D = lazy(() => import('./Stage3D'));
+
+/** 3D players get a three.js stage; 2D players (and fallback) get portraits. */
+export function useStage(): boolean {
+  const v = useMystery((s) => s.matchView ?? s.prefs.view);
+  return v !== '2d';
+}
 import { drawBerry, drawBody } from '../characters/draw2d';
 import { getMap } from '../core/maps';
 import { MODES } from '../core/modes';
@@ -28,6 +37,17 @@ const ROLE_POSE: Partial<Record<RoleId, string>> = {
   medic: 'cheer',
 };
 
+const STAGE_POSE: Partial<Record<RoleId, StagePose>> = {
+  murderer: 'knife-twirl',
+  poisoner: 'knife-twirl',
+  seeker: 'knife-twirl',
+  sheriff: 'gun-spin',
+  detective: 'magnify',
+  jester: 'shrug',
+  medic: 'celebrate',
+  mayor: 'wave',
+};
+
 export function RoleReveal({ snap }: { snap: Snapshot }) {
   const prefs = useMystery((s) => s.prefs);
   const tc = teamColors(prefs.colorblind !== 'none');
@@ -37,6 +57,15 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
   const mates = snap.players.filter((p) => p.id !== you.id && p.role && ROLES[p.role].team === 'murderers' && you.team === 'murderers');
   const seekers = snap.players.filter((p) => p.role === 'seeker' && p.id !== you.id);
   const teamCol = tc[role.team];
+  const use3d = useStage();
+  const revealActors = useMemo<StageActor[]>(
+    () => [
+      ...mates.map((m, i) => ({ cosmetics: m.cosmetics, pose: 'knife-twirl' as StagePose, x: (i % 2 ? 1 : -1) * (1.1 + Math.floor(i / 2) * 0.9), scale: 0.85, fromX: (i % 2 ? 1 : -1) * 6, enter: 1.2 })),
+      { cosmetics: me.cosmetics, pose: STAGE_POSE[you.role] ?? 'wave', x: 0, scale: 1.15 },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [you.role, me.cosmetics, mates.length],
+  );
   const [stage, setStage] = useState(0);
   useEffect(() => {
     const t1 = setTimeout(() => setStage(1), prefs.reducedMotion ? 0 : 900);
@@ -65,6 +94,17 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
             <div className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(48px, 12vw, 110px)', lineHeight: 1, margin: '6px 0', background: `linear-gradient(180deg, #fff 10%, ${role.color})`, WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
               {role.name}
             </div>
+            {use3d ? (
+              <div className="mm-anim-pop">
+                <Suspense fallback={<BerryAvatar cosmetics={me.cosmetics} size={170} />}>
+                  <Stage3D actors={revealActors} width={Math.min(560, innerWidth - 24)} height={240} light={role.color} reducedMotion={prefs.reducedMotion} />
+                </Suspense>
+                <div style={{ fontWeight: 800 }}>
+                  {me.name}
+                  {mates.length > 0 && <span style={{ color: tc.murderers }}> · with {mates.map((m) => m.name).join(', ')}</span>}
+                </div>
+              </div>
+            ) : (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 12, margin: '10px 0' }}>
               {mates.map((m) => (
                 <div key={m.id} className="mm-anim-rise" style={{ textAlign: 'center', animationDelay: '300ms' }}>
@@ -77,6 +117,7 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
                 <div style={{ fontWeight: 800 }}>{me.name}</div>
               </div>
             </div>
+            )}
             {stage >= 2 && (
               <div className="mm-anim-rise">
                 <div style={{ fontSize: '1.15em', fontWeight: 700, maxWidth: 520, margin: '0 auto 10px' }}>{role.blurb}</div>
@@ -481,6 +522,12 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
   const [heatFor, setHeatFor] = useState<string>(pid);
   const isHost = room.hostId === pid;
   const winners = snap.players.filter((p) => res.winners.includes(p.id));
+  const use3d = useStage();
+  const winActors = useMemo<StageActor[]>(() => {
+    const list = winners.slice(0, 7);
+    return list.map((p, i) => ({ cosmetics: p.cosmetics, pose: 'celebrate' as StagePose, x: (i - (list.length - 1) / 2) * 1.05, scale: res.mvp === p.id ? 1.15 : 0.95 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res.endedAt]);
   const map = getMap(snap.map);
   const title =
     res.winningTeam === 'draw'
@@ -513,6 +560,21 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
           {title}
         </h1>
         <div className="mm-muted">{REASON[res.reason] ?? res.reason}</div>
+        {use3d && winners.length > 0 ? (
+          <div style={{ margin: '10px 0' }}>
+            <Suspense fallback={null}>
+              <Stage3D actors={winActors} width={Math.min(760, innerWidth - 24)} height={230} light={col} reducedMotion={prefs.reducedMotion} />
+            </Suspense>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap', fontWeight: 800 }}>
+              {winners.map((p) => (
+                <span key={p.id} style={{ color: res.mvp === p.id ? '#fbbf24' : undefined }}>
+                  {res.mvp === p.id ? '★ ' : ''}
+                  {p.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 6, flexWrap: 'wrap', margin: '14px 0' }}>
           {winners.map((p, i) => (
             <div key={p.id} className="mm-anim-rise" style={{ animationDelay: `${i * 90}ms` }}>
@@ -524,6 +586,7 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
             </div>
           ))}
         </div>
+        )}
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 12 }}>
           {(['summary', 'timeline', 'heatmap'] as const).map((t) => (
             <button key={t} className={`mm-btn ${tab === t ? 'mm-btn-primary' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
