@@ -17,10 +17,11 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Camera } from '../engine/camera';
 import { bubbleAlpha } from '../engine/bubbles';
 import type { Simulation, SimBot } from '../engine/sim';
-import { MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid, pointAlong, roomRect, type PropKind } from '../engine/world';
+import { offsetPoly, pointInPoly, type Pt } from '../engine/geometry';
+import { MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid, doorSegment, isTerrace, pointAlong, roomLabelAnchor, type PropKind, type RoomDef } from '../engine/world';
 import { createBerry, type BerryRig } from '../mystery/characters/rig3d';
 import { toon } from '../mystery/render3d/scene';
-import { LAMPS, nightFactor } from '../render/daylight';
+import { LAMPS, WINDOWS, nightFactor } from '../render/daylight';
 import { terraceBeds } from '../render/ground';
 import { ROOM_ACCENT } from '../render/props';
 import type { RenderOptions } from '../render/renderer';
@@ -30,6 +31,8 @@ import { SEASON_STYLE, scatter, type Season } from '../theme/environment';
 
 const U = 1 / TILE;
 const WALL_H = 1.25;
+/** Wall thickness (tiles); walls run along each room's outline, just inside it. */
+const WALL_T = 0.36;
 const FOV = 38;
 const PITCH = (56 * Math.PI) / 180;
 
@@ -138,7 +141,8 @@ export class HQ3DRenderer {
   private packets: THREE.Mesh[] = [];
   private packetMat = new Map<string, THREE.MeshBasicMaterial>();
   private selRing: THREE.Mesh;
-  private roomHighlight: THREE.LineSegments;
+  private roomHighlight: THREE.LineLoop;
+  private highlighted: string | null = null;
   private lastT = -1;
   private disposed = false;
   readonly raycaster = new THREE.Raycaster();
@@ -167,10 +171,11 @@ export class HQ3DRenderer {
     this.sun.castShadow = this.quality === 'high';
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
-    sc.left = -48;
-    sc.right = 48;
-    sc.top = 48;
-    sc.bottom = -48;
+    const half = Math.max(MAP_W, MAP_H) / 2 + 10;
+    sc.left = -half;
+    sc.right = half;
+    sc.top = half;
+    sc.bottom = -half;
     sc.near = 1;
     sc.far = 160;
     this.sun.shadow.bias = -0.0008;
@@ -194,7 +199,7 @@ export class HQ3DRenderer {
     this.selRing.rotation.x = -Math.PI / 2;
     this.selRing.visible = false;
     this.scene.add(this.selRing);
-    this.roomHighlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, WALL_H + 0.1, 1)), new THREE.LineBasicMaterial({ color: '#6ea1ff' }));
+    this.roomHighlight = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#6ea1ff' }));
     this.roomHighlight.visible = false;
     this.scene.add(this.roomHighlight);
 
@@ -249,25 +254,21 @@ export class HQ3DRenderer {
 
     // Room floors (Mystery floor painters) + accent strip.
     for (const room of ROOMS) {
-      const r = roomRect(room);
       const accent = ROOM_ACCENT[room.id];
       const base = room.id === 'cutting' ? '#2a2f3d' : room.id === 'arcade' ? '#2a1f4a' : '#eef2f8';
       const tex = new THREE.CanvasTexture(roomFloorTexture(room, accent, base));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
-      const geo = new THREE.PlaneGeometry(r.w * U, r.h * U);
-      geo.rotateX(-Math.PI / 2);
-      const floor = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
-      floor.position.set((r.x + r.w / 2) * U, 0.03, (r.y + r.h / 2) * U);
+      const floor = new THREE.Mesh(floorGeometry(room), new THREE.MeshLambertMaterial({ map: tex }));
+      floor.position.set(room.x, 0.03, room.y);
       floor.receiveShadow = true;
       root.add(floor);
     }
 
-    // Walls: wall tiles greedily merged into long blocks (no seams), navy body + lit cap.
-    const isWall = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y * MAP_W + x] === Tile.Wall;
-    const wallRuns = mergeRuns(isWall);
-    const walls = new THREE.Mesh(boxesGeometry(wallRuns, 0, WALL_H, 0), toon('#3a4874'));
-    const caps = new THREE.Mesh(boxesGeometry(wallRuns, WALL_H, 0.08, 0.02), toon('#7083bd'));
+    // Walls: one merged run per outline edge (angled walls included), with door gaps; navy body + lit cap.
+    const segs = ROOMS.flatMap(wallSegments);
+    const walls = new THREE.Mesh(segmentsGeometry(segs, 0, WALL_H, WALL_T), toon('#3a4874'));
+    const caps = new THREE.Mesh(segmentsGeometry(segs, WALL_H, 0.08, WALL_T + 0.04), toon('#7083bd'));
     walls.castShadow = walls.receiveShadow = true;
     root.add(walls, caps);
 
@@ -276,6 +277,7 @@ export class HQ3DRenderer {
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
         if (grid[y * MAP_W + x] !== Tile.Void) continue;
+        if (ROOMS.some((r) => pointInPoly({ x: x + 0.5 - r.x, y: y + 0.5 - r.y }, r.outline, true))) continue;
         let near = false;
         for (let dy = -1; dy <= 1 && !near; dy++)
           for (let dx = -1; dx <= 1; dx++) {
@@ -410,14 +412,14 @@ export class HQ3DRenderer {
       opacity: 0,
     });
     this.windowGlow.push(winMat);
-    const winGeo = new THREE.PlaneGeometry(1.6, 0.28);
-    for (let x = 4; x < MAP_W - 4; x += 6) {
-      for (const z of [-0.005, MAP_H + 0.005]) {
-        const wm = new THREE.Mesh(winGeo, winMat);
-        wm.position.set(x, 0.3, z);
-        if (z < 1) wm.rotation.y = Math.PI;
-        root.add(wm);
-      }
+    for (const w of WINDOWS) {
+      const len = Math.max(w.w, w.h) * U * 0.8;
+      const wm = new THREE.Mesh(new THREE.PlaneGeometry(len, w.wall ? 0.34 : 0.26), winMat);
+      // Room walls: on the wall's outer face. Corridor facades: on the curb's outer face.
+      const out = w.wall ? 0.015 : 1.005;
+      wm.position.set((w.x + w.w / 2) * U + w.nx * out, w.wall ? 0.78 : 0.3, (w.y + w.h / 2) * U + w.ny * out);
+      wm.rotation.y = Math.atan2(w.nx, w.ny);
+      root.add(wm);
     }
     this.scene.add(root);
 
@@ -460,11 +462,9 @@ export class HQ3DRenderer {
     ground.receiveShadow = true;
     this.seasonal.add(ground);
 
-    // Paved apron around the building.
+    // Paved apron hugging the building's real outline (open ground within a tile of it).
     const apronCol = season === 'winter' ? '#dfe8f3' : '#e7dcc4';
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W + 2.4, MAP_H + 2.4), new THREE.MeshLambertMaterial({ color: apronCol }));
-    apron.rotation.x = -Math.PI / 2;
-    apron.position.set(MAP_W / 2, 0, MAP_H / 2);
+    const apron = new THREE.Mesh(boxesGeometry(mergeRuns(nearBuilding(1)), -0.004, 0.012, 0), new THREE.MeshLambertMaterial({ color: apronCol }));
     apron.receiveShadow = true;
     this.seasonal.add(apron);
 
@@ -518,11 +518,14 @@ export class HQ3DRenderer {
 
     // Blooms / fallen leaves / snow mounds scattered on the lawn near the building.
     const deco = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 4), toon('#ffffff'), 220);
+    const near2 = nearBuilding(2);
     let k = 0;
     for (let i = 0; i < 600 && k < 220; i++) {
       const x = -12 + scatter(i, 41) * (MAP_W + 24);
       const z = -12 + scatter(i, 43) * (MAP_H + 24);
-      if (x > -1.5 && x < MAP_W + 1.5 && z > -1.5 && z < MAP_H + 1.5) continue;
+      // Open ground only: outside the bounds, or inside them well clear of the building and gardens.
+      const inside = x > -1.5 && x < MAP_W + 1.5 && z > -1.5 && z < MAP_H + 1.5;
+      if (inside && (near2(Math.floor(x), Math.floor(z)) || isTerrace(Math.floor(x), Math.floor(z)))) continue;
       const big = season === 'winter' ? 2.4 : 1;
       m.compose(new THREE.Vector3(x, 0.04, z), q.identity(), new THREE.Vector3(big, season === 'winter' ? 0.5 : 0.7, big));
       deco.setMatrixAt(k, m);
@@ -744,11 +747,14 @@ export class HQ3DRenderer {
 
     const room = opts.selectedRoom ? ROOMS.find((r) => r.id === opts.selectedRoom) : null;
     this.roomHighlight.visible = !!room;
-    if (room) {
-      this.roomHighlight.scale.set(room.w + 0.1, 1, room.h + 0.1);
-      this.roomHighlight.position.set(room.x + room.w / 2, (WALL_H + 0.1) / 2, room.y + room.h / 2);
+    if (room && this.highlighted !== room.id) {
+      this.highlighted = room.id;
+      const ring = offsetPoly(room.outline, -0.08).map((q) => new THREE.Vector3(room.x + q.x, WALL_H + 0.1, room.y + q.y));
+      this.roomHighlight.geometry.dispose();
+      this.roomHighlight.geometry = new THREE.BufferGeometry().setFromPoints(ring);
       (this.roomHighlight.material as THREE.LineBasicMaterial).color.set(ROOM_ACCENT[room.id]);
     }
+    if (!room) this.highlighted = null;
   }
 
   private updatePackets(sim: Simulation): void {
@@ -792,7 +798,7 @@ export class HQ3DRenderer {
       g.font = `700 ${Math.round(Math.max(10, 11 * Math.min(1.2, scale * 1.6)))}px ui-sans-serif, system-ui, sans-serif`;
       g.textBaseline = 'middle';
       for (const room of ROOMS) {
-        const r = roomRect(room);
+        const r = roomLabelAnchor(room);
         const p = this.project(r.x + 8, r.y - 2, WALL_H + 0.2);
         if (!p.ok) continue;
         const text = room.name;
@@ -917,6 +923,17 @@ export class HQ3DRenderer {
 
 export type Run = { x: number; y: number; w: number; h: number };
 
+/** Open-ground tiles within `r` tiles (Chebyshev) of the building footprint. */
+function nearBuilding(r: number): (x: number, y: number) => boolean {
+  const g = buildGrid().tiles;
+  const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && g[y * MAP_W + x] !== Tile.Void;
+  return (x, y) => {
+    if (solid(x, y)) return false;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (solid(x + dx, y + dy)) return true;
+    return false;
+  };
+}
+
 /** Greedy merge of grid cells into horizontal runs, then vertical runs of the leftovers. */
 export function mergeRuns(on: (x: number, y: number) => boolean): Run[] {
   const used = new Uint8Array(MAP_W * MAP_H);
@@ -951,6 +968,98 @@ export function mergeRuns(on: (x: number, y: number) => boolean): Run[] {
     }
   }
   return out;
+}
+
+/** A room's floor: its outline polygon (local tiles), UV-mapped over its bounding box. */
+export function floorGeometry(room: RoomDef): THREE.BufferGeometry {
+  const shape = new THREE.Shape(room.outline.map((q) => new THREE.Vector2(q.x, -q.y)));
+  const geo = new THREE.ShapeGeometry(shape);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = pos.getX(i) / room.w;
+    uv[i * 2 + 1] = 1 - pos.getZ(i) / room.h;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+
+export type WallSeg = { a: Pt; b: Pt };
+
+/**
+ * Wall centre-line segments (global tile units) for a room: each outline edge
+ * inset by half the wall thickness, minus its door openings, extended at the
+ * corners so neighbouring runs meet without gaps.
+ */
+export function wallSegments(room: RoomDef): WallSeg[] {
+  const poly = room.outline;
+  const inner = offsetPoly(poly, WALL_T / 2);
+  const n = poly.length;
+  const dir = (i: number) => {
+    const a = poly[(i + n) % n]!;
+    const b = poly[(i + 1 + n) % n]!;
+    const l = Math.hypot(b.x - a.x, b.y - a.y);
+    return { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  };
+  const ext = (i: number) => {
+    const u0 = dir(i - 1);
+    const u1 = dir(i);
+    const turn = Math.acos(Math.max(-1, Math.min(1, u0.x * u1.x + u0.y * u1.y)));
+    return (WALL_T / 2) * Math.tan(turn / 2);
+  };
+  const doors = room.doors.map((d) => {
+    const s = doorSegment(room, d);
+    return { a: { x: s.a.x / TILE - room.x, y: s.a.y / TILE - room.y }, b: { x: s.b.x / TILE - room.x, y: s.b.y / TILE - room.y } };
+  });
+  const out: WallSeg[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % n]!;
+    const a2 = inner[i]!;
+    const b2 = inner[(i + 1) % n]!;
+    const u = dir(i);
+    const len = Math.hypot(b2.x - a2.x, b2.y - a2.y);
+    const cuts: [number, number][] = [];
+    for (const d of doors) {
+      const on = (q: Pt) => Math.abs((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x)) < 1e-6;
+      if (!on(d.a) || !on(d.b)) continue;
+      const t0 = (d.a.x - a2.x) * u.x + (d.a.y - a2.y) * u.y;
+      const t1 = (d.b.x - a2.x) * u.x + (d.b.y - a2.y) * u.y;
+      cuts.push([Math.min(t0, t1), Math.max(t0, t1)]);
+    }
+    cuts.sort((p, q) => p[0] - q[0]);
+    let t = -ext(i);
+    const end = len + ext(i + 1);
+    const push = (s0: number, s1: number) => {
+      if (s1 - s0 < 0.05) return;
+      out.push({
+        a: { x: room.x + a2.x + u.x * s0, y: room.y + a2.y + u.y * s0 },
+        b: { x: room.x + a2.x + u.x * s1, y: room.y + a2.y + u.y * s1 },
+      });
+    };
+    for (const [c0, c1] of cuts) {
+      push(t, c0);
+      t = Math.max(t, c1);
+    }
+    push(t, end);
+  }
+  return out;
+}
+
+/** One merged geometry of wall boxes along segments (y0 = base, h = height, t = thickness). */
+function segmentsGeometry(segs: readonly WallSeg[], y0: number, h: number, t: number): THREE.BufferGeometry {
+  const parts = segs.map((sg) => {
+    const dx = sg.b.x - sg.a.x;
+    const dz = sg.b.y - sg.a.y;
+    const g = new THREE.BoxGeometry(Math.hypot(dx, dz), h, t);
+    g.rotateY(Math.atan2(-dz, dx));
+    g.translate((sg.a.x + sg.b.x) / 2, y0 + h / 2, (sg.a.y + sg.b.y) / 2);
+    return g;
+  });
+  const merged = mergeGeometries(parts, false) ?? new THREE.BufferGeometry();
+  for (const q of parts) q.dispose();
+  return merged;
 }
 
 /** One merged geometry of boxes over runs (y0 = base height, h = box height, grow = xz overhang). */

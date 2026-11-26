@@ -1,10 +1,11 @@
 /**
- * Ground-level static art: the building footprint (core block + the annex
- * corridor ring around the Arcade), the outdoor terrace garden on the annex
- * Void cells, and the Arcade's carpet. All of it is baked into the static
- * layer / chunk cache — nothing here runs per frame.
+ * Ground-level static art: the building footprint (every room and corridor
+ * tile, traced into one rounded slab), the paved apron hugging it, the
+ * courtyard gardens between the wings, and the Arcade's carpet. All of it is
+ * baked into the static layer / chunk cache — nothing here runs per frame.
  */
-import { ANNEX_Y, CORRIDOR, MAP_H, MAP_W, ROOMS, TILE, type RoomDef } from '../engine/world';
+import { offsetPoly, traceMask, tracePolyPath, type Pt } from '../engine/geometry';
+import { COURTYARDS, MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid, roomPolygon, type RoomDef } from '../engine/world';
 import type { ThemeTokens } from '../theme/tokens';
 import { hexA, roundRect } from './sprites';
 import { SEASON_STYLE } from '../theme/environment';
@@ -13,44 +14,67 @@ import { env } from './seasonal';
 type Ctx = CanvasRenderingContext2D;
 type Region = { x: number; y: number; w: number; h: number };
 
-/** Pixel spans [x0, x1) of the corridor rings around annex rooms, left to right. */
-export function annexSpans(): [number, number][] {
-  return ROOMS.filter((r) => r.y >= ANNEX_Y)
-    .map((r) => [(r.x - CORRIDOR) * TILE, (r.x + r.w + CORRIDOR) * TILE] as [number, number])
-    .sort((a, b) => a[0] - b[0]);
+const loopsCache = new Map<string, Pt[][]>();
+function loops(key: 'slab' | 'corridor'): Pt[][] {
+  const hit = loopsCache.get(key);
+  if (hit) return hit;
+  const g = buildGrid();
+  const on =
+    key === 'slab' ? (x: number, y: number) => g.tiles[y * MAP_W + x] !== Tile.Void : (x: number, y: number) => g.tiles[y * MAP_W + x] === Tile.Corridor;
+  const out = traceMask(on, MAP_W, MAP_H).map((l) => l.map((q) => ({ x: q.x * TILE, y: q.y * TILE })));
+  loopsCache.set(key, out);
+  return out;
+}
+
+/** Outline loops (world px) of the whole building footprint (rooms + corridors). */
+export function buildingLoops(): Pt[][] {
+  return loops('slab');
+}
+
+/** Outline loops (world px) of the corridor tiles alone. */
+export function corridorLoops(): Pt[][] {
+  return loops('corridor');
+}
+
+/** Trace the walkable building outline (all footprint loops, rounded corners) as one path. */
+export function traceBuildingOutline(ctx: Ctx, inset = 0): void {
+  ctx.beginPath();
+  for (const l of buildingLoops()) tracePolyPath(ctx, inset ? offsetPoly(l, inset) : l, 10, false);
 }
 
 /**
- * Trace the walkable building outline: the core block (rows 0–2 + their
- * corridors) with one tab per annex room hanging below it. Convex corners
- * are rounded generously, concave ones lightly.
+ * Paved apron hugging the building: a wide stroke around every corridor run
+ * and every room outline (their union reads as one path of paving).
  */
-export function traceBuildingOutline(ctx: Ctx, inset = 0): void {
-  const L = TILE * 0.5 + inset;
-  const R = (MAP_W - 0.5) * TILE - inset;
-  const T = TILE * 0.5 + inset;
-  const Y = ANNEX_Y * TILE - inset; // bottom of the core slab
-  const B = (MAP_H - 0.5) * TILE - inset;
-  const pts: [number, number, number][] = [
-    [L, T, 18],
-    [R, T, 18],
-    [R, Y, 14],
-  ];
-  for (const [x0, x1] of annexSpans().reverse()) {
-    pts.push([x1 - inset, Y, 10], [x1 - inset, B, 16], [x0 + inset, B, 16], [x0 + inset, Y, 10]);
-  }
-  pts.push([L, Y, 14]);
+export function drawApron(ctx: Ctx, region?: Region): void {
+  const winter = env.season === 'winter';
+  ctx.save();
+  ctx.strokeStyle = winter ? 'rgba(206,219,236,0.92)' : 'rgba(216,206,186,0.92)';
+  ctx.lineWidth = 30;
+  ctx.lineJoin = 'round';
   ctx.beginPath();
-  const n = pts.length;
-  const first = pts[0]!;
-  const last = pts[n - 1]!;
-  ctx.moveTo((first[0] + last[0]) / 2, (first[1] + last[1]) / 2);
-  for (let i = 0; i < n; i++) {
-    const [x, y, r] = pts[i]!;
-    const nx = pts[(i + 1) % n]!;
-    ctx.arcTo(x, y, nx[0], nx[1], r);
+  for (const l of corridorLoops()) tracePolyPath(ctx, l, 10, false);
+  for (const room of ROOMS) {
+    const pr = roomPolygon(room);
+    if (region && !polyHits(pr, region, 30)) continue;
+    tracePolyPath(ctx, pr, 10, false);
   }
-  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function polyHits(pts: readonly Pt[], r: Region, pad: number): boolean {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const q of pts) {
+    x0 = Math.min(x0, q.x);
+    y0 = Math.min(y0, q.y);
+    x1 = Math.max(x1, q.x);
+    y1 = Math.max(y1, q.y);
+  }
+  return x0 - pad < r.x + r.w && x1 + pad > r.x && y0 - pad < r.y + r.h && y1 + pad > r.y;
 }
 
 /** Deterministic hash → [0, 1). */
@@ -123,35 +147,24 @@ function tree(ctx: Ctx, x: number, y: number, r: number, g: Garden): void {
   ctx.fill();
 }
 
-/** Outdoor terrace garden on the annex Void cells either side of the Arcade. */
-/** Lawn beds (world px) on the terrace either side of the annex rooms. */
+/** Lawn beds (world px): one per courtyard between the wings. */
 export function terraceBeds(): Region[] {
-  const top = ANNEX_Y * TILE + 14;
-  const bottom = (MAP_H - 0.5) * TILE;
-  const beds: Region[] = [];
-  let x = TILE * 0.5;
-  for (const [x0, x1] of annexSpans()) {
-    if (x0 - x > TILE * 2) beds.push({ x: x + 8, y: top, w: x0 - x - 22, h: bottom - top - 8 });
-    x = x1;
-  }
-  if ((MAP_W - 0.5) * TILE - x > TILE * 2)
-    beds.push({
-      x: x + 14,
-      y: top,
-      w: (MAP_W - 0.5) * TILE - x - 22,
-      h: bottom - top - 8,
-    });
-  return beds;
+  return COURTYARDS.map((r) => ({ x: r.x * TILE + 8, y: r.y * TILE + 8, w: r.w * TILE - 16, h: r.h * TILE - 16 }));
 }
 
-/** Stepping-stone centres of a bed's path (it winds toward the Arcade). */
-export function stonePath(b: Region, towardRight: boolean): { x: number; y: number }[] {
-  const py = b.y + b.h * 0.42;
+/** Stepping-stone centres of a bed's path: it meanders along the bed's long axis. */
+export function stonePath(b: Region, flip: boolean): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
-  for (let i = 0; i < 9; i++) {
-    const k = i / 8;
-    const px = towardRight ? b.x + b.w * (0.15 + 0.85 * k) : b.x + b.w * (0.85 - 0.85 * k);
-    out.push({ x: px, y: py + Math.sin(k * Math.PI * 1.5) * 18 });
+  const horizontal = b.w >= b.h;
+  const len = horizontal ? b.w : b.h;
+  const n = Math.max(4, Math.round(len / 46));
+  const amp = Math.min(18, (horizontal ? b.h : b.w) * 0.18);
+  for (let i = 0; i <= n; i++) {
+    const k = flip ? 1 - i / n : i / n;
+    const along = 0.12 + 0.76 * k;
+    const wob = Math.sin(k * Math.PI * 1.5) * amp;
+    if (horizontal) out.push({ x: b.x + b.w * along, y: b.y + b.h * 0.46 + wob });
+    else out.push({ x: b.x + b.w * 0.5 + wob, y: b.y + b.h * along });
   }
   return out;
 }
@@ -162,6 +175,9 @@ export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
 
   for (const [bi, b] of beds.entries()) {
     if (region && (b.x > region.x + region.w || b.y > region.y + region.h || b.x + b.w < region.x || b.y + b.h < region.y)) continue;
+    const horizontal = b.w >= b.h;
+    const flip = bi % 2 === 1;
+    const path = stonePath(b, flip);
     // Lawn.
     roundRect(ctx, b.x, b.y, b.w, b.h, 16);
     ctx.fillStyle = g.grass;
@@ -169,64 +185,70 @@ export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
     ctx.strokeStyle = g.line;
     ctx.lineWidth = 1;
     ctx.stroke();
-    // Mown stripes.
+    // Mown stripes (across the long axis).
     ctx.save();
     roundRect(ctx, b.x, b.y, b.w, b.h, 16);
     ctx.clip();
     ctx.fillStyle = g.grassAlt;
-    for (let sx = b.x; sx < b.x + b.w; sx += 48) ctx.fillRect(sx, b.y, 24, b.h);
-    // Stepping-stone path toward the Arcade terrace door.
-    const towardRight = bi === 0;
+    if (horizontal) for (let sx = b.x; sx < b.x + b.w; sx += 48) ctx.fillRect(sx, b.y, 24, b.h);
+    else for (let sy = b.y; sy < b.y + b.h; sy += 48) ctx.fillRect(b.x, sy, b.w, 24);
+    // Meandering stepping-stone path.
     ctx.fillStyle = g.path;
-    for (const st of stonePath(b, towardRight)) {
-      roundRect(ctx, st.x - 9, st.y - 6, 18, 12, 5);
+    for (const st of path) {
+      if (horizontal) roundRect(ctx, st.x - 9, st.y - 6, 18, 12, 5);
+      else roundRect(ctx, st.x - 6, st.y - 9, 12, 18, 5);
       ctx.fill();
     }
-    // Pond with lily pads (right garden) / round planter (left garden).
-    if (!towardRight) {
-      const pcx = b.x + b.w * 0.62;
-      const pcy = b.y + b.h * 0.76;
+    // One feature per garden: a pond, a round planter, or a little grove.
+    const feature = bi % 3;
+    const minDim = Math.min(b.w, b.h);
+    const fx = horizontal ? b.x + b.w * (flip ? 0.3 : 0.66) : b.x + b.w * 0.5;
+    const fy = horizontal ? b.y + b.h * 0.78 : b.y + b.h * (flip ? 0.28 : 0.7);
+    if (feature === 0 && minDim > 90) {
+      const rx = Math.min(62, minDim * 0.38);
+      const ry = rx * 0.5;
+      const pcx = horizontal ? fx : b.x + b.w * 0.5;
+      const pcy = horizontal ? Math.min(fy, b.y + b.h - ry - 10) : fy;
       ctx.fillStyle = g.water;
       ctx.beginPath();
-      ctx.ellipse(pcx, pcy, 62, 30, 0, 0, Math.PI * 2);
+      ctx.ellipse(pcx, pcy, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = hexA('#ffffff', th.name === 'dark' ? 0.08 : 0.5);
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.ellipse(pcx - 8, pcy - 4, 36, 14, 0, Math.PI * 1.1, Math.PI * 1.7);
+      ctx.ellipse(pcx - rx * 0.13, pcy - ry * 0.13, rx * 0.58, ry * 0.46, 0, Math.PI * 1.1, Math.PI * 1.7);
       ctx.stroke();
       ctx.fillStyle = g.hedge;
       for (const [dx, dy] of [
-        [-30, 6],
-        [22, -8],
-        [34, 10],
+        [-0.5, 0.2],
+        [0.35, -0.26],
+        [0.55, 0.33],
       ] as const) {
         ctx.beginPath();
-        ctx.arc(pcx + dx, pcy + dy, 6, 0.4, Math.PI * 2);
-        ctx.lineTo(pcx + dx, pcy + dy);
+        ctx.arc(pcx + dx * rx, pcy + dy * ry, 6, 0.4, Math.PI * 2);
+        ctx.lineTo(pcx + dx * rx, pcy + dy * ry);
         ctx.fill();
       }
-    } else {
-      const pcx = b.x + b.w * 0.36;
-      const pcy = b.y + b.h * 0.78;
+    } else if (feature === 1 && minDim > 70) {
+      const r = Math.min(34, minDim * 0.3);
       ctx.fillStyle = g.path;
       ctx.beginPath();
-      ctx.arc(pcx, pcy, 34, 0, Math.PI * 2);
+      ctx.arc(fx, fy, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = g.hedgeDark;
       ctx.beginPath();
-      ctx.arc(pcx, pcy, 24, 0, Math.PI * 2);
+      ctx.arc(fx, fy, r * 0.7, 0, Math.PI * 2);
       ctx.fill();
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2;
         ctx.fillStyle = ['#f472b6', '#fbbf24', '#a78bfa'][i % 3]!;
         ctx.beginPath();
-        ctx.arc(pcx + Math.cos(a) * 14, pcy + Math.sin(a) * 14, 3.2, 0, Math.PI * 2);
+        ctx.arc(fx + Math.cos(a) * r * 0.42, fy + Math.sin(a) * r * 0.42, 3.2, 0, Math.PI * 2);
         ctx.fill();
       }
     }
     ctx.restore();
-    // Hedge along the building edge (with a soft shadow on the lawn).
+    // Hedge along the top edge (with a soft shadow on the lawn).
     ctx.fillStyle = 'rgba(0,0,0,0.08)';
     roundRect(ctx, b.x + 8, b.y + 10, b.w - 12, 14, 7);
     ctx.fill();
@@ -239,12 +261,14 @@ export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
       ctx.arc(hx, b.y + 9, 7.5, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Trees scattered by a stable hash.
-    for (let i = 0; i < 9; i++) {
-      const tx = b.x + 30 + hash01(i, bi * 7 + 1) * (b.w - 60);
-      const ty = b.y + 48 + hash01(i * 3 + 1, bi * 5 + 2) * (b.h - 90);
-      if (Math.abs(ty - (b.y + b.h * 0.42)) < 30) continue; // keep the path clear
-      tree(ctx, tx, ty, 13 + hash01(i, 99 + bi) * 9, g);
+    // Trees scattered by a stable hash, kept off the path and the feature.
+    const count = Math.round((b.w * b.h) / 9000) + (feature === 2 ? 4 : 1);
+    for (let i = 0; i < count; i++) {
+      const tx = b.x + 22 + hash01(i, bi * 7 + 1) * (b.w - 44);
+      const ty = b.y + 36 + hash01(i * 3 + 1, bi * 5 + 2) * (b.h - 60);
+      if (path.some((st) => Math.hypot(st.x - tx, st.y - ty) < 26)) continue;
+      if (feature !== 2 && Math.hypot(fx - tx, fy - ty) < 70) continue;
+      tree(ctx, tx, ty, 11 + hash01(i, 99 + bi) * 8, g);
     }
   }
 }
@@ -263,7 +287,7 @@ export function drawArcadeCarpet(ctx: Ctx, room: RoomDef, th: ThemeTokens): void
   const base = arcadeFloor(th);
   const alt = th.name === 'dark' ? '#140e29' : th.name === 'soft' ? '#30264a' : '#2b2049';
   ctx.save();
-  roundRect(ctx, x0, y0, w, h, 10);
+  tracePolyPath(ctx, roomPolygon(room), 10);
   ctx.clip();
   ctx.fillStyle = base;
   ctx.fillRect(x0, y0, w, h);
@@ -304,7 +328,7 @@ export function drawArcadeCarpet(ctx: Ctx, room: RoomDef, th: ThemeTokens): void
   // Neon trim inset along the walls.
   ctx.strokeStyle = hexA('#ff4fd8', 0.35);
   ctx.lineWidth = 1.5;
-  roundRect(ctx, x0 + 10, y0 + 10, w - 20, h - 20, 6);
+  tracePolyPath(ctx, offsetPoly(roomPolygon(room), 10), 6);
   ctx.stroke();
   ctx.restore();
 }

@@ -9,7 +9,7 @@ import type { Cosmetics } from '../mystery/core/types';
 import { paintFloorTile } from '../mystery/render2d/paint';
 import type { FloorStyle } from '../mystery/core/map';
 import { SEASON_STYLE, scatter, type Season } from '../theme/environment';
-import { WORLD_H, WORLD_W, TILE, type RoomDef } from '../engine/world';
+import { COURTYARDS, MAP_H, MAP_W, Tile, WORLD_H, WORLD_W, TILE, buildGrid, type RoomDef } from '../engine/world';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -173,7 +173,11 @@ function shade(hex: string, amt: number): string {
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-/** Trees ring the building on the lawn outside the world bounds. */
+/**
+ * Trees ring the building on the lawn outside the world bounds, and stand in
+ * the open ground between the wings (never on a courtyard bed, never close
+ * enough to the building for a canopy to overlap it).
+ */
 export const TREES: readonly { x: number; y: number; v: number; s: number }[] = (() => {
   const out: { x: number; y: number; v: number; s: number }[] = [];
   const pad = 70;
@@ -193,6 +197,26 @@ export const TREES: readonly { x: number; y: number; v: number; s: number }[] = 
     push(-pad - scatter(i, 10) * 70, y);
     push(WORLD_W + pad + scatter(i, 12) * 70, y + 30);
   }
+  // Open ground inside the bounds: a clear box around the trunk (canopies reach up ~4 tiles).
+  const grid = buildGrid();
+  const clear = (tx: number, ty: number) => {
+    for (let y = ty - 5; y <= ty + 2; y++)
+      for (let x = tx - 3; x <= tx + 3; x++) {
+        if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
+        if (grid.tiles[y * MAP_W + x] !== Tile.Void) return false;
+        if (COURTYARDS.some((r) => x >= r.x - 1 && y >= r.y - 1 && x <= r.x + r.w && y <= r.y + r.h)) return false;
+      }
+    return true;
+  };
+  for (let ty = 2; ty < MAP_H; ty += 3)
+    for (let tx = 1; tx < MAP_W - 1; tx += 3) {
+      const k = ty * 131 + tx;
+      const jx = tx + Math.round((scatter(k, 3) - 0.5) * 2);
+      const jy = ty + Math.round((scatter(k, 7) - 0.5) * 2);
+      if (scatter(k, 11) > 0.7 || !clear(jx, jy)) continue;
+      if (out.some((t) => Math.hypot(t.x - (jx + 0.5) * TILE, t.y - (jy + 0.5) * TILE) < TILE * 3.2)) continue;
+      push((jx + 0.5) * TILE, (jy + 0.8) * TILE);
+    }
   return out;
 })();
 
@@ -205,10 +229,7 @@ export function drawOutdoors(ctx: Ctx, vis: { x: number; y: number; w: number; h
   ctx.save();
   ctx.fillStyle = p ?? SEASON_STYLE[env.season].ground;
   ctx.fillRect(vis.x - 4, vis.y - 4, vis.w + 8, vis.h + 8);
-  // Paved apron hugging the building.
-  ctx.strokeStyle = env.season === 'winter' ? 'rgba(200,214,232,0.9)' : 'rgba(214,205,186,0.9)';
-  ctx.lineWidth = 34;
-  ctx.strokeRect(-14, -14, WORLD_W + 28, WORLD_H + 28);
+  // (The paved apron that hugs the building's real outline is baked into the static layer.)
   ctx.restore();
 }
 

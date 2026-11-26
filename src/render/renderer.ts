@@ -7,13 +7,14 @@ import type { RoomId } from '../data/bots';
 import { bubbleAlpha, layoutBubbles, type Rect } from '../engine/bubbles';
 import type { Camera } from '../engine/camera';
 import type { Simulation, SimBot } from '../engine/sim';
-import { doorTilesLocal, propCenter, propRect, roomRect, ROOMS, ROOM_BY_ID, TILE, TUBE_ROUTES, tubePort, WORLD_H, WORLD_W, type Point } from '../engine/world';
+import { offsetPoly, tracePolyPath } from '../engine/geometry';
+import { doorSegment, propCenter, propRect, roomLabelAnchor, roomPolygon, roomRect, ROOMS, ROOM_BY_ID, TILE, TUBE_ROUTES, tubePort, WORLD_H, WORLD_W, type Point, type RoomDef } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
 import { drawBerry } from '../mystery/characters/draw2d';
 import { env as seasonEnv, drawOutdoors, drawTrees, lookFor, roomFloorTexture, setEnvironment, updateDrawParticles } from './seasonal';
 import type { Season } from '../theme/environment';
 import { createNightMaskCanvas, drawDaylight, drawLightFixtures, NIGHT_MASK_SCALE, nightFactor } from './daylight';
-import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
+import { arcadeFloor, drawApron, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
 import { accentSpill, floorKeyLight, propShadow, propShadowShape, roomOcclusion, softShadow, wallBevel } from './lighting';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
 import { drawGlow, hexA, roundRect } from './sprites';
@@ -88,17 +89,26 @@ function rasterize(w: number, h: number, draw: (c: CanvasRenderingContext2D) => 
   return { image: canvas, pixels: W * H };
 }
 
-/** Mac project workstations the relay rack tethers out to (world px). */
+/** Mac project workstations the relay rack tethers out to (world px): the gallery west of the Engine Room. */
 export const MAC_STATIONS: Record<RelayModel, Point> = (() => {
   const engine = ROOM_BY_ID.engine;
-  const x = TILE * 1.5;
-  const y0 = engine.y * TILE + TILE * 3;
+  const x = (engine.x - 1) * TILE;
+  const y = (k: number) => (engine.y + k) * TILE;
   return {
-    'claude-opus-auto': { x, y: y0 },
-    codex: { x, y: y0 + TILE * 3 },
-    gemini: { x, y: y0 + TILE * 6 },
+    'claude-opus-auto': { x, y: y(4.5) },
+    codex: { x, y: y(7.5) },
+    gemini: { x, y: y(13.5) },
   };
 })();
+
+/** A room's bounding rect plus its real outline (for the lighting helpers). */
+function roomShape(ctx: Ctx, room: RoomDef) {
+  const poly = roomPolygon(room);
+  return {
+    ...roomRect(room),
+    outline: (inset: number, radius: number) => tracePolyPath(ctx, inset ? offsetPoly(poly, inset) : poly, radius),
+  };
+}
 
 function releaseImage(img: CanvasImageSource | null): void {
   if (img && typeof (img as ImageBitmap).close === 'function') (img as ImageBitmap).close();
@@ -285,11 +295,10 @@ export class Renderer {
     // Selection + hover outlines.
     for (const id of [opts.selectedRoom, opts.hoverRoom]) {
       if (!id) continue;
-      const r = roomRect(ROOM_BY_ID[id]);
       ctx.save();
       ctx.strokeStyle = hexA(theme.accent, id === opts.selectedRoom ? 0.9 : 0.35);
       ctx.lineWidth = id === opts.selectedRoom ? 2.5 : 1.5;
-      roundRect(ctx, r.x - 3, r.y - 3, r.w + 6, r.h + 6, 12);
+      tracePolyPath(ctx, offsetPoly(roomPolygon(ROOM_BY_ID[id]), -3), 12);
       ctx.stroke();
       ctx.restore();
     }
@@ -455,13 +464,17 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (const room of ROOMS) {
-      const r = roomRect(room);
-      // Sits exactly over the baked legend label (top-left, in the corridor) so the two never double up.
+      const r = roomLabelAnchor(room);
+      // Sits exactly over the baked legend label (top-left, above the top wall) so the two never double up.
       const s = cam.worldToScreen(r.x, r.y - 12);
       if (s.x < -200 || s.x > this.cssW + 20 || s.y < -20 || s.y > this.cssH + 20) continue;
       const label = room.short;
       const tw = ctx.measureText(label).width;
-      const w = tw + 24;
+      // Wide enough to hide the whole baked legend label underneath (it can sit over open lawn).
+      ctx.font = '700 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+      const baked = (ctx.measureText(room.name.toUpperCase()).width + 15) * cam.zoom;
+      ctx.font = '650 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+      const w = Math.max(tw + 24, baked + 6);
       const x = Math.round(s.x - 4);
       const y = Math.round(s.y - 9);
       const accent = ROOM_ACCENT[room.id];
@@ -500,10 +513,10 @@ export class Renderer {
       }
       // A soundwave travels along the Agent ↔ Life conduit.
       if (w.source !== 'life') {
-        const b = ROOM_BY_ID.bridge;
-        const y = (b.y + 6) * TILE;
-        const x0 = (b.x + 1) * TILE;
-        const span = (b.w - 2) * TILE;
+        const c = propRect(ROOM_BY_ID.bridge, ROOM_BY_ID.bridge.props.find((q) => q.kind === 'conduit')!);
+        const y = c.y + c.h / 2;
+        const x0 = c.x;
+        const span = c.w;
         const pos = ((t * 0.5) % 1) * span;
         ctx.save();
         ctx.globalAlpha = fade;
@@ -665,11 +678,12 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   // The ground outside the building is transparent here: the seasonal
   // outdoors (drawn per frame underneath) shows through.
 
-  // Outdoor terrace garden on the annex Void cells.
+  // Paved apron hugging the building, then the courtyard gardens between the wings.
+  drawApron(ctx, region);
   drawTerrace(ctx, theme, region);
 
-  // Corridor slab (core block + the corridor ring around the Arcade), lifted off
-  // the ground by a soft drop shadow.
+  // Building slab (every room and corridor tile, traced as one rounded
+  // footprint), lifted off the ground by a soft drop shadow.
   softShadow(ctx, () => traceBuildingOutline(ctx), theme, 20, 3, 9, 0.035);
   traceBuildingOutline(ctx);
   ctx.fillStyle = w.corridor;
@@ -684,37 +698,40 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     const r = roomRect(room);
     if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 24)) continue;
     const accent = ROOM_ACCENT[room.id];
+    const shape = roomShape(ctx, room);
+    const clipRoom = () => {
+      shape.outline(0, 10);
+      ctx.clip();
+    };
     // Drop shadow: rooms sit a step above the corridor.
-    softShadow(ctx, () => roundRect(ctx, r.x, r.y, r.w, r.h, 10), theme, 10, 1.5, 5, 0.04);
+    softShadow(ctx, () => shape.outline(0, 10), theme, 10, 1.5, 5, 0.04);
     // Floor.
     let floor = w.floor;
     const darkFloor = room.id === 'cutting' || room.id === 'arcade';
     if (room.id === 'cutting') floor = theme.name === 'light' ? '#20242f' : theme.name === 'soft' ? '#262a33' : '#0c0f16';
     if (room.id === 'arcade') {
       drawArcadeCarpet(ctx, room, theme);
-      floorKeyLight(ctx, r, theme, '#ff8fe6', true);
+      floorKeyLight(ctx, shape, theme, '#ff8fe6', true);
     } else if (room.id === 'cutting') {
       ctx.fillStyle = floor;
-      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+      shape.outline(0, 10);
       ctx.fill();
-      floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
+      floorKeyLight(ctx, shape, theme, '#ffffff', darkFloor);
     } else {
       // Marion Mystery floor materials (tile, wood, carpet, metal, rug…).
       ctx.save();
-      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
-      ctx.clip();
+      clipRoom();
       ctx.drawImage(roomFloorTexture(room, accent, floor), r.x, r.y, r.w, r.h);
       if (theme.name !== 'light') {
         ctx.fillStyle = `rgba(6,10,24,${theme.name === 'dark' ? 0.45 : 0.22})`;
         ctx.fillRect(r.x, r.y, r.w, r.h);
       }
       ctx.restore();
-      floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
+      floorKeyLight(ctx, shape, theme, '#ffffff', darkFloor);
     }
     // Floor tile grid.
     ctx.save();
-    roundRect(ctx, r.x, r.y, r.w, r.h, 10);
-    ctx.clip();
+    clipRoom();
     ctx.strokeStyle = room.id === 'cutting' ? 'rgba(255,255,255,0.03)' : hexA(theme.name === 'dark' ? '#ffffff' : '#0f172a', 0.035);
     ctx.beginPath();
     for (let x = r.x; x <= r.x + r.w; x += TILE) {
@@ -728,26 +745,27 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     ctx.stroke();
     ctx.restore();
     // Ambient occlusion where floor meets wall.
-    roomOcclusion(ctx, r, theme, darkFloor);
+    roomOcclusion(ctx, shape, theme, darkFloor);
 
     // Walls (with door gaps; thresholds match this room's floor).
-    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door, theme);
+    drawWalls(ctx, room, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door, theme);
     // Accent strip along the top wall, spilling a little coloured light onto the floor.
-    accentSpill(ctx, r, accent, theme);
+    const top = roomLabelAnchor(room);
+    accentSpill(ctx, shape, accent, theme, top);
     ctx.fillStyle = hexA(accent, 0.75);
-    roundRect(ctx, r.x + TILE * 0.6, r.y + 4, TILE * 2.2, 3, 1.5);
+    roundRect(ctx, top.x + TILE * 0.6, top.y + 4, TILE * 2.2, 3, 1.5);
     ctx.fill();
 
-    // Room label (sits in the corridor above the room, map-legend style).
+    // Room label (legend style, just above the room's top wall).
     ctx.font = '700 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
     ctx.fillStyle = accent;
     ctx.beginPath();
-    ctx.arc(r.x + 6, r.y - 12, 3.5, 0, Math.PI * 2);
+    ctx.arc(top.x + 6, top.y - 12, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = w.label;
-    ctx.fillText(room.name.toUpperCase(), r.x + 15, r.y - 8);
+    ctx.fillText(room.name.toUpperCase(), top.x + 15, top.y - 8);
   }
 
   // Pneumatic tubes (overhead glass).
@@ -812,49 +830,49 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   if (region) ctx.restore();
 }
 
-function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string, theme?: ThemeTokens): void {
-  const x = tx * TILE;
-  const y = ty * TILE;
-  const w = tw * TILE;
-  const h = th * TILE;
+function drawWalls(ctx: Ctx, room: RoomDef, wall: string, door: string, theme?: ThemeTokens): void {
+  const poly = roomPolygon(room);
+  const at = (inset: number, radius: number) => tracePolyPath(ctx, offsetPoly(poly, inset), radius);
   ctx.save();
   // Marion Mystery-style 2.5D walls: thick body, a darker inner face under the
-  // top wall (so rooms read as raised boxes) and a lit cap line.
+  // top walls (so rooms read as raised boxes) and a lit cap line. Walls follow
+  // the room's real outline: notches, angled corners and all.
   // Mystery's navy walls in light/soft themes; the dark theme keeps its own.
   const body = theme?.name === 'light' ? '#3a4874' : theme?.name === 'soft' ? '#59627f' : wall;
   ctx.strokeStyle = body;
   ctx.lineWidth = 10;
-  roundRect(ctx, x + 5, y + 5, w - 10, h - 10, 10);
+  ctx.lineJoin = 'round';
+  at(5, 10);
   ctx.stroke();
+  // Inner face under every top-facing wall run.
+  ctx.save();
+  at(10, 8);
+  ctx.clip();
   ctx.fillStyle = 'rgba(10,15,35,0.22)';
-  ctx.fillRect(x + 10, y + 10, w - 20, 8);
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]!;
+    if (a.y === b.y && b.x > a.x) ctx.fillRect(a.x, a.y + 10, b.x - a.x, 8);
+  });
+  ctx.restore();
   ctx.strokeStyle = theme?.name === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(150,170,220,0.95)';
   ctx.lineWidth = 2;
-  roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 11);
+  at(2, 11);
   ctx.stroke();
-  if (theme) wallBevel(ctx, { x, y, w, h }, theme);
+  if (theme) wallBevel(ctx, roomShape(ctx, room), theme);
   // Punch doors.
   ctx.strokeStyle = door;
   ctx.lineWidth = 8;
   ctx.lineCap = 'butt';
-  const doors = doorTilesLocal();
-  const groups: [Point, Point][] = [
-    [doors[0]!, doors[1]!],
-    [doors[2]!, doors[3]!],
-    [doors[4]!, doors[5]!],
-    [doors[6]!, doors[7]!],
-  ];
-  for (const [a, b] of groups) {
+  for (const d of room.doors) {
+    const s = doorSegment(room, d);
+    // 3 px inside the outline, trimmed 2 px at each jamb.
+    const ix = -s.n.x * 3;
+    const iy = -s.n.y * 3;
+    const tx = Math.sign(s.b.x - s.a.x) * 2;
+    const ty = Math.sign(s.b.y - s.a.y) * 2;
     ctx.beginPath();
-    if (a.y === b.y) {
-      const yy = y + (a.y === 0 ? 3 : h - 3);
-      ctx.moveTo(x + a.x * TILE + 2, yy);
-      ctx.lineTo(x + (b.x + 1) * TILE - 2, yy);
-    } else {
-      const xx = x + (a.x === 0 ? 3 : w - 3);
-      ctx.moveTo(xx, y + a.y * TILE + 2);
-      ctx.lineTo(xx, y + (b.y + 1) * TILE - 2);
-    }
+    ctx.moveTo(s.a.x + ix + tx, s.a.y + iy + ty);
+    ctx.lineTo(s.b.x + ix - tx, s.b.y + iy - ty);
     ctx.stroke();
   }
   ctx.restore();

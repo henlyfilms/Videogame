@@ -7,9 +7,10 @@
  * additively. Lamp fixtures and window glass are baked into the static layer
  * by `drawLightFixtures`, so they exist (unlit) during the day too.
  */
-import { ANNEX_Y, CORRIDOR, MAP_H, MAP_W, ROOM_H, ROOM_W, ROOMS, TILE } from '../engine/world';
+import { pointInPoly, type Pt } from '../engine/geometry';
+import { CORRIDORS, MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid } from '../engine/world';
 import type { ThemeTokens } from '../theme/tokens';
-import { annexSpans, stonePath, terraceBeds } from './ground';
+import { corridorLoops, stonePath, terraceBeds } from './ground';
 import { hexA } from './sprites';
 
 type Ctx = CanvasRenderingContext2D;
@@ -70,77 +71,117 @@ export interface WindowLight {
   /** Outward normal (the side light spills toward). */
   nx: number;
   ny: number;
+  /** On a room wall (taller in 3D) rather than a corridor facade. */
+  wall?: boolean;
 }
 
 const WARM = '#ffd08a';
-const vCorr = (i: number) => (i * (ROOM_W + CORRIDOR) + CORRIDOR / 2) * TILE;
-const hCorr = (j: number) => (j * (ROOM_H + CORRIDOR) + CORRIDOR / 2) * TILE;
 
 export const LAMPS: readonly Lamp[] = (() => {
   const out: Lamp[] = [];
-  const corridor = (x: number, y: number) => out.push({ x, y, r: 52, color: WARM, strength: 0.7, kind: 'corridor' });
-  // Core corridors: every intersection plus the middle of each horizontal run.
-  for (let i = 0; i <= 3; i++) for (let j = 0; j <= 3; j++) corridor(vCorr(i), hCorr(j));
-  for (let c = 0; c < 3; c++) for (let j = 0; j <= 3; j++) corridor(vCorr(c) + ((ROOM_W + CORRIDOR) * TILE) / 2, hCorr(j));
-  // Corridor ring around annex rooms.
-  for (const [x0, x1] of annexSpans()) {
-    const l = x0 + (CORRIDOR / 2) * TILE;
-    const r = x1 - (CORRIDOR / 2) * TILE;
-    const bottom = (MAP_H - 2) * TILE;
-    for (const y of [(ANNEX_Y + 6) * TILE, bottom]) {
-      corridor(l, y);
-      corridor(r, y);
-    }
-    corridor((x0 + x1) / 2, bottom);
-  }
-  // Room ceiling lights (two warm pools; the Arcade gets neon pools instead).
-  for (const room of ROOMS) {
-    const cx = room.x * TILE;
-    const cy = (room.y + room.h / 2) * TILE;
-    if (room.id === 'arcade') {
-      out.push({ x: cx + room.w * TILE * 0.25, y: cy - 40, r: 150, color: '#ff4fd8', strength: 0.75, kind: 'neon' });
-      out.push({ x: cx + room.w * TILE * 0.72, y: cy - 60, r: 140, color: '#22d3ee', strength: 0.6, kind: 'neon' });
-      out.push({ x: cx + room.w * TILE * 0.5, y: cy + 70, r: 150, color: '#a78bfa', strength: 0.6, kind: 'neon' });
+  const grid = buildGrid();
+  const isCorridor = (x: number, y: number) => grid.tiles[Math.floor(y) * MAP_W + Math.floor(x)] === Tile.Corridor;
+  // Corridor lamps every few tiles along each run's centre line (skipping ones too close to another).
+  const corridor = (tx: number, ty: number) => {
+    if (!isCorridor(tx, ty)) return;
+    const x = tx * TILE;
+    const y = ty * TILE;
+    if (out.some((l) => l.kind === 'corridor' && Math.hypot(l.x - x, l.y - y) < TILE * 3.6)) return;
+    out.push({ x, y, r: 52, color: WARM, strength: 0.7, kind: 'corridor' });
+  };
+  for (const c of CORRIDORS) {
+    const horizontal = c.w >= c.h;
+    const len = horizontal ? c.w : c.h;
+    if (len < 5) {
+      corridor(c.x + c.w / 2, c.y + c.h / 2);
       continue;
     }
-    out.push({ x: cx + room.w * TILE * 0.3, y: cy, r: 125, color: '#ffd9a0', strength: 0.42, kind: 'room' });
-    out.push({ x: cx + room.w * TILE * 0.7, y: cy, r: 125, color: '#ffd9a0', strength: 0.42, kind: 'room' });
+    for (let a = 1.5; a <= len - 1; a += 5.5) corridor(horizontal ? c.x + a : c.x + c.w / 2, horizontal ? c.y + c.h / 2 : c.y + a);
   }
-  // Garden path lights along the terrace stepping stones.
+  // Room ceiling lights (warm pools; big rooms get four; the Arcade gets neon pools instead).
+  for (const room of ROOMS) {
+    const at = (fx: number, fy: number) => {
+      let lx = room.w * fx;
+      let ly = room.h * fy;
+      // Nudge toward the centre until the point is on the room's floor.
+      for (let k = 0; k < 8 && !pointInPoly({ x: lx, y: ly }, room.outline); k++) {
+        lx += (room.w / 2 - lx) * 0.3;
+        ly += (room.h / 2 - ly) * 0.3;
+      }
+      return { x: (room.x + lx) * TILE, y: (room.y + ly) * TILE };
+    };
+    if (room.id === 'arcade') {
+      const a = at(0.25, 0.42);
+      const b = at(0.72, 0.33);
+      const c = at(0.5, 0.75);
+      out.push({ ...a, r: 150, color: '#ff4fd8', strength: 0.75, kind: 'neon' });
+      out.push({ ...b, r: 140, color: '#22d3ee', strength: 0.6, kind: 'neon' });
+      out.push({ ...c, r: 150, color: '#a78bfa', strength: 0.6, kind: 'neon' });
+      continue;
+    }
+    const big = room.w * room.h > 300;
+    const spots = big
+      ? [
+          [0.3, 0.33],
+          [0.7, 0.33],
+          [0.3, 0.7],
+          [0.7, 0.7],
+        ]
+      : [
+          [0.3, 0.5],
+          [0.7, 0.5],
+        ];
+    for (const [fx, fy] of spots) out.push({ ...at(fx!, fy!), r: 125, color: '#ffd9a0', strength: 0.42, kind: 'room' });
+  }
+  // Garden path lights along the courtyard stepping stones.
   terraceBeds().forEach((b, bi) => {
-    stonePath(b, bi === 0).forEach((st, i) => {
+    stonePath(b, bi % 2 === 1).forEach((st, i) => {
       if (i % 2 === 0) out.push({ x: st.x, y: st.y + 16, r: 46, color: '#fff1c4', strength: 0.9, kind: 'garden' });
     });
   });
   return out;
 })();
 
+/**
+ * Window panes on every outside wall (room walls and corridor facades that face
+ * open ground), spaced along each straight run and skipping doors.
+ */
 export const WINDOWS: readonly WindowLight[] = (() => {
   const out: WindowLight[] = [];
-  const L = TILE * 0.5;
-  const R = (MAP_W - 0.5) * TILE;
-  const T = TILE * 0.5;
-  const Y = ANNEX_Y * TILE;
-  const B = (MAP_H - 0.5) * TILE;
+  const grid = buildGrid();
+  const voidAt = (x: number, y: number) => x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || grid.tiles[y * MAP_W + x] === Tile.Void;
   const len = TILE * 2;
-  const along = (a: number, b: number, fixed: number, horizontal: boolean, nx: number, ny: number) => {
-    for (let p = a + TILE * 2.5; p + len < b - TILE * 1.5; p += TILE * 5) {
-      if (horizontal) out.push({ x: p, y: fixed - 2, w: len, h: 4, nx, ny });
-      else out.push({ x: fixed - 2, y: p, w: 4, h: len, nx, ny });
+  /** Edge a→b in tiles (axis-aligned, clockwise loop): panes where the outside is open ground. */
+  const edge = (a: Pt, b: Pt, step: number, wall: boolean) => {
+    if (a.x !== b.x && a.y !== b.y) return;
+    const nx = Math.sign(b.y - a.y);
+    const ny = -Math.sign(b.x - a.x);
+    const horizontal = a.y === b.y;
+    const lo = horizontal ? Math.min(a.x, b.x) : Math.min(a.y, b.y);
+    const hi = horizontal ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+    if (hi - lo < 4) return;
+    for (let t = lo + 1.5; t + 2 <= hi - 1; t += step) {
+      // Tiles just outside the pane must be open ground.
+      let open = true;
+      for (let k = 0; k < 2 && open; k++) {
+        const s = Math.floor(t + k);
+        const ox = horizontal ? s : nx > 0 ? a.x : a.x - 1;
+        const oy = horizontal ? (ny > 0 ? a.y : a.y - 1) : s;
+        if (!voidAt(ox, oy)) open = false;
+      }
+      if (!open) continue;
+      if (horizontal) out.push({ x: t * TILE, y: a.y * TILE - 2, w: len, h: 4, nx, ny, wall });
+      else out.push({ x: a.x * TILE - 2, y: t * TILE, w: 4, h: len, nx, ny, wall });
     }
   };
-  along(L, R, T, true, 0, -1);
-  along(T, Y, L, false, -1, 0);
-  along(T, Y, R, false, 1, 0);
-  let x = L;
-  for (const [x0, x1] of annexSpans()) {
-    along(x, x0, Y, true, 0, 1);
-    along(Y, B, x0, false, -1, 0);
-    along(Y, B, x1, false, 1, 0);
-    along(x0, x1, B, true, 0, 1);
-    x = x1;
+  for (const room of ROOMS) {
+    const pts = room.outline.map((q) => ({ x: room.x + q.x, y: room.y + q.y }));
+    pts.forEach((q, i) => edge(q, pts[(i + 1) % pts.length]!, 5, true));
   }
-  along(x, R, Y, true, 0, 1);
+  for (const loop of corridorLoops()) {
+    const pts = loop.map((q) => ({ x: q.x / TILE, y: q.y / TILE }));
+    pts.forEach((q, i) => edge(q, pts[(i + 1) % pts.length]!, 6, false));
+  }
   return out;
 })();
 

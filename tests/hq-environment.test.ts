@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeEvent } from '../src/adapters/events';
 import { hqAmbienceFor, hqTrackFor } from '../src/audio/hqSound';
 import { Camera } from '../src/engine/camera';
-import { MAP_H, MAP_W, Tile, buildGrid, WORLD_H, WORLD_W } from '../src/engine/world';
+import { MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid, doorSegment, WORLD_H, WORLD_W } from '../src/engine/world';
 import { Simulation } from '../src/engine/sim';
 import { HQ } from '../src/game/hq';
 import { wire, populateSim } from '../src/game/wire';
@@ -10,7 +10,8 @@ import { TRACK_BY_ID } from '../src/mystery/audio/music';
 import { Renderer } from '../src/render/renderer';
 import { env } from '../src/render/seasonal';
 import { emptyView } from '../src/render/view';
-import { mergeRuns } from '../src/render3d/hq3d';
+import { mergeRuns, wallSegments } from '../src/render3d/hq3d';
+import { LAMPS, WINDOWS } from '../src/render/daylight';
 import { loadPersisted, persistedFrom, startPersistence, useGame } from '../src/store/gameStore';
 import { nightFactor, seasonFor, SEASONS, SEASON_STYLE } from '../src/theme/environment';
 
@@ -107,6 +108,41 @@ describe('HQ environment (seasons + day/night)', () => {
         } else expect(cover[y * MAP_W + x]).toBe(0);
       }
     expect(runs.length).toBeLessThan(walls / 3);
+  });
+
+  it('builds 3D walls along every room outline (angled runs included) with gaps at the doors', () => {
+    const dist = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
+    };
+    let angled = 0;
+    for (const room of ROOMS) {
+      const segs = wallSegments(room);
+      expect(segs.length).toBeGreaterThanOrEqual(room.outline.length);
+      angled += segs.filter((w) => w.a.x !== w.b.x && w.a.y !== w.b.y).length;
+      for (const d of room.doors) {
+        const s = doorSegment(room, d);
+        const mid = { x: (s.a.x + s.b.x) / 2 / TILE - s.n.x * 0.18, y: (s.a.y + s.b.y) / 2 / TILE - s.n.y * 0.18 };
+        for (const w of segs) expect(dist(mid, w.a, w.b), `${room.id} ${d.side} door`).toBeGreaterThan(0.5);
+      }
+    }
+    expect(angled).toBeGreaterThan(8);
+  });
+
+  it('derives lamps from the corridors and windows from the outside walls', () => {
+    const g = buildGrid();
+    const corridorLamps = LAMPS.filter((l) => l.kind === 'corridor');
+    expect(corridorLamps.length).toBeGreaterThan(15);
+    for (const l of corridorLamps) expect(g.tiles[Math.floor(l.y / TILE) * MAP_W + Math.floor(l.x / TILE)]).toBe(Tile.Corridor);
+    expect(WINDOWS.length).toBeGreaterThan(20);
+    for (const w of WINDOWS) {
+      // The tile just outside the pane is open ground.
+      const ox = Math.floor((w.x + w.w / 2 + w.nx * 16) / TILE);
+      const oy = Math.floor((w.y + w.h / 2 + w.ny * 16) / TILE);
+      if (ox >= 0 && oy >= 0 && ox < MAP_W && oy < MAP_H) expect(g.tiles[oy * MAP_W + ox]).toBe(Tile.Void);
+    }
   });
 
   it('has a music track per season, a night track, and seasonal ambience keys', () => {

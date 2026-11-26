@@ -67,7 +67,7 @@ The top bar shows live status counts, the Live / Replay / Socket switcher with a
 | **Sift's Media Vault** | Drop & Distill: drop reels or YouTube videos in the intake chute and distill them into FTS5 insight cards. A teammate picks each card up as a temporary speed or accuracy buff. Includes the Local / Cloud LLM console and a wall **dimmer** that switches Light / Soft / Dark. |
 | **Greek's Cutting Room** | Clip Sorter: bin raw clips as keepers or outtakes. Correct sorts push the render bar (+25%), wrong ones barely move it (+5%). At 100% the lamp goes **Tests Passed / Render Green**. |
 | **Quill's Mailroom** | Stamp‑to‑Send: mail shoots in by tube; sort it into *Needs Action / FYI / Noise*. Quill drafts replies (the red pen visibly shrinks them) into *Pending Approval*. **Only your brass Approval Stamp sends.** The bots never do, in any mode. Clear Noise before the inbox piles up. |
-| **The Arcade** (annex, 4th row) | Neon cabinets with animated attract‑mode screens, a High Scores board, a velvet sofa and a flickering ARCADE sign on a confetti carpet. Click the **Marion Mystery** cabinet (or *Play* in the panel) to open the game full‑screen inside the HQ. The panel also has **Quick Play vs Marion bots** (a local room with the crew seated as agents), **Join by code**, the persisted **arcade leaderboard** (wins · games · MVPs per bot and for you), the last 10 results, and "coming soon" cabinets from `src/arcade/registry.ts`. Bots wander in to play on their own; when a match ends, winners celebrate and losers sulk. |
+| **The Arcade** (south wing) | Neon cabinets with animated attract‑mode screens, a High Scores board, a velvet sofa and a flickering ARCADE sign on a confetti carpet. Click the **Marion Mystery** cabinet (or *Play* in the panel) to open the game full‑screen inside the HQ. The panel also has **Quick Play vs Marion bots** (a local room with the crew seated as agents), **Join by code**, the persisted **arcade leaderboard** (wins · games · MVPs per bot and for you), the last 10 results, and "coming soon" cabinets from `src/arcade/registry.ts`. Bots wander in to play on their own; when a match ends, winners celebrate and losers sulk. |
 | **Bot Builder's Foundry** | Spec‑to‑Spawn: a 1‑line job card plus shape and aura color spawns a custom glowing specialist (max 4, persisted). Slot Universal Skill cartridges (Token Optimizer, Claude Auto Mode, Prompt Craft, Zero‑Fluff Comms) for +12% HQ throughput each. Gauge and Forge rest in the 30‑Day Vault. |
 
 ## Architecture
@@ -89,7 +89,9 @@ src/
   mystery/    Marion Mystery (standalone game; also served at `?mystery`)
 ```
 
-**The Arcade wing.** The floorplan has a 4th annex row (`ROWS = 4`). Only its middle cell is a room (`arcade`). The cells either side are outdoor terrace (Void, painted as a garden), and only a 3‑tile corridor ring around the Arcade stays walkable, so the annex never becomes a corridor plaza.
+**The floorplan** (`src/engine/world.ts`) is a hand‑drawn, asymmetric station rather than a grid. Each room has its own position and size plus an outline polygon in tiles (`boxOutline` with per‑corner 45° chamfers or rectangular notches): an octagonal Command hub, a cockpit‑nosed Bridge, L‑shaped Engine Room and Mailroom, notched Life Hub and Foundry, an octagonal Cutting Room. Doors are declared per room (`d('n', col)` etc.). Corridors are explicit tile rects (`CORRIDORS`) of 2–7 tiles that dog‑leg, branch and dead‑end (the Mac gallery, the loading dock), and `COURTYARDS` mark the open‑air gardens between the wings. A tile is part of a room when its centre is strictly inside the outline; walls follow the outline (angled runs included) in both 2D and 3D. Tubes are routed on the tile grid (bend‑penalised, preferring corridors and bundling into shared runs).
+
+**The Arcade wing.** The Arcade hangs off the south end of the station with a single door, reached only by the long walk that runs down the west side and along the bottom, with gardens on either side.
 
 - **Launching the game:** the Marion Mystery cabinet's hotspot (`arcade`), the panel's Play / Quick Play / Join buttons and the ⌘K *Arcade* commands all call `launchMystery()`. `ArcadeOverlay` lazy‑loads `import('../mystery/ui/MysteryApp')` and renders it full‑screen with `onExit`, which shows Marion Mystery's own "Marion HQ" back button.
 - **While the game is open:** the HQ keeps **simulating** (bots walk to the Arcade as the game's agents join) but stops **painting** (`hq.renderSuspended`). HQ shortcuts and the lo‑fi loop are paused. Exiting restores the HQ exactly: camera, selection, panel and pause state are untouched.
@@ -121,7 +123,7 @@ Player actions only publish events, so live play, replays and remote streams beh
   - soft drop shadows under the building, rooms and props (layered strokes, never `shadowBlur`, so every cache scale matches);
   - ambient‑occlusion bands along the walls and a top‑left key light on floors;
   - two‑tone wall bevels and accent‑strip light spill;
-  - the terrace garden, the Arcade carpet, and lamp fixtures and facade windows.
+  - the paved apron and courtyard gardens, the Arcade carpet, and lamp fixtures and outside‑wall windows.
 - **Every frame:** animated props, packets, bots, particles, and screen‑space speech bubbles laid out so they never overlap. Cross‑bot messages render teal.
   - Bots are y‑sorted with an additive neon glow in Soft and Dark. They hop with squash and stretch, breathe, blink, look where they walk, and pulse their glow with activity; Arcade moods add *play*, *cheer* and *sulk* poses.
   - Room‑name chips fade in when you zoom out. Name tags are pills, readable on any floor.

@@ -11,7 +11,13 @@ import type { ThemeTokens } from '../theme/tokens';
 import { hexA, roundRect } from './sprites';
 
 type Ctx = CanvasRenderingContext2D;
-type R = { x: number; y: number; w: number; h: number };
+/** A rect, optionally with a real outline (irregular rooms) traced at an inset with a corner radius. */
+type R = { x: number; y: number; w: number; h: number; outline?: (inset: number, radius: number) => void };
+
+function shape(ctx: Ctx, r: R, inset = 0, radius = 10): void {
+  if (r.outline) r.outline(inset, radius);
+  else roundRect(ctx, r.x + inset, r.y + inset, r.w - inset * 2, r.h - inset * 2, radius);
+}
 
 /** Shadow ink per theme (a cool blue-black, never pure black, keeps colours clean). */
 export function shadowInk(th: ThemeTokens): { color: string; strength: number } {
@@ -82,8 +88,16 @@ export function roomOcclusion(ctx: Ctx, r: R, th: ThemeTokens, darkFloor = false
     return g;
   };
   ctx.save();
-  roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+  shape(ctx, r);
   ctx.clip();
+  if (r.outline) {
+    // Irregular outline: layered inner strokes darken every wall edge, notches and angles included.
+    ctx.strokeStyle = hexA(ink.color, Math.min(0.6, 0.035 * k));
+    for (const w of [30, 20, 12]) {
+      ctx.lineWidth = w;
+      ctx.stroke();
+    }
+  }
   const top = 26;
   const side = 16;
   const bottom = 10;
@@ -107,7 +121,7 @@ export function floorKeyLight(ctx: Ctx, r: R, th: ThemeTokens, tint = '#ffffff',
   g.addColorStop(0, hexA(tint, a));
   g.addColorStop(1, hexA(tint, 0));
   ctx.save();
-  roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+  shape(ctx, r);
   ctx.clip();
   ctx.fillStyle = g;
   ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -123,27 +137,27 @@ export function wallBevel(ctx: Ctx, r: R, th: ThemeTokens): void {
   ctx.save();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = th.world.wallTop;
-  roundRect(ctx, r.x + 0.8, r.y + 0.8, r.w - 1.6, r.h - 1.6, 10);
+  shape(ctx, r, 0.8, 10);
   ctx.stroke();
   ctx.lineWidth = 1;
   ctx.strokeStyle = hexA('#ffffff', th.name === 'dark' ? 0.07 : 0.55);
-  roundRect(ctx, r.x + 6.5, r.y + 6.5, r.w - 13, r.h - 13, 7);
+  shape(ctx, r, 6.5, 7);
   ctx.stroke();
   ctx.restore();
 }
 
 /** Coloured light spilling from a room's accent strip onto the floor below it. */
-export function accentSpill(ctx: Ctx, r: R, accent: string, th: ThemeTokens): void {
-  const x = r.x + 19 + 35;
-  const y = r.y + 6;
+export function accentSpill(ctx: Ctx, r: R, accent: string, th: ThemeTokens, strip: { x: number; y: number } = r): void {
+  const x = strip.x + 19 + 35;
+  const y = strip.y + 6;
   const a = th.name === 'dark' ? 0.16 : th.name === 'soft' ? 0.1 : 0.07;
   const g = ctx.createRadialGradient(x, y, 2, x, y, 120);
   g.addColorStop(0, hexA(accent, a));
   g.addColorStop(1, hexA(accent, 0));
   ctx.save();
-  roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+  shape(ctx, r);
   ctx.clip();
   ctx.fillStyle = g;
-  ctx.fillRect(r.x, r.y, 260, 130);
+  ctx.fillRect(strip.x, strip.y, 260, 130);
   ctx.restore();
 }

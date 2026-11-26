@@ -9,7 +9,7 @@ import { ARCADE_GAMES } from '../src/arcade/registry';
 import { useArcade } from '../src/arcade/state';
 import { CORE_BOTS } from '../src/data/bots';
 import { Simulation } from '../src/engine/sim';
-import { buildGrid, isTerrace, isWalkable, MAP_W, ROOM_BY_ID, spotTile, Tile } from '../src/engine/world';
+import { buildGrid, isTerrace, isWalkable, MAP_W, ROOM_BY_ID, ROOMS, sideNormal, spotTile, Tile } from '../src/engine/world';
 import { describeEvent } from '../src/game/describe';
 import { mulberry32 } from '../src/game/content';
 import { hq } from '../src/game/hq';
@@ -148,18 +148,22 @@ describe('arcade persistence', () => {
 });
 
 describe('arcade floorplan', () => {
-  it('adds the Arcade as a 4th-row room with a terrace (Void) either side and a corridor ring', () => {
+  it('hangs the Arcade off the south end, reached by a single door, with a garden beside it', () => {
     const g = buildGrid();
     const a = ROOM_BY_ID.arcade;
     expect(a.y).toBeGreaterThan(ROOM_BY_ID.huddle.y);
-    expect(a.x).toBe(ROOM_BY_ID.huddle.x);
-    // Terrace cells are not walkable; the corridor that reaches the arcade door is.
-    const midY = a.y + 5;
-    expect(isTerrace(5, midY)).toBe(true);
-    expect(g.tiles[midY * MAP_W + 5]).toBe(Tile.Void);
-    expect(g.tiles[midY * MAP_W + (MAP_W - 6)]).toBe(Tile.Void);
-    expect(isWalkable(g, a.x + 8, a.y - 1)).toBe(true); // corridor above the top door
-    expect(isWalkable(g, a.x - 1, midY)).toBe(true); // ring beside the side door
+    for (const r of ROOMS) if (r.id !== 'arcade') expect(a.y + a.h).toBeGreaterThanOrEqual(r.y + r.h);
+    // One way in: a single door whose outside tile is corridor.
+    expect(a.doors).toHaveLength(1);
+    const door = a.doors[0]!;
+    const n = sideNormal(door.side);
+    for (const t of door.tiles) expect(isWalkable(g, a.x + t.x + n.x, a.y + t.y + n.y)).toBe(true);
+    // Open-air garden (Void, not walkable) just east of the wing.
+    const gx = a.x + a.w + 2;
+    const gy = a.y + 5;
+    expect(isTerrace(gx, gy)).toBe(true);
+    expect(g.tiles[gy * MAP_W + gx]).toBe(Tile.Void);
+    expect(isWalkable(g, gx, gy)).toBe(false);
     const mystery = a.props.find((p) => p.id === 'mystery')!;
     expect(mystery.kind).toBe('arcade-cabinet');
     expect(mystery.hotspot).toBe('arcade');
