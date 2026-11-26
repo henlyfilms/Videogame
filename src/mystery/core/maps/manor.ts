@@ -95,6 +95,7 @@ b.hall([96, 89, 4, 3], 'snow'); // maze south-east gate -> pond
 // --- Props -----------------------------------------------------------------
 // Grand Foyer (meeting)
 b.prop('roundTable', 75, 46, { w: 2, h: 2, color: '#78350f' });
+b.seats(75, 46, 2.8, 8, '#581c87');
 b.prop('rug', 75, 46, { w: 12, h: 10, solid: false, color: '#7f1d1d' });
 b.prop('pillar', 66.5, 40.5).prop('pillar', 83.5, 40.5).prop('pillar', 66.5, 52.5).prop('pillar', 83.5, 52.5);
 b.prop('clock', 70.5, 35.5, { label: 'GRANDFATHER' });

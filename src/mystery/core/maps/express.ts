@@ -179,6 +179,7 @@ b.prop('snowpile', 142.5, 70.5).prop('snowpile', 136.5, 71.5).prop('snowpile', 1
 b.prop('poster', 124, 24.2, { w: 4, h: 0.2, solid: false, label: 'MIDNIGHT EXPRESS' });
 // Ticket Hall (meeting)
 b.prop('roundTable', 85, 63, { w: 2, h: 2, color: '#fde68a' });
+b.seats(85, 63, 2.8, 8, '#7f1d1d');
 b.prop('rug', 85, 63, { w: 10, h: 8, solid: false, color: '#8b1e3f' });
 b.prop('counter', 92, 55.5, { w: 5, h: 1, label: 'TICKETS', color: '#78350f' });
 b.prop('clock', 77.5, 55.5, { label: 'STATION CLOCK' });

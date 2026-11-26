@@ -82,6 +82,15 @@ export class MapBuilder {
     return this;
   }
 
+  /** A ring of meeting seats around a table (walkable, decorative). */
+  seats(cx: number, cy: number, r: number, n: number, color?: string): this {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.PI / n;
+      this.props.push({ kind: 'seat', x: +(cx + Math.cos(a) * r).toFixed(2), y: +(cy + Math.sin(a) * r).toFixed(2), rot: a + Math.PI / 2, solid: false, ...(color ? { color } : {}) });
+    }
+    return this;
+  }
+
   st(kind: StationKind, x: number, y: number, room: string): this {
     this.stations.push({ id: `${kind}-${++this.n}`, kind, x, y, room });
     return this;

@@ -98,6 +98,7 @@ b.door('fern', [94, 74, 4, 2], 'Fern Lung');
 // --- Props -----------------------------------------------------------------
 // Observation Dome (meeting)
 b.prop('roundTable', 69, 53, { w: 2, h: 2, color: '#ccfbf1' });
+b.seats(69, 53, 2.8, 8, '#0f766e');
 b.prop('rug', 69, 53, { w: 10, h: 10, solid: false, color: '#99f6e4' });
 b.prop('window', 69, 38.2, { w: 14, h: 0.3, solid: false });
 b.prop('window', 69, 67.8, { w: 14, h: 0.3, solid: false });

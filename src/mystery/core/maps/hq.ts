@@ -103,6 +103,8 @@ b.path(2, [[30, 88], [34, 88], [34, 84], [44, 84], [44, 80]], 'stone');
 // Central Command: meeting table, Daniel, HQ status wall
 b.prop('roundTable', 62, 46, { w: 2, h: 2, color: '#cbd5e1' });
 b.prop('rug', 62, 46, { w: 9, h: 7, solid: false, color: '#2f6fed' });
+b.seats(62, 46, 2.8, 8, '#1e3a8a');
+b.prop('crate', 54.5, 53.5).prop('crate', 55.5, 54.2).prop('tank', 69.5, 53.5, { w: 1.5, h: 1.5, label: 'COFFEE' });
 b.prop('screen', 62, 30.3, { w: 10, h: 0.4, solid: false, label: 'HQ STATUS' });
 b.prop('statue', 50.5, 51.5, { label: 'Daniel' });
 b.prop('plant', 53.5, 32.5).prop('plant', 70.5, 32.5).prop('plant', 73.5, 51.5);
