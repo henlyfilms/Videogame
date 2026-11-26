@@ -188,7 +188,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('term3', 'terminal', 11, 2, 3, 1, 'terminal', true, 'tty0'),
       p('polaroids', 'polaroid-board', 11, 9, 4, 1, 'polaroid', true, '⇧⌘S'),
       p('relay', 'relay-rack', 14, 4, 2, 4, 'relay', true, 'Relay'),
-      p('etube', 'tube-port', 6, 1, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 12, 3), sp('t1', 3, 3), sp('t2', 3, 7), sp('polaroid', 12, 8), sp('relay', 13, 6), sp('center', 8, 6)],
   },
@@ -204,7 +203,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('vdesk', 'violet-desk', 6, 7, 6, 2, 'bridge', true, 'Co-Pilot'),
       p('wave', 'wave-indicator', 2, 1, 4, 1, 'wave', true, 'Dictation'),
       p('screens', 'screens-board', 12, 1, 4, 1, 'screens', true, 'Screenshots'),
-      p('btube', 'tube-port', 7, 1, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 9, 6), sp('wave', 4, 2), sp('screens', 13, 2), sp('w1', 4, 8), sp('center', 9, 4)],
   },
@@ -222,7 +220,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('vault', 'vault-cabinet', 2, 7, 4, 3, 'vault', true, 'Vault'),
       p('mcp', 'mcp-door', 15, 8, 1, 2, 'mcp', true, 'MCP'),
       p('ldesk', 'life-desk', 9, 6, 3, 1, 'planner', true, 'marionberry.app'),
-      p('ltube', 'tube-port', 6, 6, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 10, 7), sp('planner', 4, 2), sp('turntable', 12, 4), sp('mic', 15, 3), sp('vault', 6, 8), sp('mcp', 14, 9), sp('center', 9, 4)],
   },
@@ -240,7 +237,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('fts', 'fts-cabinet', 14, 7, 2, 3, 'fts', true, 'FTS5'),
       p('intake', 'intake-chute', 3, 7, 2, 2, 'intake', true, 'Intake'),
       p('couch', 'couch', 6, 4, 4, 1, undefined, true),
-      p('mtube', 'tube-port', 10, 9, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 4, 2), sp('llm', 12, 2), sp('dimmer', 15, 2), sp('fts', 13, 8), sp('intake', 5, 7), sp('center', 8, 7)],
   },
@@ -257,7 +253,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('chute', 'release-chute', 13, 7, 3, 3, 'release', true, 'Release'),
       p('plant1', 'plant', 2, 9, 1, 1, undefined, true),
       p('plant2', 'plant', 7, 2, 1, 1, undefined, true),
-      p('ctube', 'tube-port', 11, 9, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 12, 4), sp('inbox', 10, 4), sp('brain', 4, 4), sp('chute', 12, 8), sp('center', 7, 6)],
   },
@@ -275,7 +270,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('bins', 'clip-bins', 11, 7, 4, 2, 'bins', true, 'Bins'),
       p('clapper', 'clapperboard', 2, 8, 1, 1, undefined, true),
       p('lamp', 'render-lamp', 15, 1, 1, 1, 'render', true, 'Render'),
-      p('ktube', 'tube-port', 6, 9, 1, 1, undefined, false),
     ],
     spots: [sp('desk', 4, 4), sp('timeline', 13, 4), sp('bins', 12, 6), sp('render', 16, 2), sp('center', 8, 6)],
   },
@@ -291,9 +285,9 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('redpen', 'redpen-desk', 11, 3, 3, 2, 'redpen', true, 'Red Pen'),
       p('stamp', 'stamp-press', 3, 7, 2, 2, 'stamp', true, 'Approve'),
       p('outbox', 'outbox', 5, 8, 3, 1, 'stamp', true, 'Outbox'),
-      p('tubes', 'tube-port', 14, 7, 2, 2, 'tubes', true, 'Tubes'),
+      p('tubes', 'tube-port', 13, 1, 3, 1, 'tubes', true, 'Tubes'),
     ],
-    spots: [sp('desk', 12, 5), sp('sort', 4, 2), sp('stamp', 4, 6), sp('tubes', 13, 8), sp('center', 9, 6)],
+    spots: [sp('desk', 12, 5), sp('sort', 4, 2), sp('stamp', 4, 6), sp('tubes', 14, 2), sp('center', 9, 6)],
   },
   {
     id: 'huddle',
@@ -317,7 +311,6 @@ const BLUEPRINTS: RoomBlueprint[] = [
       p('skills', 'skill-wall', 11, 1, 5, 1, 'skills', true, 'Universal Skills'),
       p('pod', 'spawn-pod', 7, 5, 3, 3, 'pod', true, 'Spawn Pod'),
       p('retired', 'retired-shelf', 13, 8, 3, 2, 'retired', true, '30-Day Vault'),
-      p('ftube', 'tube-port', 15, 4, 1, 1, undefined, false),
     ],
     spots: [
       sp('desk', 4, 4),
@@ -492,15 +485,12 @@ function roomColRow(room: RoomDef): { col: number; row: number } {
   };
 }
 
-/** The port (world px) where tubes enter a room: its tube-port prop, else top wall. */
+/** The port (world px) where overhead tubes enter a room: on its top wall. */
 export function tubePort(roomId: RoomId): Point {
   const room = ROOM_BY_ID[roomId];
   const port = room.props.find((q) => q.kind === 'tube-port');
-  if (port) {
-    const r = propRect(room, port);
-    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-  }
-  return { x: (room.x + room.w / 2) * TILE, y: (room.y + 1) * TILE };
+  const x = port ? (room.x + port.x + port.w / 2) * TILE : (room.x + room.w - 4.5) * TILE;
+  return { x, y: room.y * TILE + 4 };
 }
 
 /**
