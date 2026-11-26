@@ -73,6 +73,8 @@ export interface Prefs {
   keys: Keybinds;
   serverUrl: string;
   tutorialDone: boolean;
+  /** Jukebox: track used on the menus. */
+  menuTrack: string;
   stats: LifetimeStats;
 }
 
@@ -104,6 +106,7 @@ export function defaultPrefs(): Prefs {
     keys: { ...DEFAULT_KEYS },
     serverUrl: '',
     tutorialDone: false,
+    menuTrack: 'title',
     stats: emptyStats(),
   };
 }

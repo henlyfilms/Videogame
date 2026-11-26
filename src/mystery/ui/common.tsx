@@ -5,6 +5,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { PALETTE } from '../characters/catalog';
 import { drawBerry } from '../characters/draw2d';
 import type { Cosmetics } from '../core/types';
+import { sfx } from '../audio/sfx';
 
 const P: Record<string, string> = {
   knife: 'M14 3l7 7-9.5 9.5a2 2 0 0 1-2.8 0L4.5 15.3a2 2 0 0 1 0-2.8L14 3z M4.5 15.3 2 21l5.7-2.5',
@@ -113,6 +114,10 @@ export function BerryAvatar({
 }
 
 export function Modal({ children, onClose, wide = false, title }: { children: ReactNode; onClose?: () => void; wide?: boolean; title?: ReactNode }) {
+  useEffect(() => {
+    sfx.play('ui.open');
+    return () => sfx.play('ui.close');
+  }, []);
   useEffect(() => {
     if (!onClose) return;
     // Capture phase + stopPropagation: Escape closes this modal only (it must

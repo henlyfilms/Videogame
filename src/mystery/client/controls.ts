@@ -7,6 +7,7 @@ import { DEFAULT_KEYS } from './prefs';
 import { computeContext, type Context } from './context';
 import { Input, type InputAction } from './input';
 import { runtime } from './runtime';
+import { sfx } from '../audio/sfx';
 import { isFixStation, useMystery } from './store';
 
 export const input = new Input({ ...DEFAULT_KEYS });
@@ -66,6 +67,7 @@ export function doUse(): void {
       ui.setHolding(u.id);
       return;
     case 'emergency':
+      sfx.play('button');
       st.act({ a: 'emergency' });
       return;
     case 'facility':
@@ -130,6 +132,7 @@ export function doAction(a: InputAction): void {
       const emotes = st.prefs.cosmetics.emotes;
       const idx = a === 'emote' ? 0 : Number(a.slice(-1)) - 1;
       const id = emotes[idx] ?? emotes[0] ?? 'wave';
+      sfx.play('emote');
       if (st.room?.stage === 'lobby' || st.room?.stage === 'countdown') st.send({ t: 'lobby.emote', id });
       else st.act({ a: 'emote', id });
       return;

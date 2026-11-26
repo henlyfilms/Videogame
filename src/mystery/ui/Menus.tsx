@@ -12,6 +12,8 @@ import { DEFAULT_KEYS, type Keybinds, type Prefs } from '../client/prefs';
 import { useMystery } from '../client/store';
 import { availableMaps } from '../core/maps';
 import { BerryAvatar, MIcon, Modal, teamColors } from './common';
+import { TRACKS } from '../audio/music';
+import { music } from '../audio/music';
 
 export function ViewPicker({ value, onChange, compact = false }: { value: ViewMode; onChange(v: ViewMode): void; compact?: boolean }) {
   const opts: { v: ViewMode; label: string; sub: string; icon: string }[] = [
@@ -312,6 +314,50 @@ function Slider({ label, value, min, max, step, onChange, fmt }: { label: string
   );
 }
 
+function Jukebox({ value, onChange }: { value: string; onChange(v: string): void }) {
+  const [playing, setPlaying] = useState<string | null>(null);
+  useEffect(() => () => {
+    // Back to the chosen menu track when leaving settings.
+    music.play(value);
+  }, [value]);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="mm-muted" style={{ fontSize: '0.78em', fontWeight: 800, letterSpacing: '0.08em', marginBottom: 6 }}>
+        JUKEBOX — PREVIEW THE SOUNDTRACK
+      </div>
+      <div className="mm-scroll" style={{ maxHeight: 220, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {TRACKS.map((t) => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 10, background: playing === t.id ? 'rgba(47,111,237,0.2)' : 'rgba(255,255,255,0.03)' }}>
+            <button
+              className="mm-btn"
+              style={{ minHeight: 34, padding: '2px 10px' }}
+              aria-label={`${playing === t.id ? 'Stop' : 'Play'} ${t.name}`}
+              onClick={() => {
+                if (playing === t.id) {
+                  setPlaying(null);
+                  music.play(value);
+                } else {
+                  setPlaying(t.id);
+                  music.play(t.id, 0.6);
+                }
+              }}
+            >
+              {playing === t.id ? '■' : '▶'}
+            </button>
+            <span style={{ flex: 1, fontSize: '0.88em' }}>
+              <b>{t.name}</b>
+              <span className="mm-muted"> · {t.mood}</span>
+            </span>
+            <label style={{ fontSize: '0.75em', display: 'flex', alignItems: 'center', gap: 4 }} className="mm-muted">
+              <input type="radio" name="menu-track" checked={value === t.id} onChange={() => onChange(t.id)} /> menus
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen() {
   const prefs = useMystery((s) => s.prefs);
   const setPrefs = useMystery((s) => s.setPrefs);
@@ -353,6 +399,7 @@ export function SettingsScreen() {
           <Toggle label="Mute everything" value={prefs.muted} onChange={set('muted')} />
           <Slider label="Effects volume" value={prefs.volume} min={0} max={1} step={0.05} onChange={set('volume')} fmt={(v) => `${Math.round(v * 100)}%`} />
           <Slider label="Music & ambience" value={prefs.music} min={0} max={1} step={0.05} onChange={set('music')} fmt={(v) => `${Math.round(v * 100)}%`} />
+          <Jukebox value={prefs.menuTrack} onChange={set('menuTrack')} />
         </section>
         <section>
           <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em' }}>

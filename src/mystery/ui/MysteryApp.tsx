@@ -191,8 +191,8 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
   }, [joinRoom]);
   // Audio follows prefs; unlock on first gesture (iOS).
   useEffect(() => {
-    sfx.configure({ muted: prefs.muted, volume: prefs.volume, music: prefs.music });
-  }, [prefs.muted, prefs.volume, prefs.music]);
+    sfx.configure({ muted: prefs.muted, volume: prefs.volume, music: prefs.music, menuTrack: prefs.menuTrack });
+  }, [prefs.muted, prefs.volume, prefs.music, prefs.menuTrack]);
   useEffect(() => {
     const unlock = () => sfx.unlock();
     window.addEventListener('pointerdown', unlock, { once: true });

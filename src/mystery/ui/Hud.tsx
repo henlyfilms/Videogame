@@ -17,6 +17,7 @@ import { isFixStation, taskClosedAt, useMystery } from '../client/store';
 import { Bar, colorHex, fmtTime, MIcon, Modal, teamColors } from './common';
 import { MapThumb, type MapMarker } from './MapThumb';
 import { TaskModal } from './tasks/TaskModal';
+import { sfx } from '../audio/sfx';
 import type { MiniGameKind } from './tasks/types';
 import { Joystick, TouchLook, useCoarsePointer } from './TouchControls';
 
@@ -429,7 +430,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
 
       {/* Task mini-game */}
       {taskStation && station && snap.phase === 'play' && (
-        <div style={{ pointerEvents: 'auto' }}>
+        <div style={{ pointerEvents: 'auto' }} onPointerDownCapture={() => sfx.play('task.tick')} onKeyDownCapture={(e) => e.key !== 'Escape' && sfx.play('task.tick')}>
           <TaskModal
             kind={station.kind as MiniGameKind}
             seed={hashStr(station.id + you.id)}

@@ -51,6 +51,8 @@ export class Runtime {
   private pingN = 0;
   private listeners = new Set<Listener>();
   lobbyEmotes = new Map<string, string | null>();
+  /** performance.now() of the last time movement was blocked by a wall. */
+  bumpAt = 0;
   /** Increments on every snapshot (renderers can diff). */
   version = 0;
 
@@ -195,7 +197,9 @@ export class Runtime {
       const speed = BASE_SPEED * settingsSpeed * (ghost ? 1.25 : 1) * boost * this.speedMul;
       const closed = this.mode === 'match' && this.snap ? new Set(this.snap.sabotage.closedDoors) : undefined;
       const next = moveCircle(m, this.local.pos, nx * speed * dtSec, ny * speed * dtSec, ghost ? 0.05 : undefined, ghost ? undefined : closed);
-      moving = dist(next, this.local.pos) > 1e-4;
+      const movedBy = dist(next, this.local.pos);
+      moving = movedBy > 1e-4;
+      if (!ghost && movedBy < speed * dtSec * 0.3) this.bumpAt = performance.now();
       this.local.pos = next;
       if (this.aimFacing === null) this.local.facing = Math.atan2(ny, nx);
     }

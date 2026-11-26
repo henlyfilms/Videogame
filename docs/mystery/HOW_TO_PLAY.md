@@ -49,3 +49,7 @@ Every task mini-game also works with keyboard only (arrows + Enter/Space), which
 ## Accessibility
 
 Settings → reduced motion (no shake/flash/flicker), colour-blind-safe team colours, text size, sound captions, Lights Out high-visibility assist, profanity filter, rebindable keys, look sensitivity and invert-Y. Players are always identified by name and berry type, never by colour alone.
+
+## Sound & music
+
+Everything you do makes a sound: buttons, hovers, toggles and sliders, footsteps that change with the floor (tile, wood, carpet, metal, grass, snow, stone), bumping into walls, flashlight clicks and a low-battery buzz, every task interaction, doors, vents, kills, shots, votes and alarms. Sounds from the world are panned and fade with distance. There are 13 music tracks: the main theme, a waiting-room lounge track, a theme for each of the four maps, Lights Out, Hide & Seek with a final-countdown reprise, meetings, results and practice, plus stingers for role reveals, reports, ejections and wins. Settings → Audio has volume sliders and a **jukebox** to preview every track and pick your menu music. Audio stays silent until your first tap, which iOS requires.
