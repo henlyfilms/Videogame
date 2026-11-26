@@ -53,6 +53,8 @@ export class Runtime {
   lobbyEmotes = new Map<string, string | null>();
   /** performance.now() of the last time movement was blocked by a wall. */
   bumpAt = 0;
+  /** Yaw the 3D camera looks along (screen-up), or null in 2D. Set by the 3D view each frame. */
+  cameraYaw: number | null = null;
   /** Increments on every snapshot (renderers can diff). */
   version = 0;
 

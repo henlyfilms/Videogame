@@ -5,6 +5,7 @@
  * quality tiers; particle FX; WebGL context-loss recovery.
  */
 import * as THREE from 'three';
+import { runtime } from '../client/runtime';
 import { createBerry, createBody, createPet, type BerryRig } from '../characters/rig3d';
 import { castRay, type CompiledMap } from '../core/map';
 import type { MatchEvent, Vec2 } from '../core/types';
@@ -633,6 +634,7 @@ export class ThreeDView implements ViewRenderer {
       this.camera.position.copy(this.camPos).add(new THREE.Vector3((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, 0));
       this.camera.lookAt(target);
     }
+    runtime.cameraYaw = this.yaw;
     this.renderer.render(this.scene, this.camera);
     this.frameMs = performance.now() - t0;
   }

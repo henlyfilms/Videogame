@@ -294,7 +294,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
     }
     if (best && bd > 2.2) {
       const ang = Math.atan2(best.y - runtime.local.pos.y, best.x - runtime.local.pos.x);
-      const screen = matchView && matchView !== '2d' ? ang - runtime.local.facing - Math.PI / 2 : ang;
+      const screen = matchView && matchView !== '2d' ? ang - (runtime.cameraYaw ?? runtime.local.facing) - Math.PI / 2 : ang;
       arrow = { deg: (screen * 180) / Math.PI, dist: bd };
     }
   }
