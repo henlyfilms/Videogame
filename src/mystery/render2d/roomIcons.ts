@@ -298,15 +298,6 @@ function gearPath(p: Path2D): void {
   p.closePath();
 }
 
-function rays(n: number, r0: number, r1: number, off = 0): string {
-  let s = '';
-  for (let i = 0; i < n; i++) {
-    const a = off + (i / n) * Math.PI * 2;
-    s += `M${(12 + Math.cos(a) * r0).toFixed(2)} ${(12 + Math.sin(a) * r0).toFixed(2)}L${(12 + Math.cos(a) * r1).toFixed(2)} ${(12 + Math.sin(a) * r1).toFixed(2)}`;
-  }
-  return s;
-}
-
 const GLYPHS: Record<RoomIcon, Op[]> = {
   meeting: [
     { k: 'stroke', d: 'M12 1.8v3M4.6 4.6l2 2M19.4 4.6l-2 2', w: 2.2 },
@@ -369,6 +360,7 @@ const GLYPHS: Record<RoomIcon, Op[]> = {
     { k: 'cutStroke', d: 'M11.5 5.4h6M11.5 12h6M11.5 18.6h6', w: 1.2 },
   ],
   reactor: [
+    { k: 'fill', d: circle(12, 12, 4.4) },
     {
       k: 'stroke',
       d: (p) => {
@@ -379,7 +371,7 @@ const GLYPHS: Record<RoomIcon, Op[]> = {
       },
       w: 1.9,
     },
-    { k: 'fill', d: circle(12, 12, 2.6) },
+    { k: 'cut', d: circle(12, 12, 2.2) },
   ],
   engine: [
     { k: 'fill', d: gearPath },
@@ -417,9 +409,10 @@ const GLYPHS: Record<RoomIcon, Op[]> = {
     { k: 'stroke', d: 'M11.4 13.4L8.2 21.4M11.4 13.4l3.4 8', w: 2 },
   ],
   helm: [
-    { k: 'stroke', d: circle(12, 12, 6.4), w: 2.4 },
-    { k: 'stroke', d: rays(8, 2, 10.2), w: 2 },
-    { k: 'fill', d: circle(12, 12, 2.8) },
+    { k: 'stroke', d: circle(12, 12, 9.4), w: 2 },
+    { k: 'fill', d: 'M12 3.4l3.4 8.6h-6.8z' },
+    { k: 'fill', d: 'M8.6 12h6.8L12 20.6z' },
+    { k: 'cut', d: 'M9.9 12.6h4.2L12 18z' },
   ],
   launch: [
     { k: 'fill', d: 'M12 1.8c4.2 3.2 5.2 8.2 4.2 13.4H7.8C6.8 10 7.8 5 12 1.8z' },
@@ -445,8 +438,9 @@ const GLYPHS: Record<RoomIcon, Op[]> = {
     { k: 'fill', d: circle(15.6, 9.6, 1.5) },
   ],
   solar: [
-    { k: 'stroke', d: rays(8, 7, 10.4, Math.PI / 8), w: 2.1 },
-    { k: 'fill', d: circle(12, 12, 4.8) },
+    { k: 'fill', d: 'M5.2 3.5h15.6l-2.4 10.8H2.8z' },
+    { k: 'cutStroke', d: 'M4 8.9h15.6M10 3.8l-1.2 10.2M15.6 3.8l-1.2 10.2', w: 1.3 },
+    { k: 'stroke', d: 'M11 14.3v6.4M6.8 21h8.4', w: 2.2 },
   ],
   comms: [
     { k: 'stroke', d: 'M12 10.5V21.5M8 21.5h8', w: 2.1 },
