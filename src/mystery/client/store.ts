@@ -58,6 +58,8 @@ export interface MysteryState {
 }
 
 let transport: Transport | null = null;
+/** When a task panel last closed (so the same Escape doesn't also open the menu). */
+export let taskClosedAt = 0;
 let toastSeq = 0;
 const SESSION_KEY = 'marion-mystery:session';
 
@@ -299,6 +301,7 @@ export const useMystery = create<MysteryState>((set, get) => {
     setTask: (station) => {
       const cur = get().taskStation;
       if (cur && !station && !isFixStation(cur)) transport?.send({ t: 'act', action: { a: 'task.close' } });
+      if (cur && !station) taskClosedAt = performance.now();
       set({ taskStation: station });
     },
     toggleMap: (v) => set({ showMap: v ?? !get().showMap }),

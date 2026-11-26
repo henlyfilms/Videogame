@@ -44,10 +44,14 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
     const rim = new THREE.DirectionalLight('#8fb4ff', 1.6);
     rim.position.set(-3, 2, -4);
     scene.add(key, rim);
-    const spread = Math.max(1, ...actors.map((a) => Math.abs(a.x))) + 1.2;
-    const camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 50);
-    camera.position.set(0, 1.1, spread * 2.1 + 1.6);
-    camera.lookAt(0, 0.6, 0);
+    // Frame the group tightly: fit the actors' width (and ~1.5 m of height).
+    const half = Math.max(...actors.map((a) => Math.abs(a.x) + 0.55 * (a.scale ?? 1)), 0.6);
+    const camera = new THREE.PerspectiveCamera(28, width / height, 0.1, 50);
+    const vfov = (camera.fov * Math.PI) / 180;
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+    const dist = Math.max(half / Math.tan(hfov / 2), 0.8 / Math.tan(vfov / 2)) * 1.08;
+    camera.position.set(0, 0.75, dist);
+    camera.lookAt(0, 0.58, 0);
     const rigs: { rig: BerryRig; a: StageActor; next: number }[] = actors.map((a) => {
       const rig = createBerry(a.cosmetics, { quality: 'high' });
       rig.group.scale.setScalar(a.scale ?? 1);

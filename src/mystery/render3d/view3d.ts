@@ -102,6 +102,7 @@ export class ThreeDView implements ViewRenderer {
     private prefs: Prefs,
   ) {
     this.quality = pickQuality(prefs.quality);
+    if (mode === 'fp') this.pitch = -0.06;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality !== 'low', powerPreference: 'high-performance', alpha: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -467,24 +468,24 @@ export class ThreeDView implements ViewRenderer {
     const ghostView = !!localPlayer?.ghost;
     if (f.night && f.mode === 'match' && !ghostView) {
       const hv = f.highVisibility ? 1.8 : 1;
-      this.hemi.intensity = 0.16 * hv * flick;
+      this.hemi.intensity = (this.mode === 'fp' ? 0.34 : 0.24) * hv * flick;
       this.hemi.color.set('#6b7bb8');
       this.sun.intensity = 0.05 * hv;
       const cone = f.vision?.cone;
-      this.flash.intensity = cone ? 38 * flick : 0;
+      this.flash.intensity = cone ? 55 * flick : 0;
       if (cone) {
         this.flash.angle = Math.min(Math.PI / 2.2, cone.halfAngle * 1.1);
         this.flash.distance = cone.range * 1.25;
-        this.flash.position.set(f.focus.x, 1.0, f.focus.y);
+        this.flash.position.set(f.focus.x, this.mode === 'fp' ? 0.85 : 1.0, f.focus.y);
         const dir = this.mode === 'fp' ? this.yaw : cone.dir;
-        this.flashTarget.position.set(f.focus.x + Math.cos(dir) * 4, 0.3, f.focus.y + Math.sin(dir) * 4);
+        this.flashTarget.position.set(f.focus.x + Math.cos(dir) * 4, this.mode === 'fp' ? 0.85 + Math.sin(this.pitch) * 4 : 0.3, f.focus.y + Math.sin(dir) * 4);
       }
       this.scene.fog = new THREE.Fog('#04060d', 1, (f.vision?.cone?.range ?? 3) + 6);
       // Nearest lamps become real lights.
       const sorted = [...ms.lamps].sort((a, b) => a.pos.distanceToSquared(focus) - b.pos.distanceToSquared(focus));
       this.lampLights.forEach((l, i) => {
         const lamp = sorted[i];
-        l.intensity = lamp ? 7 * flick : 0;
+        l.intensity = lamp ? 11 * flick : 0;
         if (lamp) {
           l.position.copy(lamp.pos);
           l.color.copy(lamp.color).lerp(new THREE.Color('#ffd89a'), 0.6);

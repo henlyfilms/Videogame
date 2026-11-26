@@ -13,7 +13,7 @@ import type { Settings } from '../core/settings';
 import type { SabotageId } from '../core/types';
 import { bindUi, currentContext, doAction, doUse } from '../client/controls';
 import { runtime } from '../client/runtime';
-import { isFixStation, useMystery } from '../client/store';
+import { isFixStation, taskClosedAt, useMystery } from '../client/store';
 import { Bar, colorHex, fmtTime, MIcon, Modal, teamColors } from './common';
 import { MapThumb, type MapMarker } from './MapThumb';
 import { TaskModal } from './tasks/TaskModal';
@@ -79,7 +79,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       openSabotage: () => ROLES[useMystery.getState().snap?.you.role ?? 'crewmate'].canSabotage && setSabMap((x) => !x),
       openMenu: () => {
         if (useMystery.getState().taskStation) useMystery.getState().setTask(null);
-        else setMenu((m) => !m);
+        else if (performance.now() - taskClosedAt > 300) setMenu((m) => !m);
       },
       openChat: () => {},
       setHolding: (id) => {
