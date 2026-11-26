@@ -10,6 +10,7 @@ import { GameLoop } from '../engine/loop';
 import { Simulation, type SimEffect } from '../engine/sim';
 import { roomRect, ROOM_BY_ID, WORLD_H, WORLD_W } from '../engine/world';
 import { Renderer, type RenderOptions } from '../render/renderer';
+import { localHour } from '../render/daylight';
 import { emptyView, type RenderView } from '../render/view';
 import { EventBus } from './bus';
 
@@ -23,6 +24,10 @@ export class HQ {
   renderer: Renderer | null = null;
   paused = false;
   speed = 1;
+  /** Fixed hour for the day/night cycle (e.g. 22.5), or null to follow the local clock. */
+  clockOverride: number | null = null;
+  private clockHour = 12;
+  private clockReadAt = -1;
   /** True while a full-screen Arcade game covers the HQ: simulate, don't paint. */
   renderSuspended = false;
   /** Keys currently held for WASD/arrow panning. */
@@ -65,8 +70,19 @@ export class HQ {
       if (dx || dy) this.camera.panBy(dx, dy, false);
     }
     this.camera.update(frameDt);
+    this.ui.hour = this.hour();
     if (this.renderer && !this.renderSuspended) this.renderer.render(this.sim, this.camera, this.getView(), this.paused ? 1 : alpha, this.ui);
     if (++this.frameCount % 15 === 0) this.frameListeners.forEach((fn) => fn(this.loop.fps));
+  }
+
+  /** Current hour for lighting (local clock, read at most once a second). */
+  hour(now = Date.now()): number {
+    if (this.clockOverride !== null) return this.clockOverride;
+    if (now - this.clockReadAt > 1000 || this.clockReadAt < 0) {
+      this.clockReadAt = now;
+      this.clockHour = localHour(new Date(now));
+    }
+    return this.clockHour;
   }
 
   attach(canvas: HTMLCanvasElement): Renderer {

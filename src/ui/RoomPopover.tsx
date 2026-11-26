@@ -7,7 +7,7 @@ export function RoomPopover({ room, onClose }: { room: RoomId; onClose: () => vo
   const def = ROOM_BY_ID[room];
   return (
     <aside
-      className="hq-card pointer-events-auto flex max-h-full w-full flex-col overflow-hidden sm:w-[360px]"
+      className="hq-card pointer-events-auto flex max-h-[62vh] w-full flex-col overflow-hidden sm:max-h-full sm:w-[360px]"
       aria-label={`${def.name} controls`}
       onPointerDown={(e) => e.stopPropagation()}
     >

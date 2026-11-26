@@ -428,3 +428,71 @@ it('spot sanity: every arcade seat is on the arcade floor', () => {
     expect(isWalkable(g, t.x, t.y), s.name).toBe(true);
   }
 });
+
+describe('art pass helpers', () => {
+  it('day → night factors follow the clock smoothly', async () => {
+    const { goldenFactor, nightFactor, timeLabel } = await import('../src/render/daylight');
+    expect(nightFactor(12)).toBe(0);
+    expect(nightFactor(23)).toBe(1);
+    expect(nightFactor(3)).toBe(1);
+    expect(nightFactor(19)).toBeGreaterThan(0.2);
+    expect(nightFactor(19)).toBeLessThan(0.8);
+    expect(goldenFactor(18.75)).toBeCloseTo(1);
+    expect(goldenFactor(12)).toBe(0);
+    expect(timeLabel(23)).toBe('Night');
+    // Continuous: no jumps between neighbouring minutes.
+    for (let h = 0; h < 24; h += 1 / 60) expect(Math.abs(nightFactor(h + 1 / 60) - nightFactor(h))).toBeLessThan(0.03);
+  });
+
+  it('camera smooth-damp eases in and out without overshoot', async () => {
+    const { smoothDamp } = await import('../src/engine/camera');
+    let x = 0;
+    let v = 0;
+    const xs: number[] = [];
+    for (let i = 0; i < 120; i++) {
+      [x, v] = smoothDamp(x, 100, v, 0.3, 1 / 60);
+      xs.push(x);
+    }
+    expect(Math.max(...xs)).toBeLessThanOrEqual(100);
+    expect(xs[2]! - xs[1]!).toBeGreaterThan(xs[1]! - xs[0]!); // eases in
+    expect(x).toBeGreaterThan(99);
+  });
+
+  it('bot poses squash on landing, stretch at the apex, and react to moods', async () => {
+    const { botPose, isBlinking } = await import('../src/render/sprites');
+    const land = botPose({ state: 'walking', time: 0, phase: 0, mood: null, facing: 1 });
+    const apex = botPose({ state: 'walking', time: 0, phase: Math.PI / 4, mood: null, facing: 1 });
+    expect(land.sx).toBeGreaterThan(1);
+    expect(land.sy).toBeLessThan(1);
+    expect(apex.sy).toBeGreaterThan(1);
+    expect(apex.lift).toBeGreaterThan(land.lift);
+    expect(botPose({ state: 'working', time: 1, phase: 0, mood: 'sulk', facing: 1 }).sy).toBeLessThan(0.95);
+    expect(Math.max(...[0.1, 0.2, 0.3, 0.4].map((t) => botPose({ state: 'idle', time: t, phase: 0, mood: 'cheer', facing: 1 }).lift))).toBeGreaterThan(5);
+    let blinks = 0;
+    for (let t = 0; t < 20; t += 0.02) if (isBlinking(t, 1.234)) blinks++;
+    expect(blinks).toBeGreaterThan(10);
+    expect(blinks).toBeLessThan(120);
+  });
+
+  it('renders a night frame with lamp pools without touching the chunk cache', async () => {
+    const { Renderer } = await import('../src/render/renderer');
+    const { Camera } = await import('../src/engine/camera');
+    const { emptyView } = await import('../src/render/view');
+    const sim = new Simulation({ random: mulberry32(1) });
+    for (const b of CORE_BOTS) sim.addBot(b);
+    const canvas = document.createElement('canvas');
+    const r = new Renderer(canvas);
+    r.resize(800, 600, 1);
+    const cam = new Camera(2112, 2016);
+    cam.setViewport(800, 600);
+    cam.overview();
+    cam.snap();
+    const opts = { selectedBot: null, selectedRoom: null, hoverRoom: null, hoverHotspot: null, showNames: true };
+    r.render(sim, cam, emptyView('dark'), 1, { ...opts, hour: 12 });
+    const builds = r.stats.staticBuilds;
+    expect(r.stats.lights).toBe(0);
+    r.render(sim, cam, emptyView('dark'), 1, { ...opts, hour: 23 });
+    expect(r.stats.lights).toBeGreaterThan(10);
+    expect(r.stats.staticBuilds).toBe(builds);
+  });
+});

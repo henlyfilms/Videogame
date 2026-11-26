@@ -1,6 +1,6 @@
 # Marion HQ
 
-A calm, crisp, playable 2D **living office & operations game** for the Marion bot ecosystem — Marion Agent, Marion Life, Sift and Marion Engine. Eight glowing bots work across seven themed wings plus Moose's Co‑Pilot Bridge. They operate the HQ on their own, and every room has a mini‑mechanic you can play directly.
+A calm, crisp, playable 2D **living office & operations game** for the Marion bot ecosystem — Marion Agent, Marion Life, Sift and Marion Engine. Eight glowing bots work across seven themed wings plus Moose's Co‑Pilot Bridge, and unwind in **The Arcade**, a neon annex where you (and they) play **Marion Mystery**. They operate the HQ on their own, every room has a mini‑mechanic you can play directly, and the whole map follows a day → night cycle tied to your clock.
 
 Everything (rooms, props, tubes, particles, bot sprites, sound) is generated procedurally: no image, audio or font assets, and no external runtime requests.
 
@@ -13,7 +13,7 @@ npm install && npm run dev      # http://localhost:5173
 | `npm run dev` | Vite dev server |
 | `npm run build` | `tsc --noEmit` + production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
-| `npm test` | Vitest (jsdom + canvas mock), 111 tests |
+| `npm test` | Vitest (jsdom + canvas mock): HQ, Arcade and Marion Mystery suites |
 | `npm run typecheck` | Strict TypeScript check |
 
 ---
@@ -60,6 +60,7 @@ The top bar shows live status counts, the Live / Replay / Socket switcher with a
 | **Sift's Media Vault** | Drop & Distill: drop reels or YouTube videos in the intake chute and distill them into FTS5 insight cards. A teammate picks each card up as a temporary speed or accuracy buff. Includes the Local / Cloud LLM console and a wall **dimmer** that switches Light / Soft / Dark. |
 | **Greek's Cutting Room** | Clip Sorter: bin raw clips as keepers or outtakes. Correct sorts push the render bar (+25%), wrong ones barely move it (+5%). At 100% the lamp goes **Tests Passed / Render Green**. |
 | **Quill's Mailroom** | Stamp‑to‑Send: mail shoots in by tube; sort it into *Needs Action / FYI / Noise*. Quill drafts replies (the red pen visibly shrinks them) into *Pending Approval*. **Only your brass Approval Stamp sends.** The bots never do, in any mode. Clear Noise before the inbox piles up. |
+| **The Arcade** (annex, 4th row) | Neon cabinets with animated attract‑mode screens, a High Scores board, a velvet sofa and a flickering ARCADE sign on a confetti carpet. Click the **Marion Mystery** cabinet (or *Play* in the panel) to open the game full‑screen inside the HQ. The panel also has **Quick Play vs Marion bots** (a local room with the crew seated as agents), **Join by code**, the persisted **arcade leaderboard** (wins · games · MVPs per bot and for you), the last 10 results, and "coming soon" cabinets from `src/arcade/registry.ts`. Bots wander in to play on their own; when a match ends, winners celebrate and losers sulk. |
 | **Bot Builder's Foundry** | Spec‑to‑Spawn: a 1‑line job card plus shape and aura color spawns a custom glowing specialist (max 4, persisted). Slot Universal Skill cartridges (Token Optimizer, Claude Auto Mode, Prompt Craft, Zero‑Fluff Comms) for +12% HQ throughput each. Gauge and Forge rest in the 30‑Day Vault. |
 
 ## Architecture
@@ -76,7 +77,21 @@ src/
   audio/      Procedural Web Audio engine
   ui/         React HUD: TopBar, BotInspector, RoomPopover + panels, ActivityFeed,
               CommandPalette, ReplayBar, HelpOverlay, shortcuts
+  arcade/     Arcade wing: game registry, overlay state, ArcadeOverlay (lazy MysteryApp),
+              the Marion Mystery → HQ bridge, bots-only match planner
+  mystery/    Marion Mystery (standalone game; also served at `?mystery`)
 ```
+
+**The Arcade wing.** The floorplan has a 4th annex row (`ROWS = 4`). Only its middle cell is a room (`arcade`). The cells either side are outdoor terrace (Void, painted as a garden), and only a 3‑tile corridor ring around the Arcade stays walkable, so the annex never becomes a corridor plaza.
+
+- **Launching the game:** the Marion Mystery cabinet's hotspot (`arcade`), the panel's Play / Quick Play / Join buttons and the ⌘K *Arcade* commands all call `launchMystery()`. `ArcadeOverlay` lazy‑loads `import('../mystery/ui/MysteryApp')` and renders it full‑screen with `onExit`, which shows Marion Mystery's own "Marion HQ" back button.
+- **While the game is open:** the HQ keeps **simulating** (bots walk to the Arcade as the game's agents join) but stops **painting** (`hq.renderSuspended`). HQ shortcuts and the lo‑fi loop are paused. Exiting restores the HQ exactly: camera, selection, panel and pause state are untouched.
+- **The bridge:** `src/arcade/bridge.ts` subscribes to the Mystery client store (`useMystery`) only while the overlay is open, and publishes, once each per match:
+  - `arcade.player_joined` when a Marion agent (a lobby player with a `look`) takes a seat;
+  - `arcade.match_started` when the room enters `match`;
+  - `arcade.match_ended` when `snap.result` arrives. Player ids are mapped to Marion bot ids, with `'you'` for the human.
+
+  The bridge module (and with it the whole Mystery client) is only in the lazy chunk.
 
 **One event pipeline.** Every source (live sim, replay, WebSocket, player clicks, palette injection) publishes `MarionEvent`s onto one bus. Two subscribers react:
 
@@ -95,7 +110,19 @@ Player actions only publish events, so live play, replays and remote streams beh
 
 - **Static layer:** floors, walls, labels, tubes and prop bodies are baked. At about 1× device scale, a single 1× layer is blitted.
 - **Above 1×:** the world is cut into 256 px chunks, each rendered at the next resolution step (1.5 / 2 / 3 / 4 / 5×) so blits are never upscaled. Chunks are frozen as `ImageBitmap`s from an `OffscreenCanvas` where supported, built at most 3 per frame (the 1× layer fills gaps meanwhile), and evicted least‑recently‑used under a 28 MP budget.
-- **Every frame:** animated props, packets, bots (y‑sorted, additive neon glow in Soft and Dark), particles, and screen‑space speech bubbles laid out so they never overlap. Cross‑bot messages render teal.
+- **Baked lighting** (`render/lighting.ts`, `render/ground.ts`) is part of the static layer:
+  - soft drop shadows under the building, rooms and props (layered strokes, never `shadowBlur`, so every cache scale matches);
+  - ambient‑occlusion bands along the walls and a top‑left key light on floors;
+  - two‑tone wall bevels and accent‑strip light spill;
+  - the terrace garden, the Arcade carpet, and lamp fixtures and facade windows.
+- **Every frame:** animated props, packets, bots, particles, and screen‑space speech bubbles laid out so they never overlap. Cross‑bot messages render teal.
+  - Bots are y‑sorted with an additive neon glow in Soft and Dark. They hop with squash and stretch, breathe, blink, look where they walk, and pulse their glow with activity; Arcade moods add *play*, *cheer* and *sulk* poses.
+  - Room‑name chips fade in when you zoom out. Name tags are pills, readable on any floor.
+- **Day → night** (`render/daylight.ts`) follows the local clock: golden hour around 07:00 and 18:45, and full night from 20:30 to 05:30.
+  - Night is a ¼‑resolution light mask (a navy multiply tint with holes where lamps shine) plus additive glows: 33 corridor lamps, ceiling pools, neon pools in the Arcade, garden lights and 44 lit windows.
+  - It costs nothing by day and about 1–1.5 ms of JS at night. Pin the time with `?hour=22` or the ⌘K *Time of day* commands.
+- **Camera:** critically damped springs (smooth‑damp) ease in and out, and zoom eases in log space. The overview framing keeps clear of the top bar and the activity feed.
+- **Art passes:** screenshots and critiques are in `docs/art-passes/hq/pass-1…3`.
 
 **Design system.** Light / Soft / Dark tokens live in `src/theme/tokens.ts` and are shared by the canvas and the HUD (through CSS variables for Tailwind). Cobalt `#2f6fed` / `#6ea1ff` accents, teal for cross‑bot traffic, flat 10 px‑radius cards with 1 px borders.
 
@@ -109,7 +136,7 @@ Player actions only publish events, so live play, replays and remote streams beh
 - mail, reels and clips arrive
 - delegations, tool calls, chatter, huddles, dictation waves and sleep cycles
 
-Bots also clear backlogs on their own: Quill triages and drafts, Greek sorts clips, Sift distills, Kanye relays. **Quill never stamps.** Every send waits for you.
+Bots also clear backlogs on their own: Quill triages and drafts, Greek sorts clips, Sift distills, Kanye relays. **Quill never stamps.** Every send waits for you. Every 75–130 s, a few idle bots sneak off to the Arcade for a bots‑only Marion Mystery round (`arcade.player_joined` → `match_started` → `match_ended`), which keeps the leaderboard moving.
 
 ### Replay
 Three deterministic scenarios: *Marion Agent Feature Sprint*, *Multi‑Bot Orchestration* and *Morning Triage & Media Distill*. The scrubber plays at 0.5× / 1× / 2× / 4×. Seeking resets the world and re‑applies events up to the target time. IDs and timestamps are stable, so the same seek always produces the same state. Replays never touch your saved progress.
@@ -131,7 +158,17 @@ Pick **Socket** in the top bar and enter a `ws://` or `wss://` URL (default `ws:
 
 **Room extensions:** `mail.received/sorted/sent/cleared`, `reel.received`, `clip.received`, `planner.toggled/added`, `vault.archived/restored`, `relay.queued/dispatched`, `release.shipped`, `bot.spawned`, `settings.llm`.
 
-Bot IDs: `daniel moose kanye barry greek quill sift builder`.
+**Arcade (HQ ↔ Marion Mystery bridge):**
+
+| Event | Payload |
+| --- | --- |
+| `arcade.player_joined` | `{ botId, name, matchId? }` |
+| `arcade.match_started` | `{ matchId?, mode: 'classic' \| 'lightsout' \| 'hideseek', map, players: number, bots: string[] }` |
+| `arcade.match_ended` | `{ matchId?, mode, map, winningTeam: 'crew' \| 'murderers' \| 'neutral' \| 'draw', reason, mvp?, results: { botId, won, role }[] }` |
+
+Arcade events are validated like the rest; `results` rows are checked field by field and their unknown keys are stripped too. The reducer counts each `matchId` once.
+
+Bot IDs: `daniel moose kanye barry greek quill sift builder` (plus `you` on the arcade leaderboard).
 
 A minimal test server:
 
@@ -142,10 +179,10 @@ new WebSocketServer({ port: 8787, path: '/marion' }).on('connection', (ws) =>
   setInterval(() => ws.send(JSON.stringify({ type: 'bot.message', payload: { botId: 'kanye', text: 'Hello from the real Agent', to: 'daniel' } })), 3000));
 ```
 
-You can also paste raw event JSON into the **⌘K** palette to inject it, or use the 13 one‑click injector presets there.
+You can also paste raw event JSON into the **⌘K** palette to inject it, or use the 13 one‑click injector presets there. The *Arcade* group adds presets for the three arcade events, a "bots play a match" demo, and Play / Quick Play for Marion Mystery.
 
 ## Persistence & audio
-- **Saved in `localStorage`** (`marion-hq:v1`): theme, mute, FPS toggle, WebSocket URL, turntable, custom bots, slotted skills, streak / polish progress and Planner cards. Corrupt or blocked storage falls back to defaults.
+- **Saved in `localStorage`** (`marion-hq:v1`): theme, mute, FPS toggle, WebSocket URL, turntable, custom bots, slotted skills, streak / polish progress, Planner cards, and the **arcade leaderboard + last 10 results** (validated on load; the live match is session‑only). Corrupt or blocked storage falls back to defaults.
 - **Audio is muted by default.** The `AudioContext` is created on first unmute. Sounds include soft chimes, a pneumatic whoosh, a stamp thud, a spawn arpeggio and a lo‑fi turntable loop (Fmaj7–Em7–Dm7–Cmaj7, 72 bpm, vinyl crackle). The loop fades to silence during any dictation wave and comes back afterwards.
 
 ## Verification
@@ -153,9 +190,9 @@ You can also paste raw event JSON into the **⌘K** palette to inject it, or use
 | Check | Result |
 | --- | --- |
 | `npx tsc --noEmit` | 0 errors (strict, `noUncheckedIndexedAccess`) |
-| `npx vitest run` | 111 tests passing, covering pathfinding, FSM, loop, camera, bubbles, sim, renderer, mechanics, actions, all three adapters, persistence, audio, the palette, and a jsdom App smoke test |
-| `npm run build` | Clean, no warnings (~327 kB JS / ~105 kB gzip) |
-| Headless Chromium (Playwright), dev and preview | No console errors across overview, room panels, bot inspector, palette, replay, all 3 themes, phone viewport |
+| `npx vitest run` | HQ suites cover pathfinding, the FSM, loop, camera, bubbles, sim, renderer, mechanics, actions, all three adapters, persistence, audio, the palette and a jsdom App smoke test. `tests/arcade.test.tsx` covers the arcade event schema, reducer, persistence round‑trip, sim reactions, the bridge's once‑per‑match publishing, the panel and the lazy MysteryApp mount, the live sim, palette presets, and the day/night, camera and pose helpers. The Marion Mystery suites are also included. |
+| `npm run build` | Clean type check and bundle. HQ entry ~375 kB JS / ~122 kB gzip; Marion Mystery (menus, bridge, client store, 3D view) is split into lazy chunks, and Vite flags only the lazy three.js view chunk as over 500 kB |
+| Headless Chromium (Playwright), dev and preview | No console errors across overview, room panels, bot inspector, palette, replay, all 3 themes and the phone viewport, plus the Arcade panel, launching Marion Mystery (menu and Quick Play) and exiting back to the HQ |
 
 On frame time: in headless Chromium at 2× DPR, the renderer's JavaScript takes about 1–2 ms per frame at overview, including a busy dark scene with 12 bots. Zoomed in, frames measured around 23 ms. Profiling showed that time is spent waiting on that environment's software rasterizer (SwiftShader), not in the renderer's code; it stayed even with 1:1 blits. Real browsers with GPU‑accelerated canvas don't pay that cost, but I could only measure in this headless environment, so I haven't confirmed 60 fps on real hardware.
 

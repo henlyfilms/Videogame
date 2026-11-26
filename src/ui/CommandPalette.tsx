@@ -115,6 +115,9 @@ export function buildCommands(toast: (m: string) => void): PaletteCommand[] {
   add('View', s.paused ? 'Resume' : 'Pause', () => s.togglePause(), 'Space');
   for (const sp of SPEEDS) add('View', `Speed ${sp}×`, () => s.setSpeed(sp));
   add('View', 'Show controls', () => s.setHelp(true), '?');
+  add('View', 'Time of day: follow the clock', () => (hq.clockOverride = null));
+  for (const [label, h] of [['Morning', 7.2], ['Noon', 12], ['Dusk', 18.9], ['Night', 23]] as const)
+    add('View', `Time of day: ${label}`, () => (hq.clockOverride = h));
 
   add('Source', 'Use live simulation', () => manager.use('live'));
   add('Source', 'Connect WebSocket stream', () => manager.use('ws'));

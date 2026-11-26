@@ -742,19 +742,25 @@ export class Simulation {
         const board = propCenter('arcade', 'board');
         this.burst(board.x, board.y, '#fbbf24', 18, 90);
         let celebrated = false;
-        for (const r of results) {
+        let talkers = 0;
+        // Winners first so the MVP and winners get the (limited) speech bubbles.
+        const ordered = [...results].sort((a, b) => Number(b.botId === mvp) - Number(a.botId === mvp) || Number(b.won) - Number(a.won));
+        for (const r of ordered) {
           const bot = this.bots.get(r.botId);
           if (!bot) continue;
+          // Keep the cabinet readable: at most two bubbles, the rest emote silently.
+          const talk = talkers < 2 && (r.won || this.random() < 0.5);
+          if (talk) talkers++;
           if (r.won) {
             bot.mood = { kind: 'cheer', until: this.time + 4.5 };
             this.burst(bot.x, bot.y - 6, bot.def.glowColor, 16, 90);
             this.burst(bot.x, bot.y - 6, '#fbbf24', 8, 60);
             this.floatText(bot.x, bot.y - 30, mvp === r.botId ? 'MVP ★' : 'WIN!', '#fbbf24');
-            this.say(r.botId, CHEER_LINES[Math.floor(this.random() * CHEER_LINES.length)]!);
+            if (talk) this.say(r.botId, CHEER_LINES[Math.floor(this.random() * CHEER_LINES.length)]!);
             celebrated = true;
           } else {
             bot.mood = { kind: 'sulk', until: this.time + 5 };
-            this.say(r.botId, SULK_LINES[Math.floor(this.random() * SULK_LINES.length)]!);
+            if (talk) this.say(r.botId, SULK_LINES[Math.floor(this.random() * SULK_LINES.length)]!);
           }
           // Wrap up the session: linger a moment, then head home.
           if (bot.intent?.room === 'arcade') {

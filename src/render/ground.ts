@@ -94,18 +94,35 @@ function tree(ctx: Ctx, x: number, y: number, r: number, g: Garden): void {
 }
 
 /** Outdoor terrace garden on the annex Void cells either side of the Arcade. */
-export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
-  const g = gardenPalette(th);
+/** Lawn beds (world px) on the terrace either side of the annex rooms. */
+export function terraceBeds(): Region[] {
   const top = ANNEX_Y * TILE + 14;
   const bottom = (MAP_H - 0.5) * TILE;
-  const spans = annexSpans();
   const beds: Region[] = [];
   let x = TILE * 0.5;
-  for (const [x0, x1] of spans) {
+  for (const [x0, x1] of annexSpans()) {
     if (x0 - x > TILE * 2) beds.push({ x: x + 8, y: top, w: x0 - x - 22, h: bottom - top - 8 });
     x = x1;
   }
   if ((MAP_W - 0.5) * TILE - x > TILE * 2) beds.push({ x: x + 14, y: top, w: (MAP_W - 0.5) * TILE - x - 22, h: bottom - top - 8 });
+  return beds;
+}
+
+/** Stepping-stone centres of a bed's path (it winds toward the Arcade). */
+export function stonePath(b: Region, towardRight: boolean): { x: number; y: number }[] {
+  const py = b.y + b.h * 0.42;
+  const out: { x: number; y: number }[] = [];
+  for (let i = 0; i < 9; i++) {
+    const k = i / 8;
+    const px = towardRight ? b.x + b.w * (0.15 + 0.85 * k) : b.x + b.w * (0.85 - 0.85 * k);
+    out.push({ x: px, y: py + Math.sin(k * Math.PI * 1.5) * 18 });
+  }
+  return out;
+}
+
+export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
+  const g = gardenPalette(th);
+  const beds = terraceBeds();
 
   for (const [bi, b] of beds.entries()) {
     if (region && (b.x > region.x + region.w || b.y > region.y + region.h || b.x + b.w < region.x || b.y + b.h < region.y)) continue;
@@ -124,13 +141,9 @@ export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
     for (let sx = b.x; sx < b.x + b.w; sx += 48) ctx.fillRect(sx, b.y, 24, b.h);
     // Stepping-stone path toward the Arcade terrace door.
     const towardRight = bi === 0;
-    const py = b.y + b.h * 0.42;
     ctx.fillStyle = g.path;
-    for (let i = 0; i < 9; i++) {
-      const k = i / 8;
-      const px = towardRight ? b.x + b.w * (0.15 + 0.85 * k) : b.x + b.w * (0.85 - 0.85 * k);
-      const wob = Math.sin(k * Math.PI * 1.5) * 18;
-      roundRect(ctx, px - 9, py + wob - 6, 18, 12, 5);
+    for (const st of stonePath(b, towardRight)) {
+      roundRect(ctx, st.x - 9, st.y - 6, 18, 12, 5);
       ctx.fill();
     }
     // Pond with lily pads (right garden) / round planter (left garden).

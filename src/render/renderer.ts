@@ -22,6 +22,7 @@ import {
   type Point,
 } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
+import { createNightMaskCanvas, drawDaylight, drawLightFixtures, NIGHT_MASK_SCALE, nightFactor } from './daylight';
 import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
 import { accentSpill, floorKeyLight, propShadow, propShadowShape, roomOcclusion, softShadow, wallBevel } from './lighting';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
@@ -37,6 +38,8 @@ export interface RenderOptions {
   hoverRoom: RoomId | null;
   hoverHotspot: { roomId: RoomId; propId: string } | null;
   showNames: boolean;
+  /** Local hour (0–24, fractional) for the day/night cycle; omitted = noon. */
+  hour?: number;
 }
 
 /** World-px size of one static-layer chunk. */
@@ -123,8 +126,10 @@ export class Renderer {
   private baseKey = '';
   private chunks = new Map<string, Chunk>();
   private chunkPixels = 0;
+  /** Screen-sized offscreen for the night light mask (created on first dusk). */
+  private nightMask: CanvasRenderingContext2D | null = null;
   /** Counters for perf overlays/tests. */
-  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0 };
+  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0, lights: 0 };
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -302,6 +307,25 @@ export class Renderer {
     if (theme.world.ambientDark > 0) {
       ctx.fillStyle = `rgba(4, 6, 12, ${theme.world.ambientDark * 0.55})`;
       ctx.fillRect(vis.x, vis.y, vis.w, vis.h);
+    }
+
+    // Time of day: dusk warmth, night tint, lamp pools and lit windows.
+    if (opts.hour !== undefined) {
+      if (nightFactor(opts.hour) > 0.004 && !this.nightMask) this.nightMask = createNightMaskCanvas();
+      // The light mask is all soft gradients, so it renders at 1/4 resolution and is upscaled.
+      const q = NIGHT_MASK_SCALE;
+      const mask = this.nightMask
+        ? {
+            ctx: this.nightMask,
+            width: Math.ceil(this.canvas.width * q),
+            height: Math.ceil(this.canvas.height * q),
+            transform: [z * q, (this.cssW / 2 - cam.x * cam.zoom) * this.dpr * q, (this.cssH / 2 - cam.y * cam.zoom) * this.dpr * q] as [number, number, number],
+            destW: this.canvas.width,
+            destH: this.canvas.height,
+          }
+        : null;
+      const ds = drawDaylight(ctx, vis, theme, opts.hour, t, mask);
+      this.stats.lights = ds.lamps + ds.windows;
     }
 
     // Tube packets.
@@ -563,6 +587,7 @@ function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOpti
     phase: bot.phase,
     facing: bot.facing,
     selected: bot.def.id === opts.selectedBot,
+    mood: bot.mood?.kind ?? null,
     carry: bot.carry,
     buffed: bot.buffUntil > t,
     theme,
@@ -634,6 +659,8 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   ctx.fill();
   ctx.strokeStyle = w.corridorLine;
   ctx.stroke();
+  // Window glass on the facade + corridor lamp fixtures (lit at night per frame).
+  drawLightFixtures(ctx, theme, region);
 
   // Rooms.
   for (const room of ROOMS) {
