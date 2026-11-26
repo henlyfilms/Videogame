@@ -54,6 +54,7 @@ export class BotBrain {
   private rng: Rng;
   private path: Vec2[] = [];
   private goal: Vec2 | null = null;
+  private pendingPing: Vec2 | null = null;
   private goalKind: 'task' | 'wander' | 'body' | 'fix' | 'flee' | 'hunt' | 'recharge' | 'emergency' | 'vent' | 'investigate' | null = null;
   private goalStation: string | null = null;
   private taskOpenedAt = -1;
@@ -144,6 +145,9 @@ export class BotBrain {
     if (you.corrected || dist(this.pos, you.pos) > 1.2) this.pos = { ...you.pos };
     if (you.tasks.length || snap.sabotage.active !== 'comms') this.taskMemory = you.tasks;
     this.observe(snap);
+    // Point out what we just saw (a kill or a vent) to anyone nearby.
+    if (this.pendingPing && you.alive && !you.inVent) out.push({ a: 'ping', x: this.pendingPing.x, y: this.pendingPing.y });
+    this.pendingPing = null;
     this.think -= dt;
     if (this.think <= 0) {
       this.think = 0.25 + this.rng.next() * 0.15;
@@ -151,6 +155,13 @@ export class BotBrain {
     }
     this.act(snap, map, settings, dt, out);
     return out;
+  }
+
+  /** Crew bots usually ping where they just saw a kill or a vent (the culprit if still in view). */
+  private callOut(snap: Snapshot, actor: string, at?: Vec2): void {
+    if (snap.you.team !== 'crew' || !snap.you.alive || this.rng.next() > 0.7) return;
+    const spot = snap.players.find((x) => x.id === actor)?.pos ?? at;
+    if (spot) this.pendingPing = { x: spot.x, y: spot.y };
   }
 
   // -------------------------------------------------------------------------
@@ -184,10 +195,14 @@ export class BotBrain {
       if (ev.type === 'kill' && ev.actor && ev.actor !== this.id && ev.data?.weapon !== 'gun') {
         this.knownKillers.add(ev.actor);
         this.bump(ev.actor, 10, 'saw them kill');
+        this.callOut(snap, ev.actor, ev.pos);
       }
       if (ev.type === 'vent' && ev.actor && ev.actor !== this.id) {
         const p = snap.players.find((x) => x.id === ev.actor);
-        if (p?.role !== 'engineer') this.bump(ev.actor, 6, 'vented');
+        if (p?.role !== 'engineer') {
+          this.bump(ev.actor, 6, 'vented');
+          this.callOut(snap, ev.actor, ev.pos);
+        }
       }
       if (ev.type === 'visual' && ev.actor) this.bump(ev.actor, -8, 'did a visual task');
       // Lights Out: the lights flicker where someone was just killed. Go and look.
