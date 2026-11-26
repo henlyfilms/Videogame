@@ -16,7 +16,8 @@ import { Diag, lavaAt, paintFace, roomLabel, vnoise, type WallKind, type WorldIn
 const hullCache = new Map<string, THREE.ShaderMaterial>();
 
 /**
- * Back-face hull pushed out along the view-space normal. Thickness grows a
+ * Back-face hull pushed out along the view-space normal (scaled by the
+ * normal attribute's length, 1 for ordinary meshes). Thickness grows a
  * little with distance so lines stay readable; works with InstancedMesh and
  * scene fog. Shared per (colour, thickness).
  */
@@ -37,7 +38,8 @@ export function hullMaterial(color: string, thickness = 0.03, shared = true): TH
           n = mat3(instanceMatrix) * n;
         #endif
         vec4 mvPosition = modelViewMatrix * pos;
-        vec3 vn = normalize(normalMatrix * n);
+        // Unit normals push by uThick; longer ones (mitred hard corners) push further.
+        vec3 vn = normalize(normalMatrix * n) * length(normal);
         float k = clamp(-mvPosition.z * 0.12, 0.7, 2.2);
         mvPosition.xyz += vn * uThick * k;
         gl_Position = projectionMatrix * mvPosition;
