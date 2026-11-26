@@ -6,8 +6,8 @@ Screenshots supplied by the project owner as **visual references** for the Mario
 They are captures from an existing social-deduction game (mostly its VR edition, plus a few
 from the 2D original and some fan renders). Use them for **style,
 mood, layout and interaction patterns only**. Do not copy that game's character design
-(the bean/visor body shape), names, logos, specific cosmetics or artwork. The game's own
-original characters and setting should follow the references' style instead.
+(the bean/visor body shape), names, logos, specific cosmetics or artwork. The Marion bots
+stay the players and characters.
 
 ## UI direction (from the project owner)
 
@@ -15,9 +15,11 @@ original characters and setting should follow the references' style instead.
 placement, component shapes, hierarchy, colour treatment and flow. Rebuild each element with the
 game's own original icons and wording; don't copy their exact icons, logos or text.
 
-**Drop the "Marion" theme from the game's look.** It doesn't fit the vibe and makes the game feel
-generic and AI-made. Don't lean on Marion branding, bot glows, or HQ/office styling. Put the effort
-into getting close to the reference UI and art style instead.
+**Drop the "Marion" theme from the UI/UX and the map only.** There it doesn't fit the vibe and
+makes the game feel generic and AI-made, so don't use Marion branding or HQ/office styling for
+menus, HUD, panels or map layout; follow the reference UI and map style instead.
+**Everything bot-related stays Marion:** the Marion bots remain the players and characters, with
+their names, looks, personalities and behaviour.
 
 **Everything should animate smoothly**: UI (panels sliding/scaling in and out, banners sweeping
 across, buttons with press/hover feedback, progress bars easing, counters ticking) and gameplay
