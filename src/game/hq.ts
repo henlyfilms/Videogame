@@ -116,12 +116,15 @@ export class HQ {
       : null;
   }
 
-  focusRoom(id: RoomId): void {
+  focusRoom(id: RoomId, panelWidth = this.camera.vw > 720 ? 390 : 0): void {
     const r = roomRect(ROOM_BY_ID[id]);
     this.camera.follow = null;
     this.ui.selectedRoom = id;
-    const fit = Math.min(this.camera.vw / (r.w + 160), this.camera.vh / (r.h + 200));
-    this.camera.focus({ x: r.x + r.w / 2, y: r.y + r.h / 2 }, Math.max(0.6, Math.min(1.6, fit)));
+    const availW = this.camera.vw - panelWidth;
+    const fit = Math.min(availW / (r.w + 120), this.camera.vh / (r.h + 200));
+    const zoom = Math.max(0.5, Math.min(1.6, fit));
+    // Shift so the room centers in the area left of the panel.
+    this.camera.focus({ x: r.x + r.w / 2 + panelWidth / 2 / zoom, y: r.y + r.h / 2 }, zoom);
   }
 
   overview(): void {

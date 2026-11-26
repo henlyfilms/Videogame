@@ -3,7 +3,7 @@
  * tube packets, particles, dictation waves and relay tethers. It consumes
  * MarionEvents and turns them into visible behaviour. Pure TypeScript — no DOM.
  */
-import type { BotDef, RoomId } from '../data/bots';
+import { BOT_SHAPES, makeCustomBot, type BotDef, type BotShape, type RoomId } from '../data/bots';
 import type { BotState, DictationSource, MarionEvent, RelayModel } from '../adapters/events';
 import { BubbleSystem } from './bubbles';
 import { forceTransition, transition } from './fsm';
@@ -115,6 +115,11 @@ const BUFF_MULT = 1.35;
 export interface SimOptions {
   /** Deterministic RNG for tests/replay. */
   random?: () => number;
+}
+
+function tileCenterToTile(p: Point, sim: Simulation): Point | undefined {
+  const t = worldToTile(p);
+  return sim.pathfinder.nearestFree(t, () => false) ?? undefined;
 }
 
 export class Simulation {
@@ -690,6 +695,14 @@ export class Simulation {
         return;
       }
       case 'bot.spawned': {
+        const p = ev.payload;
+        if (!this.bots.has(p.botId)) {
+          const shape = (BOT_SHAPES as readonly string[]).includes(p.shape) ? (p.shape as BotShape) : 'blueberry';
+          const def = makeCustomBot({ id: p.botId, name: p.name, job: p.job, shape, color: p.color, glowColor: p.glowColor });
+          const bot = this.addBot(def, tileCenterToTile(propCenter('foundry', 'pod'), this));
+          this.say(bot.def.id, `Hi! I'm ${def.name}`);
+          this.sendHome(bot.def.id, 'working');
+        }
         this.marks.spawn = this.time;
         const c = propCenter('foundry', 'pod');
         this.burst(c.x, c.y, ev.payload.glowColor, 28, 120);
