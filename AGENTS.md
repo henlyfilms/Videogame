@@ -7,7 +7,7 @@ next. Read it fully before changing anything.
 - **Working branch:** `claude/optimistic-carson-j24o57` (all work below is committed and pushed
   there). Don't push to `main` without the owner's say-so.
 - **State at handoff:** typecheck clean, `npx vitest run` 442/442 passing, `npm run build` OK,
-  Marion Mystery e2e 12/12 passing (on the final merged build).
+  Marion Mystery e2e 12/12 passing.
 
 ## What the project is
 
@@ -145,29 +145,26 @@ Other: `server/index.ts` (Node HTTP + WS), `server/llm.ts` and `server/agent-sdk
 
 ## Known gaps / next steps (suggested order)
 
-1. **Visual QA on the merged result.** The world-art and UI changes were built in parallel and
-   their screenshots were taken on the *old* maps. I spot-checked the merge (2D and 3D on all
-   four maps, HUD and minimap correct), but a fuller pass is due: the large octagon hubs look a
-   bit empty in 3D, and room-name floor labels may clip in small rooms.
-2. **Freeplay map thumbnails** still use the old thumbnail style (`ui/MapThumb.tsx`; the new
-   painter is `render2d/overview.ts`).
-3. **3D first person has no ceilings.** The reference shows lit ceiling strips in corridors.
-4. **3D ink outline** covers berry bodies only, not hands, feet or hats. The kill-target red
-   outline has the same limit.
-5. **Minimap and tablet** show room names, not per-room icons.
-6. **The sabotage urgent arrow** in 3D follows the player's facing, not the camera.
-7. **No phone screenshot of the elimination cutscene** has been checked yet.
-8. **HQ map polish:**
-   - Command, Huddle and Foundry have empty floor.
-   - A few pneumatic tubes cross open ground.
-   - Click hit-testing and selection framing use room bounding boxes, so a click just outside
-     an angled corner can still select the room.
-   - The 3D overview crops the far right edge on very wide screens.
-9. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
+Done since the first handoff: Practice map thumbnails, tablet map and sabotage map checked on
+the new maps (they use the new painter); meeting-seat rings and extra props in every map hub;
+3D first-person ceilings with light panels and corridor strips; the sabotage arrow follows the
+3D camera; HQ room hover/click uses the real room outline; fuller HQ Huddle and Foundry; and the
+HQ 3D overview frames the whole station.
+
+1. **Visual QA on real screens.** Check every Mystery screen on desktop and phone against the
+   references (`git show` them from the reference branch). Room-name floor labels may clip in
+   small rooms.
+2. **3D ink outline** covers berry bodies only, not hands, feet or hats. The kill-target red
+   outline has the same limit (`render3d/view3d.ts`, `worldkit.ts`).
+3. **Minimap and tablet** show room names, not per-room icons (`ui/Hud.tsx`,
+   `render2d/overview.ts`).
+4. **No phone screenshot of the elimination cutscene** has been checked yet.
+5. **A few HQ pneumatic tubes cross open ground** (`src/engine/world.ts`, the tube routing).
+6. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
    2D first-time chunk bakes can hitch (about 130 ms). Test on Mac, Windows and iPhone.
-10. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
-11. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
-    layouts. The tuning knobs are in `ai/bot.ts` and `core/settings.ts`.
+7. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
+8. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
+   layouts. The tuning knobs are in `ai/bot.ts` and `core/settings.ts`.
 
 ## Gotchas
 
