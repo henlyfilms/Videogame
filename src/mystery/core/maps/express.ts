@@ -1,270 +1,308 @@
 /**
- * Midnight Express — a snow-bound sleeper train stopped at a mountain
- * station. Two parallel "tracks" of spaces run the length of the map: the
- * train itself (caboose to locomotive, joined by gangways) on the north, the
- * station buildings on the south, with the snowy platform between them and a
- * service road behind the station. Every car opens onto the platform, so the
- * whole map is a ladder of loops rather than one long dead-end corridor.
+ * Midnight Express — a snow-bound sleeper train halted on a mountain curve.
+ * The train bends in a horseshoe round the little station: caboose low in the
+ * west, the passenger cars climbing to the dining car at the crest, then the
+ * kitchen, an open flatbed, the coal tender and the locomotive running south
+ * down the east side. Stepped snowy platforms hug the inside of the curve;
+ * inside it sit the octagonal Ticket Hall, the L-shaped Waiting Room, a
+ * dead-end Baggage Room, the Signal Box, the Engine Shed, the Snowy Yard and
+ * the Water Tower on its service road.
  */
-import { MapBuilder } from './builder';
+import { chamfer, MapBuilder } from './builder';
 
 const b = new MapBuilder();
 const WARM = '#fcd34d';
+const SNOWLIGHT = '#bae6fd';
 
 // --- Rooms -----------------------------------------------------------------
-// The train (west = caboose, east = locomotive)
-b.room('caboose', 'Caboose', [6, 6, 18, 11], 'wood', '#dc2626');
-b.room('observation', 'Observation Car', [28, 6, 22, 11], 'carpet', '#60a5fa');
-b.room('sleeper', 'Sleeper Car', [54, 6, 24, 11], 'rug', '#7c3aed');
-b.room('lounge', 'Piano Lounge', [82, 6, 24, 11], 'carpet', '#9f1239');
-b.room('dining', 'Dining Car', [110, 6, 26, 11], 'checker', '#c2410c');
-b.room('kitchen', 'Kitchen Car', [140, 6, 20, 11], 'tile', '#eab308');
-b.room('coal', 'Coal Tender', [164, 6, 16, 11], 'metal', '#57534e', { outdoor: true, cold: true });
-b.room('engine', 'Locomotive', [184, 5, 24, 13], 'metal', '#b45309');
-// The platform (two halves joined under the footbridge)
-b.room('platformW', 'West Platform', [6, 22, 94, 8], 'snow', '#cbd5e1', { outdoor: true, cold: true });
+// The train, tail to nose
+b.room('caboose', 'Caboose', chamfer(4, 42, 16, 9, [3, 0, 0, 3]), 'wood', '#dc2626');
+b.room('observation', 'Observation Car', [24, 33, 22, 9], 'carpet', '#60a5fa');
+b.room('sleeper', 'Sleeper Car', [50, 25, 26, 9], 'rug', '#7c3aed');
+b.room('lounge', 'Piano Lounge', [80, 18, 24, 9], 'carpet', '#9f1239');
+b.room('dining', 'Dining Car', [108, 13, 26, 9], 'checker', '#c2410c');
+b.room('kitchen', 'Kitchen Car', [138, 15, 20, 9], 'tile', '#eab308');
+b.room('flatbed', 'Open Flatbed', [148, 28, 10, 16], 'wood', '#a16207', { outdoor: true, cold: true });
+b.room('coal', 'Coal Tender', [150, 48, 10, 14], 'metal', '#57534e', { outdoor: true, cold: true });
+b.room('engine', 'Locomotive', chamfer(150, 66, 12, 24, [0, 0, 4, 4]), 'metal', '#b45309');
+// Platforms stepping round the inside of the curve
+b.room('platformW', 'West Platform', [26, 44, 24, 5], 'snow', '#cbd5e1', {
+  outdoor: true,
+  cold: true,
+  extra: [
+    [6, 53, 16, 5],
+    [21, 49, 9, 4],
+    [48, 41, 6, 3],
+    [52, 36, 26, 5],
+  ],
+});
 b.lamps.pop(); // lit by lamp posts instead of one giant light
-b.room('platformE', 'East Platform', [104, 22, 104, 8], 'snow', '#94a3b8', { outdoor: true, cold: true });
+b.room('platformE', 'East Platform', [108, 24, 30, 5], 'snow', '#94a3b8', {
+  outdoor: true,
+  cold: true,
+  extra: [
+    [78, 34, 6, 4],
+    [82, 29, 24, 5],
+    [104, 27, 6, 3],
+    [136, 29, 8, 22],
+    [131, 51, 13, 22],
+  ],
+});
 b.lamps.pop();
-// The station
-b.room('yard', 'Snowy Yard', [6, 36, 30, 26], 'snow', '#e0f2fe', { outdoor: true, cold: true });
-b.room('signal', 'Signal Box', [40, 40, 14, 12], 'wood', '#16a34a');
-b.room('baggage', 'Baggage Room', [58, 38, 20, 16], 'wood', '#a16207', { cold: true });
-b.room('tickets', 'Ticket Hall', [82, 36, 30, 22], 'stone', '#8b1e3f');
-b.room('waiting', 'Waiting Room', [116, 38, 20, 16], 'carpet', '#0f766e');
-b.room('office', "Stationmaster's Office", [140, 40, 16, 12], 'rug', '#4338ca');
-b.room('shed', 'Engine Shed', [160, 36, 24, 24], 'stone', '#64748b', { cold: true });
-b.room('tower', 'Water Tower', [188, 38, 20, 20], 'snow', '#0284c7', { outdoor: true, cold: true });
+// The station inside the curve
+b.room('tickets', 'Ticket Hall', chamfer(70, 50, 30, 26, 7), 'stone', '#8b1e3f');
+b.room('waiting', 'Waiting Room', [106, 46, 18, 14], 'carpet', '#0f766e', { extra: [[112, 60, 12, 8]] });
+b.room('office', "Stationmaster's Office", [112, 34, 14, 9], 'rug', '#4338ca');
+b.room('signal', 'Signal Box', [30, 56, 10, 12], 'wood', '#16a34a');
+b.room('baggage', 'Baggage Room', [44, 52, 16, 14], 'wood', '#a16207', { cold: true });
+b.room('yard', 'Snowy Yard', chamfer(6, 62, 22, 24, [4, 0, 6, 0]), 'snow', '#e0f2fe', { outdoor: true, cold: true, extra: [[2, 68, 4, 10]] });
+b.room('shed', 'Engine Shed', chamfer(36, 76, 30, 18, [0, 0, 5, 5]), 'stone', '#64748b', { cold: true });
+b.room('tower', 'Water Tower', chamfer(108, 76, 18, 18, 5), 'snow', '#0284c7', { outdoor: true, cold: true });
 
-// --- Gangways between cars --------------------------------------------------
-b.hall([24, 10, 4, 3], 'wood'); // caboose <-> observation
-b.door('sleeper', [50, 10, 4, 3]); // observation <-> sleeper
-b.hall([78, 10, 4, 3], 'wood'); // sleeper <-> lounge
-b.door('dining', [106, 10, 4, 3], 'Dining Car'); // lounge <-> dining
-b.hall([136, 10, 4, 3], 'wood'); // dining <-> kitchen
-b.door('coal', [160, 10, 4, 3]); // kitchen <-> coal
-b.hall([180, 10, 4, 3], 'metal'); // coal <-> locomotive
+// --- Gangways between cars (each one a little dog-leg) -----------------------
+b.path(3, [[20, 44], [21, 44], [21, 37]], 'wood'); // caboose <-> observation
+b.path(3, [[46, 34], [47, 34], [47, 27]], 'wood'); // observation <-> sleeper
+b.door('sleeper', [49, 27, 1, 7]);
+b.path(3, [[76, 27], [77, 27], [77, 20]], 'wood'); // sleeper <-> lounge
+b.path(3, [[104, 19], [105, 19], [105, 14]], 'wood'); // lounge <-> dining
+b.door('dining', [107, 14, 1, 8], 'Dining Car');
+b.hall([134, 16, 4, 3], 'wood'); // dining <-> kitchen
+b.path(3, [[152, 24], [152, 25]], 'metal'); // kitchen <-> flatbed
+b.door('coal', [152, 44, 3, 4]); // flatbed <-> coal
+b.path(3, [[154, 62], [154, 63]], 'metal'); // coal <-> locomotive
 
-// --- Train doors onto the platform -------------------------------------------
-b.door('caboose', [14, 17, 3, 5], 'Caboose');
-b.door('observation', [38, 17, 3, 5]);
-b.door('sleeper', [64, 17, 3, 5]);
-b.door('lounge', [92, 17, 3, 5]);
-b.door('dining', [116, 17, 3, 5]).door('dining', [128, 17, 3, 5]);
-b.door('kitchen', [148, 17, 3, 5]);
-b.door('engine', [190, 18, 3, 4], 'Engine Cab');
-// Footbridge between the platform halves
-b.hall([100, 24, 4, 4], 'stone');
+// --- Train doors onto the platforms ------------------------------------------
+b.door('caboose', [12, 51, 3, 2], 'Caboose');
+b.door('observation', [34, 42, 3, 2]);
+b.door('sleeper', [62, 34, 3, 2]);
+b.door('lounge', [90, 27, 3, 2]);
+b.door('dining', [114, 22, 3, 2]).door('dining', [126, 22, 3, 2]);
+b.door('kitchen', [138, 24, 3, 2]);
+b.hall([144, 36, 4, 3], 'wood');
+b.hall([144, 52, 6, 3], 'metal');
+b.door('engine', [144, 70, 6, 3], 'Engine Cab');
 
-// --- Station doors onto the platform ------------------------------------------
-b.door('yard', [18, 30, 4, 6]);
-b.door('signal', [45, 30, 3, 10], 'Signal Box');
-b.door('baggage', [66, 30, 3, 8]);
-b.door('tickets', [88, 30, 3, 6], 'Ticket Hall West').door('tickets', [104, 30, 3, 6], 'Ticket Hall East');
-b.door('waiting', [124, 30, 3, 8]);
-b.door('office', [146, 30, 3, 10]);
-b.door('shed', [170, 30, 3, 6]);
-b.door('tower', [196, 30, 3, 8]);
-// Station room-to-room passages
-b.hall([36, 44, 4, 3], 'snow'); // yard <-> signal
-b.hall([54, 44, 4, 3], 'wood'); // signal <-> baggage
-b.hall([78, 44, 4, 3], 'stone'); // baggage <-> tickets
-b.hall([112, 44, 4, 3], 'stone'); // tickets <-> waiting
-b.hall([136, 44, 4, 3], 'wood'); // waiting <-> office
-b.hall([156, 44, 4, 3], 'stone'); // office <-> shed
-b.hall([184, 46, 4, 3], 'snow'); // shed <-> tower
-// Service road behind the station
-b.hall([6, 64, 202, 3], 'snow');
-b.door('yard', [20, 62, 3, 2]);
-b.door('tickets', [95, 58, 3, 6]);
-b.door('shed', [170, 60, 3, 4]);
-b.door('tower', [196, 58, 3, 6]);
+// --- Station passages ----------------------------------------------------------
+// Footbridge stair: east platform -> Ticket Hall (north)
+b.path(4, [[90, 34], [90, 40], [84, 40], [84, 46]], 'stone');
+b.door('tickets', [84, 48, 4, 2], 'Ticket Hall');
+// West stair: west platform -> Baggage / Ticket Hall
+b.path(3, [[62, 41], [62, 60], [68, 60]], 'stone');
+b.door('tickets', [68, 60, 2, 3]);
+b.door('baggage', [60, 56, 2, 3]);
+// Ticket Hall -> Waiting Room -> east platform; office between
+b.hall([100, 58, 4, 3], 'stone');
+b.door('waiting', [104, 58, 2, 3]);
+b.path(3, [[124, 50], [133, 50]], 'wood');
+b.path(3, [[118, 29], [118, 31]], 'snow');
+b.door('office', [118, 32, 3, 2], 'Office');
+b.hall([116, 43, 3, 3], 'wood');
+// Signal Box: stair from the west platform, side door to the yard
+b.path(2, [[34, 49], [34, 52]], 'wood');
+b.door('signal', [34, 54, 2, 2], 'Signal Box');
+b.hall([28, 63, 2, 3], 'snow');
+// Platform -> Snowy Yard steps
+b.path(3, [[12, 58], [12, 59]], 'snow');
+// Yard -> Engine Shed, Ticket Hall -> Shed lane
+b.path(3, [[28, 76], [33, 76]], 'snow');
+b.hall([34, 76, 2, 3], 'snow');
+b.path(4, [[82, 76], [82, 82], [68, 82]], 'stone');
+b.door('shed', [66, 82, 2, 4], 'Engine Shed');
+// Service road: Ticket Hall -> Water Tower; Waiting Room -> Tower path
+b.path(3, [[90, 76], [90, 84], [105, 84]], 'snow');
+b.path(3, [[116, 70], [116, 73]], 'snow');
+b.door('waiting', [116, 68, 3, 2]);
 
 // --- Props -----------------------------------------------------------------
 // Caboose
-b.prop('stove', 8.5, 7.5, { label: 'POT BELLY' });
-b.prop('bed', 20.5, 7, { w: 3, h: 2, color: '#7f1d1d' });
-b.prop('desk', 8, 15.5, { w: 2, h: 1 });
-b.prop('chair', 10.5, 15);
-b.prop('window', 15, 6.2, { w: 6, h: 0.3, solid: false });
-b.prop('barrel', 22.5, 15.5);
+b.prop('fireplace', 16.5, 42.5, { label: 'POT BELLY' });
+b.prop('sofa', 10, 43.5, { w: 4, h: 1, color: '#7f1d1d' });
+b.prop('desk', 17.5, 49.5, { w: 3, h: 1 });
+b.prop('barrel', 6.5, 46.5).prop('lamp', 9.5, 49.5, { solid: false, color: WARM });
+b.prop('window', 12, 42.2, { w: 6, h: 0.3, solid: false });
 // Observation car
-b.prop('window', 39, 6.2, { w: 20, h: 0.3, solid: false });
-b.prop('sofa', 32, 7.5, { w: 4, h: 1, color: '#1e3a8a' }).prop('sofa', 46, 7.5, { w: 4, h: 1, color: '#1e3a8a' });
-b.prop('telescope', 39, 8, { w: 2, h: 2 });
-b.prop('plant', 29, 15.5);
-b.prop('bench', 33, 15.5, { w: 4, h: 1 });
-// Sleeper car: compartment partitions break sightlines down the car
-b.prop('shelf', 58.5, 7.5, { w: 1, h: 3, color: '#5b21b6' }).prop('shelf', 63.5, 7.5, { w: 1, h: 3, color: '#5b21b6' });
-b.prop('shelf', 68.5, 7.5, { w: 1, h: 3, color: '#5b21b6' }).prop('shelf', 73.5, 7.5, { w: 1, h: 3, color: '#5b21b6' });
-b.prop('bed', 56, 7, { w: 2, h: 2, color: '#ddd6fe' }).prop('bed', 66, 7, { w: 2, h: 2, color: '#ddd6fe' }).prop('bed', 76, 7, { w: 2, h: 2, color: '#ddd6fe' });
-b.prop('locker', 58.5, 15.5).prop('crate', 72.5, 15.5, { label: 'LUGGAGE' });
+b.prop('window', 35, 33.2, { w: 20, h: 0.3, solid: false });
+b.prop('seat', 27.5, 34.5).prop('seat', 29.5, 34.5).prop('seat', 31.5, 34.5).prop('seat', 36.5, 34.5).prop('seat', 38.5, 34.5);
+b.prop('telescope', 42, 38, { w: 2, h: 2 });
+b.prop('planter', 30, 40.5, { w: 4, h: 1 });
+b.prop('sofa', 39, 40.5, { w: 3, h: 1, color: '#1e3a8a' });
+// Sleeper car: compartments with partitions
+b.prop('bed', 54.5, 26, { w: 3, h: 2, color: '#ddd6fe' }).prop('bed', 62.5, 26, { w: 3, h: 2, color: '#ddd6fe' }).prop('bed', 70.5, 26, { w: 3, h: 2, color: '#ddd6fe' });
+b.prop('locker', 58.5, 25.5, { color: '#5b21b6' }).prop('locker', 58.5, 26.5, { color: '#5b21b6' }).prop('locker', 58.5, 27.5, { color: '#5b21b6' });
+b.prop('locker', 66.5, 25.5, { color: '#5b21b6' }).prop('locker', 66.5, 26.5, { color: '#5b21b6' }).prop('locker', 66.5, 27.5, { color: '#5b21b6' });
+b.prop('crate', 73.5, 32.5, { label: 'LUGGAGE' });
+b.prop('rug', 63, 31, { w: 20, h: 2, solid: false, color: '#6d28d9' });
 // Piano lounge
-b.prop('piano', 86.5, 8, { w: 3, h: 2, color: '#1c1917' });
-b.prop('sofa', 100, 7.5, { w: 4, h: 1, color: '#9f1239' });
-b.prop('counter', 99, 15.5, { w: 6, h: 1, label: 'BAR', color: '#78350f' });
-b.prop('rug', 93, 11, { w: 8, h: 4, solid: false, color: '#be123c' });
-b.prop('turntable', 88, 15.5, { w: 1.5, h: 1.5 });
-b.prop('lamp', 83, 7, { solid: false, color: WARM });
+b.prop('piano', 83.5, 19, { w: 3, h: 2, color: '#1c1917' });
+b.prop('sofa', 94, 18.5, { w: 4, h: 1, color: '#9f1239' });
+b.prop('counter', 97, 25.5, { w: 6, h: 1, label: 'BAR', color: '#78350f' });
+b.prop('roundTable', 89, 23, { w: 2, h: 2 });
+b.prop('turntable', 101.5, 22.5, { w: 1.5, h: 1.5 });
+b.prop('rug', 92, 22, { w: 8, h: 4, solid: false, color: '#be123c' });
 // Dining car
-b.prop('table', 114, 7.5, { w: 2, h: 1, color: '#fef3c7' }).prop('table', 120, 7.5, { w: 2, h: 1, color: '#fef3c7' });
-b.prop('table', 126, 7.5, { w: 2, h: 1, color: '#fef3c7' }).prop('table', 132, 7.5, { w: 2, h: 1, color: '#fef3c7' });
-b.prop('table', 112, 15.5, { w: 2, h: 1, color: '#fef3c7' }).prop('table', 123, 15.5, { w: 2, h: 1, color: '#fef3c7' });
-b.prop('clock', 123, 6.2, { solid: false });
+for (const x of [112, 118, 124, 130]) b.prop('table', x, 15, { w: 2, h: 2, color: '#fef3c7' });
+b.prop('table', 120, 19, { w: 2, h: 2, color: '#fef3c7' });
+b.prop('chair', 110.5, 15.5).prop('chair', 116.5, 15.5).prop('chair', 122.5, 15.5).prop('chair', 128.5, 15.5);
+b.prop('clock', 121, 13.5, { solid: false });
 // Kitchen car
-b.prop('stove', 143, 7.5, { w: 2, h: 1 });
-b.prop('counter', 148, 7.5, { w: 4, h: 1 });
-b.prop('fridge', 158, 7.5, { w: 2, h: 1 });
-b.prop('counter', 143, 15.5, { w: 4, h: 1 });
-b.prop('barrel', 156.5, 15.5, { label: 'FLOUR' });
+b.prop('stove', 142, 15.5, { w: 2, h: 1 });
+b.prop('counter', 147.5, 15.5, { w: 3, h: 1 });
+b.prop('fridge', 156.5, 15.5);
+b.prop('table', 146, 20, { w: 4, h: 2, color: '#fef9c3' });
+b.prop('barrel', 156.5, 22.5, { label: 'FLOUR' });
+// Open flatbed
+b.prop('crate', 150, 31, { w: 2, h: 2, label: 'MAIL SACKS' }).prop('crate', 156, 31, { w: 2, h: 2 });
+b.prop('crate', 156.5, 40, { w: 1, h: 3, label: 'LOGS', color: '#78350f' });
+b.prop('cart', 150, 41, { w: 2, h: 1 });
+b.prop('snowpile', 156.5, 35.5).prop('snowpile', 148.5, 38.5);
 // Coal tender
-b.prop('rock', 168.5, 8, { w: 5, h: 2, label: 'COAL', color: '#1c1917' });
-b.prop('rock', 176.5, 15, { w: 5, h: 2, color: '#1c1917' });
-b.prop('snowpile', 165.5, 15.5);
-b.prop('cart', 177, 7.5, { w: 2, h: 1 });
+b.prop('rock', 156, 53.5, { w: 4, h: 3, label: 'COAL', color: '#1c1917' });
+b.prop('snowpile', 151.5, 58.5).prop('barrel', 158.5, 49.5);
 // Locomotive
-b.prop('engine', 201, 11, { w: 8, h: 4, label: 'BOILER', color: '#292524' });
-b.prop('fireplace', 193, 6.5, { w: 2, h: 1, label: 'FIREBOX' });
-b.prop('console', 188, 6.5, { w: 4, h: 1, label: 'GAUGES' });
-b.prop('pipe', 201, 6, { w: 10, h: 0.5, solid: false });
-b.prop('clock', 205, 5.2, { solid: false, label: 'PRESSURE' });
+b.prop('engine', 156, 78, { w: 6, h: 8, label: 'BOILER', color: '#292524' });
+b.prop('fireplace', 156, 72.5, { w: 2, h: 1, label: 'FIREBOX' });
+b.prop('console', 156, 86.5, { w: 4, h: 1, label: 'GAUGES' });
+b.prop('pipe', 160.6, 78, { w: 0.5, h: 10, solid: false });
 // West platform
-b.prop('pillar', 10.5, 25.5).prop('pillar', 28.5, 25.5).prop('pillar', 52.5, 25.5).prop('pillar', 76.5, 25.5).prop('pillar', 96.5, 25.5);
-b.prop('bench', 34, 23, { w: 3, h: 1 }).prop('bench', 58, 28.5, { w: 3, h: 1 });
-b.prop('snowpile', 7.5, 28.5, { w: 2, h: 1 });
-b.prop('cart', 60, 23.5, { w: 2, h: 1, label: 'LUGGAGE' });
-b.prop('clock', 50, 22.2, { solid: false, label: 'MIDNIGHT' });
-b.prop('mailbox', 82.5, 28.5);
-b.prop('poster', 70, 29.8, { w: 4, h: 0.2, solid: false, label: 'TIMETABLE' });
+b.prop('bench', 14, 56.5, { w: 3, h: 1 }).prop('bench', 40, 47.5, { w: 3, h: 1 }).prop('bench', 70, 39.5, { w: 3, h: 1 });
+b.prop('pillar', 27.5, 47.5).prop('pillar', 47.5, 47.5).prop('pillar', 57.5, 39.5);
+b.prop('snowpile', 6.5, 56.5).prop('snowpile', 75.5, 39.5);
+b.prop('clock', 65, 36.5, { solid: false, label: 'MIDNIGHT' });
+b.prop('cart', 30, 45, { w: 2, h: 1, label: 'LUGGAGE' });
+b.prop('poster', 52, 41.2, { w: 3, h: 0.2, solid: false, label: 'TIMETABLE' });
 // East platform
-b.prop('pillar', 112.5, 25.5).prop('pillar', 136.5, 25.5).prop('pillar', 160.5, 25.5).prop('pillar', 184.5, 25.5).prop('pillar', 204.5, 25.5);
-b.prop('bench', 140, 23, { w: 3, h: 1 }).prop('bench', 176, 28.5, { w: 3, h: 1 });
-b.prop('snowpile', 206.5, 28.5);
-b.prop('cart', 156, 23.5, { w: 2, h: 1 });
-b.prop('poster', 150, 29.8, { w: 4, h: 0.2, solid: false, label: 'MIDNIGHT EXPRESS' });
-// Snowy yard
-b.prop('tree', 10, 40, { w: 2, h: 2, color: '#14532d' }).prop('tree', 30, 40, { w: 2, h: 2, color: '#14532d' });
-b.prop('tree', 12, 56, { w: 2, h: 2, color: '#14532d' });
-b.prop('snowpile', 16.5, 48, { w: 3, h: 2 }).prop('snowpile', 8.5, 50.5);
-b.prop('statue', 26.5, 46.5, { label: 'SNOWMAN', color: '#f8fafc' });
-b.prop('crate', 33.5, 59.5, { label: 'FIREWOOD', color: '#78350f' });
-// Signal box
-b.prop('console', 47, 49.5, { w: 6, h: 1, label: 'LEVERS', color: '#166534' });
-b.prop('window', 47, 40.2, { w: 8, h: 0.3, solid: false });
-b.prop('desk', 51, 41.5, { w: 2, h: 1 });
-b.prop('chair', 47, 48);
-b.prop('shelf', 41.5, 50.5);
-// Baggage room
-b.prop('shelf', 62, 41.5, { w: 4, h: 1 }).prop('shelf', 73, 41.5, { w: 4, h: 1 });
-b.prop('shelf', 62, 50.5, { w: 4, h: 1 }).prop('shelf', 73, 50.5, { w: 4, h: 1 });
-b.prop('crate', 76.5, 52.5, { label: 'TRUNK' });
-b.prop('cart', 68, 49.5, { w: 2, h: 1 });
-b.prop('mailbox', 59, 39);
-// Ticket hall (meeting)
-b.prop('roundTable', 97, 47, { w: 2, h: 2, color: '#fde68a' });
-b.prop('rug', 97, 47, { w: 10, h: 8, solid: false, color: '#8b1e3f' });
-b.prop('counter', 88, 55.5, { w: 8, h: 1, label: 'TICKETS', color: '#78350f' });
-b.prop('counter', 106, 55.5, { w: 6, h: 1, color: '#78350f' });
-b.prop('clock', 97, 36.2, { w: 2, h: 0.4, solid: false, label: 'STATION CLOCK' });
-b.prop('pillar', 86.5, 40.5).prop('pillar', 107.5, 40.5).prop('pillar', 86.5, 51.5).prop('pillar', 107.5, 51.5);
-b.prop('plant', 83, 37);
-// Waiting room
-b.prop('fireplace', 126, 52.5, { w: 3, h: 1 });
-b.prop('sofa', 121, 49.5, { w: 4, h: 1, color: '#115e59' }).prop('sofa', 131, 49.5, { w: 4, h: 1, color: '#115e59' });
-b.prop('bookshelf', 118.5, 39.5, { w: 3, h: 1 });
-b.prop('arcade', 134.5, 39.5, { label: 'PENNY ARCADE' });
-b.prop('tree', 133, 52, { w: 2, h: 2, label: 'XMAS TREE', color: '#15803d' });
+b.prop('bench', 98, 32.5, { w: 3, h: 1 }).prop('bench', 130, 27.5, { w: 3, h: 1 }).prop('bench', 142.5, 46, { w: 1, h: 3 });
+b.prop('pillar', 84.5, 30.5).prop('pillar', 111.5, 27.5).prop('pillar', 136.5, 40.5).prop('pillar', 136.5, 62.5);
+b.prop('mailbox', 104.5, 32.5);
+b.prop('bench', 133, 60, { w: 1, h: 3 }).prop('crate', 132.5, 69.5, { label: 'PARCELS' }).prop('cart', 135, 56.5, { w: 2, h: 1 });
+b.prop('snowpile', 142.5, 70.5).prop('snowpile', 136.5, 71.5).prop('snowpile', 137.5, 30.5);
+b.prop('poster', 124, 24.2, { w: 4, h: 0.2, solid: false, label: 'MIDNIGHT EXPRESS' });
+// Ticket Hall (meeting)
+b.prop('roundTable', 85, 63, { w: 2, h: 2, color: '#fde68a' });
+b.prop('rug', 85, 63, { w: 10, h: 8, solid: false, color: '#8b1e3f' });
+b.prop('counter', 92, 55.5, { w: 5, h: 1, label: 'TICKETS', color: '#78350f' });
+b.prop('clock', 77.5, 55.5, { label: 'STATION CLOCK' });
+b.prop('bench', 78, 70.5, { w: 3, h: 1 }).prop('bench', 92, 70.5, { w: 3, h: 1 });
+b.prop('pillar', 74.5, 66.5).prop('pillar', 95.5, 66.5);
+b.prop('plant', 72.5, 57.5).prop('plant', 97.5, 62.5);
+b.prop('poster', 85, 50.2, { w: 4, h: 0.2, solid: false, label: 'DEPARTURES' });
+// Waiting Room
+b.prop('fireplace', 109.5, 46.5, { w: 3, h: 1 });
+b.prop('bench', 112, 51.5, { w: 4, h: 1, color: '#115e59' }).prop('bench', 112, 55.5, { w: 4, h: 1, color: '#115e59' });
+b.prop('tree', 121, 47, { w: 2, h: 2, label: 'XMAS TREE', color: '#15803d' });
+b.prop('arcade', 122.5, 57.5, { label: 'PENNY ARCADE' });
+b.prop('sofa', 118, 63.5, { w: 4, h: 1, color: '#115e59' });
+b.prop('bookshelf', 112.5, 65, { w: 1, h: 3 });
 // Stationmaster's office
-b.prop('desk', 148, 49.5, { w: 4, h: 1 });
-b.prop('bookshelf', 142.5, 40.5, { w: 3, h: 1 });
-b.prop('locker', 154.5, 40.5, { label: 'SAFE', color: '#1e1b4b' });
-b.prop('chair', 148, 48.2);
-// Engine shed (parked freight cars)
-b.prop('crate', 171, 42, { w: 10, h: 3, label: 'FREIGHT 42', color: '#7c2d12' });
-b.prop('tank', 171, 52, { w: 8, h: 3, label: 'TANKER', color: '#334155' });
-b.prop('generator', 180.5, 38, { w: 3, h: 2 });
-b.prop('barrel', 163, 57.5, { w: 2, h: 1 });
-b.prop('pipe', 172, 36.5, { w: 8, h: 0.5, solid: false });
-// Water tower
-b.prop('tank', 198, 47, { w: 4, h: 4, label: 'WATER', color: '#0369a1' });
-b.prop('tree', 191, 40, { w: 2, h: 2, color: '#14532d' }).prop('tree', 205, 55, { w: 2, h: 2, color: '#14532d' });
-b.prop('snowpile', 191.5, 55.5, { w: 3, h: 1 });
-b.prop('dish', 204, 47, { w: 2, h: 2, label: 'TELEGRAPH' });
-// Service road
-
-// Lamp posts along the platform and road
-for (const x of [18, 40, 64, 88, 116, 142, 168, 194]) b.lamp(x, 26, 9, WARM);
-for (const x of [30, 70, 110, 150, 190]) b.lamp(x, 65, 6, '#bae6fd');
-b.lamp(102, 26, 4, WARM);
+b.prop('desk', 114.5, 38, { w: 3, h: 2 });
+b.prop('chair', 116.5, 38.5);
+b.prop('bookshelf', 124.5, 35.5, { w: 1, h: 3 });
+b.prop('locker', 124.5, 41.5, { label: 'SAFE', color: '#1e1b4b' });
+b.prop('clock', 121, 34.5, { solid: false });
+// Signal Box
+b.prop('console', 38.5, 61, { w: 1, h: 4, label: 'LEVERS', color: '#166534' });
+b.prop('chair', 37, 61.5);
+b.prop('desk', 32.5, 66.5, { w: 3, h: 1 });
+b.prop('window', 35, 56.2, { w: 6, h: 0.3, solid: false });
+b.prop('shelf', 31, 57.5, { w: 2, h: 1 });
+// Baggage Room (one way in)
+b.prop('shelf', 47, 53.5, { w: 4, h: 1 }).prop('shelf', 53, 53.5, { w: 4, h: 1 });
+b.prop('crate', 46, 58, { w: 2, h: 2, label: 'TRUNK' }).prop('crate', 50.5, 60.5).prop('crate', 54, 62, { w: 2, h: 2 });
+b.prop('cart', 50, 64.5, { w: 2, h: 1 });
+b.prop('shelf', 44.5, 61, { w: 1, h: 4 });
+b.prop('mailbox', 58.5, 64.5);
+// Snowy Yard
+b.prop('tree', 10, 68, { w: 2, h: 2, color: '#14532d' }).prop('tree', 22, 74, { w: 2, h: 2, color: '#14532d' }).prop('tree', 8, 80, { w: 2, h: 2, color: '#14532d' });
+b.prop('snowpile', 16, 66, { w: 3, h: 2 }).prop('snowpile', 4, 74.5).prop('snowpile', 18.5, 82.5);
+b.prop('statue', 15.5, 74.5, { label: 'SNOWMAN', color: '#f8fafc' });
+b.prop('crate', 25.5, 69.5, { label: 'FIREWOOD', color: '#78350f' });
+b.prop('cart', 12, 77.5, { w: 2, h: 1, label: 'SLED' });
+b.prop('rock', 24.5, 77.5);
+// Engine Shed
+b.prop('engine', 50, 84, { w: 10, h: 4, label: 'SHUNTER 7', color: '#7c2d12' });
+b.prop('tank', 60, 79, { w: 4, h: 2, label: 'TANKER', color: '#334155' });
+b.prop('desk', 41, 77, { w: 4, h: 2, label: 'WORKBENCH' });
+b.prop('generator', 40.5, 88.5, { w: 3, h: 2 });
+b.prop('barrel', 62.5, 87.5).prop('barrel', 61.5, 87.5);
+b.prop('pipe', 51, 76.4, { w: 10, h: 0.4, solid: false });
+// Water Tower
+b.prop('tank', 117, 85, { w: 6, h: 6, label: 'WATER TOWER', color: '#0369a1' });
+b.prop('dish', 123, 82, { w: 2, h: 2, label: 'TELEGRAPH' });
+b.prop('tree', 112, 80, { w: 2, h: 2, color: '#14532d' }).prop('snowpile', 112.5, 90.5, { w: 2, h: 1 }).prop('rock', 121.5, 90.5);
+// Lamp posts
+for (const [x, y] of [[14, 55], [38, 46], [64, 38], [94, 31], [122, 26], [140, 45], [140, 64]] as const) b.lamp(x, y, 7, WARM);
+b.lamp(97, 85, 5, SNOWLIGHT).lamp(75, 84, 5, SNOWLIGHT).lamp(63, 50, 4, WARM).lamp(88, 42, 4, WARM);
 
 // --- Stations --------------------------------------------------------------
-b.st('emergency', 97, 47, 'tickets');
-b.st('admin', 88, 54.2, 'tickets');
-b.st('upload', 106, 54.2, 'tickets');
-b.st('cams', 47, 48.6, 'signal');
-b.st('doorlog', 52.5, 50.5, 'signal');
-b.st('vitals', 70.5, 15.5, 'sleeper');
-b.st('lightsPanel', 161, 37.5, 'shed');
-b.st('commsPanel', 150.5, 48.2, 'office');
-b.st('meltdownA', 195, 15.5, 'engine').st('meltdownB', 171.5, 12, 'coal');
-b.st('pressureA', 7, 11, 'caboose').st('pressureB', 154.5, 50.5, 'office');
-b.st('recharge', 30, 13, 'observation').st('recharge', 134.5, 15.5, 'dining').st('recharge', 76.5, 46, 'baggage').st('recharge', 206.5, 51, 'tower');
+b.st('emergency', 85, 63, 'tickets');
+b.st('admin', 92, 56.6, 'tickets');
+b.st('upload', 99, 64, 'tickets');
+b.st('cams', 37.4, 59, 'signal');
+b.st('doorlog', 30.6, 60, 'signal');
+b.st('vitals', 60, 32.4, 'sleeper');
+b.st('lightsPanel', 36.6, 82, 'shed');
+b.st('commsPanel', 125.4, 39, 'office');
+b.st('meltdownA', 156, 88.4, 'engine').st('meltdownB', 159.4, 57, 'coal');
+b.st('pressureA', 4.6, 46, 'caboose').st('pressureB', 112.6, 41.4, 'office');
+b.st('recharge', 24.6, 34, 'observation').st('recharge', 133.4, 13.6, 'dining').st('recharge', 58.4, 53, 'baggage').st('recharge', 110, 88.4, 'tower');
 // Tasks
-b.st('fixWiring', 22.5, 9, 'caboose').st('fixWiring', 55, 15.5, 'sleeper').st('fixWiring', 179, 13, 'coal').st('fixWiring', 182.5, 58.5, 'shed').st('fixWiring', 63, 39, 'baggage');
-b.st('replaceFuse', 12, 15.5, 'caboose').st('replaceFuse', 118, 15.5, 'dining').st('replaceFuse', 176, 45, 'shed');
-b.st('rerouteTube', 20, 15.5, 'caboose').st('rerouteTube', 70, 46, 'baggage').st('rerouteTube', 152, 15.5, 'kitchen').st('rerouteTube', 206.5, 44, 'tower');
-b.st('lightLantern', 7, 8.5, 'caboose').st('lightLantern', 7, 60.5, 'yard').st('lightLantern', 148, 28.5, 'platformE');
-b.st('lightLantern', 189, 56.5, 'tower').st('lightLantern', 178.5, 8.5, 'coal');
-b.st('download', 147, 9, 'kitchen').st('download', 42, 42, 'signal').st('download', 130, 40, 'waiting').st('download', 45, 12.5, 'observation');
-b.st('chartCourse', 39, 9.6, 'observation');
-b.st('waterPlants', 48.5, 14, 'observation').st('waterPlants', 117.5, 51, 'waiting');
-b.st('keypadCode', 61, 9, 'sleeper').st('keypadCode', 154.5, 42.5, 'office');
-b.st('distillReel', 71, 9, 'sleeper');
-b.st('sortClips', 103, 9, 'lounge');
-b.st('simonSays', 86.5, 9.6, 'lounge');
-b.st('calibrateTurntable', 89.6, 15.5, 'lounge');
-b.st('fixWiring', 104.5, 15.5, 'lounge');
-b.st('sortBerries', 144.5, 9, 'kitchen').st('sortBerries', 31.5, 43, 'yard').st('sortBerries', 135, 46, 'waiting');
-b.st('juicePress', 129, 9.6, 'dining');
-b.st('emptyChute', 158.5, 15.5, 'kitchen');
-b.st('primeShields', 186, 15, 'engine');
-b.st('fuelEngine', 196.5, 11, 'engine');
-b.st('fuelCan', 8, 60, 'yard');
-b.st('swipeBadge', 84, 23, 'platformW');
-b.st('stampMail', 66, 44, 'baggage').st('stampMail', 145.5, 49.8, 'office');
-b.st('slotCartridge', 122, 40.5, 'waiting');
-b.st('medScan', 126, 45, 'waiting');
-b.st('unlockManifold', 166, 47, 'shed');
-b.st('rechargeGenerator', 180.5, 40.2, 'shed');
-b.st('cleanFilter', 200.6, 47, 'tower');
-b.st('alignDish', 204, 49.4, 'tower');
+b.st('fixWiring', 19.4, 48.6, 'caboose').st('fixWiring', 56, 32.4, 'sleeper').st('fixWiring', 157.4, 29, 'flatbed').st('fixWiring', 64.4, 88, 'shed').st('fixWiring', 44.6, 64.6, 'baggage');
+b.st('replaceFuse', 8, 49.4, 'caboose').st('replaceFuse', 108.6, 20.6, 'dining').st('replaceFuse', 60, 76.6, 'shed');
+b.st('rerouteTube', 13, 42.6, 'caboose').st('rerouteTube', 52, 52.6, 'baggage').st('rerouteTube', 157.4, 19, 'kitchen').st('rerouteTube', 124.6, 85, 'tower');
+b.st('lightLantern', 18.6, 42.6, 'caboose').st('lightLantern', 2.6, 70, 'yard').st('lightLantern', 143.4, 60, 'platformE');
+b.st('lightLantern', 120, 92.4, 'tower').st('lightLantern', 148.6, 34, 'flatbed');
+b.st('download', 150, 15.6, 'kitchen').st('download', 35, 66.4, 'signal').st('download', 123.4, 47, 'waiting').st('download', 44.4, 40.4, 'observation');
+b.st('chartCourse', 39, 33.6, 'observation');
+b.st('waterPlants', 30, 39.4, 'observation').st('waterPlants', 121, 49.4, 'waiting');
+b.st('keypadCode', 51, 25.6, 'sleeper').st('keypadCode', 122, 34.6, 'office');
+b.st('distillReel', 74.4, 26, 'sleeper');
+b.st('sortClips', 87, 25.4, 'lounge');
+b.st('simonSays', 87.5, 18.6, 'lounge');
+b.st('calibrateTurntable', 101.5, 24.4, 'lounge');
+b.st('fixWiring', 103.4, 25.4, 'lounge');
+b.st('sortBerries', 147, 17.6, 'kitchen').st('sortBerries', 16, 84.4, 'yard').st('sortBerries', 106.6, 54, 'waiting');
+b.st('juicePress', 124, 16.6, 'dining');
+b.st('emptyChute', 139, 22.4, 'kitchen');
+b.st('primeShields', 160.4, 70, 'engine');
+b.st('fuelEngine', 156, 82.6, 'engine');
+b.st('fuelCan', 27, 72, 'yard');
+b.st('swipeBadge', 56, 40.4, 'platformW');
+b.st('stampMail', 56, 63, 'baggage').st('stampMail', 114.5, 39.6, 'office');
+b.st('slotCartridge', 122.6, 62, 'waiting');
+b.st('medScan', 113, 62, 'waiting');
+b.st('unlockManifold', 44, 88, 'shed');
+b.st('rechargeGenerator', 43, 88.6, 'shed');
+b.st('cleanFilter', 112.6, 85, 'tower');
+b.st('alignDish', 121, 80.6, 'tower');
 
 // --- Vents (4 networks) ----------------------------------------------------
-b.vent('v-caboose', 18, 13, 'rear', ['v-yard', 'v-signal']);
-b.vent('v-yard', 20, 42, 'rear', ['v-caboose', 'v-signal']);
-b.vent('v-signal', 50, 45, 'rear', ['v-caboose', 'v-yard']);
-b.vent('v-sleeper', 61, 12.5, 'middle', ['v-baggage', 'v-lounge']);
-b.vent('v-baggage', 74, 46, 'middle', ['v-sleeper', 'v-lounge']);
-b.vent('v-lounge', 95, 14, 'middle', ['v-sleeper', 'v-baggage']);
-b.vent('v-dining', 124, 11, 'station', ['v-waiting']);
-b.vent('v-waiting', 128, 42, 'station', ['v-dining', 'v-kitchen']);
-b.vent('v-kitchen', 155, 12, 'station', ['v-waiting']);
-b.vent('v-coal', 172, 14.5, 'front', ['v-shed', 'v-tower', 'v-engine']);
-b.vent('v-shed', 164, 48, 'front', ['v-coal', 'v-tower']);
-b.vent('v-tower', 193, 50, 'front', ['v-coal', 'v-shed']);
-b.vent('v-engine', 206, 16, 'front', ['v-coal']);
+b.vent('v-caboose', 8, 47.5, 'rear', ['v-obs', 'v-yard']);
+b.vent('v-obs', 26.5, 40.5, 'rear', ['v-caboose', 'v-signal']);
+b.vent('v-signal', 31.5, 65.5, 'rear', ['v-obs', 'v-yard']);
+b.vent('v-yard', 20, 70, 'rear', ['v-caboose', 'v-signal']);
+b.vent('v-sleeper', 69, 32.5, 'middle', ['v-lounge', 'v-baggage']);
+b.vent('v-lounge', 81.5, 25.5, 'middle', ['v-sleeper']);
+b.vent('v-baggage', 47, 64.5, 'middle', ['v-sleeper']);
+b.vent('v-dining', 131.5, 20.5, 'station', ['v-kitchen', 'v-office']);
+b.vent('v-kitchen', 155, 21.5, 'station', ['v-dining']);
+b.vent('v-office', 113, 35.5, 'station', ['v-dining', 'v-waiting']);
+b.vent('v-waiting', 122.5, 66.5, 'station', ['v-office']);
+b.vent('v-flatbed', 149, 42.5, 'front', ['v-coal', 'v-engine']);
+b.vent('v-coal', 151.5, 49.5, 'front', ['v-flatbed', 'v-tower']);
+b.vent('v-engine', 151.5, 76, 'front', ['v-flatbed', 'v-tower']);
+b.vent('v-tower', 110.5, 83, 'front', ['v-coal', 'v-engine', 'v-shed']);
+b.vent('v-shed', 62.5, 90, 'front', ['v-tower']);
 
 // --- Cameras ---------------------------------------------------------------
-b.cam(30, 26, 'West Platform').cam(80, 26, 'Platform Clock').cam(126, 26, 'East Platform');
-b.cam(178, 26, 'Engine Platform').cam(50, 65, 'Service Road West').cam(150, 65, 'Service Road East');
-b.cam(102, 26, 'Footbridge');
+b.cam(15, 55, 'West Platform').cam(65, 38, 'Platform Clock').cam(120, 26, 'East Platform');
+b.cam(140, 60, 'Engine Platform').cam(98, 85, 'Service Road').cam(75, 83, 'Shed Lane').cam(88, 42, 'Footbridge Stair');
 
 export const EXPRESS_MAP = b.build({
   id: 'express',
   name: 'Midnight Express',
   tagline: 'Snowed in at the last stop. Someone is not getting off.',
-  w: 214,
-  h: 70,
+  w: 166,
+  h: 97,
   theme: {
     sky: '#0b1020',
     void: '#0d0a12',
@@ -277,7 +315,7 @@ export const EXPRESS_MAP = b.build({
     fog: '#1b2234',
     ambience: 'train',
   },
-  spawn: { x: 97, y: 42 },
+  spawn: { x: 85, y: 59 },
   meetingRoom: 'tickets',
   eject: 'caboose',
   criticalNames: { meltdown: 'Boiler Overpressure', pressure: 'Brake Line Failure' },

@@ -5,6 +5,30 @@
 import type { CameraDef, DoorDef, FloorStyle, HallDef, LampDef, MapDef, PropDef, PropKind, Rect, RoomDef, SensorDef, StationDef, VentDef } from '../map';
 import type { StationKind } from '../types';
 
+/**
+ * A rectangle with stepped (45°) chamfered corners — octagons and cut-corner
+ * rooms on the tile grid. `c` is the cut per corner: one number for all four
+ * or [topLeft, topRight, bottomRight, bottomLeft]. Returns the full-width
+ * middle band as `rect` (labels, lamps) and the stepped rows as `extra`.
+ */
+export function chamfer(x: number, y: number, w: number, h: number, c: number | [number, number, number, number]): { rect: Rect; extra: Rect[] } {
+  const [tl, tr, br, bl] = typeof c === 'number' ? [c, c, c, c] : c;
+  const top = Math.max(tl, tr);
+  const bot = Math.max(bl, br);
+  const extra: Rect[] = [];
+  for (let i = 0; i < top; i++) {
+    const l = Math.max(0, tl - i);
+    const r = Math.max(0, tr - i);
+    extra.push([x + l, y + i, w - l - r, 1]);
+  }
+  for (let j = 0; j < bot; j++) {
+    const l = Math.max(0, bl - j);
+    const r = Math.max(0, br - j);
+    extra.push([x + l, y + h - 1 - j, w - l - r, 1]);
+  }
+  return { rect: [x, y + top, w, h - top - bot], extra };
+}
+
 export class MapBuilder {
   rooms: RoomDef[] = [];
   halls: HallDef[] = [];
@@ -17,8 +41,10 @@ export class MapBuilder {
   lamps: LampDef[] = [];
   private n = 0;
 
-  room(id: string, name: string, rect: Rect, floor: FloorStyle, color: string, opts: Partial<RoomDef> = {}): this {
-    this.rooms.push({ id, name, rect, floor, color, ...opts });
+  room(id: string, name: string, shape: Rect | { rect: Rect; extra: Rect[] }, floor: FloorStyle, color: string, opts: Partial<RoomDef> = {}): this {
+    const rect = Array.isArray(shape) ? shape : shape.rect;
+    const extra = [...(Array.isArray(shape) ? [] : shape.extra), ...(opts.extra ?? [])];
+    this.rooms.push({ id, name, rect, floor, color, ...opts, ...(extra.length ? { extra } : {}) });
     const [x, y, w, h] = rect;
     this.lamps.push({ x: x + w / 2, y: y + h / 2, r: Math.max(w, h) * 0.7, color });
     return this;
@@ -26,6 +52,20 @@ export class MapBuilder {
 
   hall(rect: Rect, floor?: FloorStyle): this {
     this.halls.push({ rect, floor });
+    return this;
+  }
+
+  /**
+   * A winding corridor `w` tiles wide through axis-aligned legs. Each point is
+   * the top-left of a w×w square; consecutive points share an x or a y.
+   */
+  path(w: number, pts: [number, number][], floor?: FloorStyle): this {
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1]!;
+      const [x1, y1] = pts[i]!;
+      if (x0 !== x1 && y0 !== y1) throw new Error(`path leg ${x0},${y0} -> ${x1},${y1} is not axis-aligned`);
+      this.halls.push({ rect: [Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0) + w, Math.abs(y1 - y0) + w], floor });
+    }
     return this;
   }
 
