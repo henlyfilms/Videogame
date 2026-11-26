@@ -11,6 +11,11 @@ function wantsMystery(): boolean {
   return pathname.startsWith('/mystery') || new URLSearchParams(search).has('mystery') || hash.startsWith('#mystery');
 }
 
+// Offline shell (production only; dev server must stay uncached).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 createRoot(root).render(

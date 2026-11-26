@@ -7,6 +7,8 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+    // three.js is ~690 kB on its own and loads lazily with Marion Mystery.
+    chunkSizeWarningLimit: 800,
   },
   test: {
     environment: 'jsdom',

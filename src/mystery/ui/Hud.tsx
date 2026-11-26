@@ -187,7 +187,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
         />
       )}
       {/* Top-left: tasks / role panel */}
-      <div className="mm-safe" style={{ position: 'absolute', top: 0, left: 0, width: tasksOpen ? 'min(320px, 70vw)' : undefined, pointerEvents: 'auto' }}>
+      <div className="mm-safe" style={{ position: 'absolute', top: 0, left: 0, width: tasksOpen ? 'min(320px, 70vw)' : undefined, pointerEvents: 'auto', zIndex: 10 }}>
         <div className="mm-panel" style={{ padding: 10 }}>
           <button className="mm-btn" style={{ width: '100%', minHeight: 36, padding: '4px 10px', justifyContent: 'space-between', borderColor: tc[role.team] + '88' }} onClick={() => setTasksOpen((x) => !x)} aria-expanded={tasksOpen}>
             <span style={{ color: role.color, fontWeight: 850 }}>
@@ -271,7 +271,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       </div>
 
       {/* Top-right: timer, buttons */}
-      <div className="mm-safe" style={{ position: 'absolute', top: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'auto' }}>
+      <div className="mm-safe" style={{ position: 'absolute', top: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'auto', zIndex: 10 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {timeLeft !== null && (
             <span className="mm-chip" style={{ fontSize: '1em', fontWeight: 800, color: timeLeft < 30 ? 'var(--mm-red)' : 'var(--mm-ink)', background: 'rgba(0,0,0,0.45)' }}>
@@ -317,7 +317,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       </div>
 
       {/* Center banners */}
-      <div style={{ position: 'absolute', top: 'max(70px, 10vh)', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ position: 'absolute', top: 'max(70px, 10vh)', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 10 }}>
         {sabActive && sabActive !== 'doors' && (
           <div className="mm-panel mm-anim-pop" role="alert" style={{ padding: '8px 16px', borderColor: '#ff4d5e', background: critical ? 'rgba(127,29,29,0.85)' : 'rgba(60,20,20,0.8)', textAlign: 'center', animation: critical && !prefs.reducedMotion ? 'mm-pulse 1s infinite' : undefined }}>
             <b>
@@ -367,7 +367,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
 
       {/* Security console overlay */}
       {sec && you.using && (
-        <div className="mm-safe" style={{ position: 'absolute', left: 0, right: 0, bottom: coarse ? 190 : 110, display: 'flex', justifyContent: 'center', pointerEvents: 'auto' }}>
+        <div className="mm-safe" style={{ position: 'absolute', left: 0, right: 0, bottom: coarse ? 190 : 110, display: 'flex', justifyContent: 'center', pointerEvents: 'auto', zIndex: 10 }}>
           <div className="mm-panel mm-anim-rise" style={{ padding: 12, maxWidth: 'min(720px, 96vw)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <b style={{ flex: 1 }}>{you.using === 'admin' ? 'Admin map' : you.using === 'vitals' ? 'Vitals' : you.using === 'doorlog' ? 'Door log' : 'Security cameras (live)'}</b>
@@ -411,7 +411,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
 
       {/* Bottom-right: action buttons */}
       {snap.phase === 'play' && !taskStation && (
-        <div className="mm-safe" style={{ position: 'absolute', right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10, pointerEvents: 'auto' }}>
+        <div className="mm-safe" style={{ position: 'absolute', right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10, pointerEvents: 'auto', zIndex: 10 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 380 }}>
             {ability && <ActionButton {...ability} />}
             {mode.flashlights && you.team !== 'murderers' && you.alive && <ActionButton icon="flashlight" label={you.flashlightOn ? 'Light off' : 'Light on'} onClick={() => doAction('flashlight')} color="#facc15" hotkey="F" />}

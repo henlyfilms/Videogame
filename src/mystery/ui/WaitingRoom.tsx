@@ -95,7 +95,7 @@ export function WaitingRoom() {
       <GameView view={prefs.view} />
       {coarse && <Joystick />}
       {/* Top bar: room code + mode/map board */}
-      <div className="mm-safe" style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', gap: 10, alignItems: 'flex-start', pointerEvents: 'none', flexWrap: 'wrap' }}>
+      <div className="mm-safe" style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', gap: 10, alignItems: 'flex-start', pointerEvents: 'none', flexWrap: 'wrap', zIndex: 10 }}>
         <div className="mm-panel mm-anim-rise" style={{ padding: '10px 14px', pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="mm-btn" style={{ padding: 8, minHeight: 40 }} onClick={leave} aria-label="Leave room">
             <MIcon name="back" />
@@ -133,7 +133,7 @@ export function WaitingRoom() {
       </div>
 
       {/* Players panel */}
-      <div className="mm-safe" style={{ position: 'absolute', top: coarse ? 150 : 96, right: 0, width: showPlayers ? 'min(340px, 92vw)' : undefined, pointerEvents: 'none', bottom: 120 }}>
+      <div className="mm-safe" style={{ position: 'absolute', top: coarse ? 150 : 96, right: 0, width: showPlayers ? 'min(340px, 92vw)' : undefined, pointerEvents: 'none', bottom: 120, zIndex: 10 }}>
         <div className="mm-panel" style={{ pointerEvents: 'auto', padding: 12, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}>
           <button className="mm-btn" style={{ minHeight: 36, padding: '4px 10px', justifyContent: 'space-between' }} onClick={() => setShowPlayers((x) => !x)} aria-expanded={showPlayers}>
             <MIcon name="users" size={16} />
@@ -218,7 +218,7 @@ export function WaitingRoom() {
       </div>
 
       {/* Bottom: context + ready/start */}
-      <div className="mm-safe" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 10, pointerEvents: 'none' }}>
+      <div className="mm-safe" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 10, pointerEvents: 'none', zIndex: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
           {!v.ok && isHost && (
             <div className="mm-chip" style={{ color: 'var(--mm-gold)', background: 'rgba(0,0,0,0.5)' }} role="status">

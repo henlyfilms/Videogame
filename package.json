@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "server": "tsx server/index.ts",
     "start:server": "NODE_ENV=production tsx server/index.ts",
-    "start": "npm run build && npm run start:server"
+    "start": "npm run build && npm run start:server",
+    "e2e": "node tests/e2e/mystery.e2e.mjs",
+    "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
