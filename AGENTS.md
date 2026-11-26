@@ -6,7 +6,7 @@ next. Read it fully before changing anything.
 
 - **Working branch:** `claude/optimistic-carson-j24o57` (all work below is committed and pushed
   there). Don't push to `main` without the owner's say-so.
-- **State at handoff:** typecheck clean, `npx vitest run` 442/442 passing, `npm run build` OK,
+- **State at handoff:** typecheck clean, `npx vitest run` 448/448 passing, `npm run build` OK,
   Marion Mystery e2e 12/12 passing.
 
 ## What the project is
@@ -149,19 +149,15 @@ Done since the first handoff: Practice map thumbnails, tablet map and sabotage m
 the new maps (they use the new painter); meeting-seat rings and extra props in every map hub;
 3D first-person ceilings with light panels and corridor strips; the sabotage arrow follows the
 3D camera; HQ room hover/click uses the real room outline; fuller HQ Huddle and Foundry; and the
-HQ 3D overview frames the whole station; HQ tube ports sit on hall-facing walls and tubes no longer cross open ground; phone elimination cutscene fits the screen and the Practice coach starts collapsed on phones.
+HQ 3D overview frames the whole station; HQ tube ports sit on hall-facing walls and tubes no longer cross open ground; phone elimination cutscene fits the screen and the Practice coach starts collapsed on phones; whole-character 3D ink outlines (`characters/outline3d.ts`) and per-room map icons (`render2d/roomIcons.ts`).
 
 1. **Visual QA on real screens.** Check every Mystery screen on desktop and phone against the
    references (`git show` them from the reference branch). Room-name floor labels may clip in
    small rooms.
-2. **3D ink outline** covers berry bodies only, not hands, feet or hats. The kill-target red
-   outline has the same limit (`render3d/view3d.ts`, `worldkit.ts`).
-3. **Minimap and tablet** show room names, not per-room icons (`ui/Hud.tsx`,
-   `render2d/overview.ts`).
-4. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
+2. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
    2D first-time chunk bakes can hitch (about 130 ms). Test on Mac, Windows and iPhone.
-5. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
-6. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
+3. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
+4. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
    layouts. The tuning knobs are in `ai/bot.ts` and `core/settings.ts`.
 
 ## Gotchas
