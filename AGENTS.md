@@ -152,8 +152,7 @@ the new maps (they use the new painter); meeting-seat rings and extra props in e
 HQ 3D overview frames the whole station; HQ tube ports sit on hall-facing walls and tubes no longer cross open ground; phone elimination cutscene fits the screen and the Practice coach starts collapsed on phones; whole-character 3D ink outlines (`characters/outline3d.ts`) and per-room map icons (`render2d/roomIcons.ts`).
 
 1. **Visual QA on real screens.** Check every Mystery screen on desktop and phone against the
-   references (`git show` them from the reference branch). Room-name floor labels may clip in
-   small rooms.
+   references (`git show` them from the reference branch).
 2. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
    2D first-time chunk bakes can hitch (about 130 ms). Test on Mac, Windows and iPhone.
 3. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
