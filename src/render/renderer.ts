@@ -38,13 +38,56 @@ export interface RenderOptions {
   showNames: boolean;
 }
 
-export const MAX_CACHE_PIXELS = 16_000_000;
+/** World-px size of one static-layer chunk. */
+export const CHUNK = 256;
+/** Resolution ladder for chunk caches (device px per world px). */
+export const SCALE_LADDER = [1.5, 2, 3, 4, 5] as const;
+/** Pixel budget for cached chunks (~4 bytes each). */
+export const CHUNK_PIXEL_BUDGET = 28_000_000;
+/** Max chunks rasterized per frame (the 1× base layer fills gaps meanwhile). */
+export const CHUNK_BUILDS_PER_FRAME = 3;
 
-/** Choose the offscreen cache resolution for the current zoom × DPR. */
+/**
+ * Cache resolution for the current zoom × DPR. At ≤1.05 the single 1× base
+ * layer is used (downscaling is cheap); above that, tiled chunks are rendered
+ * at the next ladder step so blits are ~1:1 and never upscaled.
+ */
 export function cacheScaleFor(zoom: number, dpr: number): number {
-  const want = zoom * dpr > 1.25 ? 2 : 1;
-  const maxByArea = Math.sqrt(MAX_CACHE_PIXELS / (WORLD_W * WORLD_H));
-  return Math.max(0.5, Math.min(want, maxByArea));
+  const d = zoom * dpr;
+  if (d <= 1.05) return 1;
+  return SCALE_LADDER.find((s) => s >= d * 0.97) ?? SCALE_LADDER[SCALE_LADDER.length - 1]!;
+}
+
+interface Chunk {
+  image: CanvasImageSource;
+  pixels: number;
+  used: number;
+}
+
+/**
+ * Rasterize into an OffscreenCanvas and freeze it as an ImageBitmap when the
+ * platform supports it (immutable, GPU-friendly, no per-frame re-upload);
+ * otherwise fall back to a regular canvas.
+ */
+function rasterize(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): { image: CanvasImageSource; pixels: number } {
+  const W = Math.max(1, Math.round(w));
+  const H = Math.max(1, Math.round(h));
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try {
+      const oc = new OffscreenCanvas(W, H);
+      const c = oc.getContext('2d') as unknown as CanvasRenderingContext2D | null;
+      if (c) {
+        draw(c);
+        return { image: oc.transferToImageBitmap(), pixels: W * H };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const canvas = makeCanvas(W, H);
+  const c = canvas.getContext('2d');
+  if (c) draw(c);
+  return { image: canvas, pixels: W * H };
 }
 
 /** Mac project workstations the relay rack tethers out to (world px). */
@@ -59,6 +102,10 @@ export const MAC_STATIONS: Record<RelayModel, Point> = (() => {
   };
 })();
 
+function releaseImage(img: CanvasImageSource | null): void {
+  if (img && typeof (img as ImageBitmap).close === 'function') (img as ImageBitmap).close();
+}
+
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w));
@@ -71,10 +118,12 @@ export class Renderer {
   private dpr = 1;
   private cssW = 1;
   private cssH = 1;
-  private staticLayer: HTMLCanvasElement | null = null;
-  private staticKey = '';
+  private baseLayer: CanvasImageSource | null = null;
+  private baseKey = '';
+  private chunks = new Map<string, Chunk>();
+  private chunkPixels = 0;
   /** Counters for perf overlays/tests. */
-  stats = { staticBuilds: 0, frames: 0, botsDrawn: 0 };
+  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0 };
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -92,24 +141,99 @@ export class Renderer {
     this.canvas.style.height = `${this.cssH}px`;
   }
 
-  /** Force the static layer to rebuild (e.g. on theme change). */
+  /** Drop every cached static layer (e.g. after a theme change). */
   invalidate(): void {
-    this.staticKey = '';
+    this.baseKey = '';
+    for (const ch of this.chunks.values()) releaseImage(ch.image);
+    this.chunks.clear();
+    this.chunkPixels = 0;
   }
 
-  private ensureStatic(theme: ThemeTokens, scale: number): HTMLCanvasElement {
-    const key = `${theme.name}@${scale}`;
-    if (this.staticLayer && this.staticKey === key) return this.staticLayer;
-    const layer = makeCanvas(WORLD_W * scale, WORLD_H * scale);
-    const c = layer.getContext('2d');
-    if (c) {
-      c.scale(scale, scale);
-      drawStaticWorld(c, theme);
-    }
-    this.staticLayer = layer;
-    this.staticKey = key;
+  get cachedChunks(): number {
+    return this.chunks.size;
+  }
+
+  private ensureBase(theme: ThemeTokens): CanvasImageSource {
+    if (this.baseLayer && this.baseKey === theme.name) return this.baseLayer;
+    releaseImage(this.baseLayer);
+    this.baseLayer = rasterize(WORLD_W, WORLD_H, (c) => drawStaticWorld(c, theme)).image;
+    this.baseKey = theme.name;
     this.stats.staticBuilds++;
-    return layer;
+    return this.baseLayer;
+  }
+
+  private buildChunk(theme: ThemeTokens, scale: number, cx: number, cy: number): Chunk {
+    // 1px world bleed on every side hides seams between neighbouring chunks.
+    const size = CHUNK + 2;
+    const r = rasterize(size * scale, size * scale, (c) => {
+      c.scale(scale, scale);
+      c.translate(-(cx * CHUNK - 1), -(cy * CHUNK - 1));
+      drawStaticWorld(c, theme, { x: cx * CHUNK - 1, y: cy * CHUNK - 1, w: size, h: size });
+    });
+    this.stats.chunkBuilds++;
+    return { image: r.image, pixels: r.pixels, used: this.stats.frames };
+  }
+
+  private evictChunks(): void {
+    if (this.chunkPixels <= CHUNK_PIXEL_BUDGET) return;
+    const byAge = [...this.chunks.entries()].sort((a, b) => a[1].used - b[1].used);
+    for (const [key, ch] of byAge) {
+      if (this.chunkPixels <= CHUNK_PIXEL_BUDGET * 0.8) break;
+      if (ch.used === this.stats.frames) continue; // never evict what's on screen
+      this.chunks.delete(key);
+      this.chunkPixels -= ch.pixels;
+      releaseImage(ch.image);
+    }
+  }
+
+  /** Blit the static world for the visible rect. */
+  private drawStatic(theme: ThemeTokens, cam: Camera, vis: { x: number; y: number; w: number; h: number }): void {
+    const ctx = this.ctx;
+    const sx = Math.max(0, vis.x);
+    const sy = Math.max(0, vis.y);
+    const ex = Math.min(WORLD_W, vis.x + vis.w);
+    const ey = Math.min(WORLD_H, vis.y + vis.h);
+    if (ex <= sx || ey <= sy) return;
+    const scale = cacheScaleFor(cam.zoom, this.dpr);
+    const blitBase = () => {
+      const base = this.ensureBase(theme);
+      ctx.drawImage(base, sx, sy, ex - sx, ey - sy, sx, sy, ex - sx, ey - sy);
+    };
+    if (scale === 1) {
+      blitBase();
+      return;
+    }
+    const c0 = Math.floor(sx / CHUNK);
+    const r0 = Math.floor(sy / CHUNK);
+    const c1 = Math.floor((ex - 0.001) / CHUNK);
+    const r1 = Math.floor((ey - 0.001) / CHUNK);
+    const ready: [number, number, Chunk][] = [];
+    const missing: [number, number][] = [];
+    for (let cy = r0; cy <= r1; cy++) {
+      for (let cx = c0; cx <= c1; cx++) {
+        const ch = this.chunks.get(`${theme.name}|${scale}|${cx},${cy}`);
+        if (ch) ready.push([cx, cy, ch]);
+        else missing.push([cx, cy]);
+      }
+    }
+    if (missing.length) {
+      // Build the chunks nearest the view center first; base layer fills the rest.
+      const mx = (sx + ex) / 2 / CHUNK;
+      const my = (sy + ey) / 2 / CHUNK;
+      missing.sort((a, b) => Math.hypot(a[0] + 0.5 - mx, a[1] + 0.5 - my) - Math.hypot(b[0] + 0.5 - mx, b[1] + 0.5 - my));
+      for (const [cx, cy] of missing.slice(0, CHUNK_BUILDS_PER_FRAME)) {
+        const ch = this.buildChunk(theme, scale, cx, cy);
+        this.chunks.set(`${theme.name}|${scale}|${cx},${cy}`, ch);
+        this.chunkPixels += ch.pixels;
+        ready.push([cx, cy, ch]);
+      }
+      if (missing.length > CHUNK_BUILDS_PER_FRAME) blitBase();
+    }
+    for (const [cx, cy, ch] of ready) {
+      ch.used = this.stats.frames;
+      ctx.drawImage(ch.image, cx * CHUNK - 1, cy * CHUNK - 1, CHUNK + 2, CHUNK + 2);
+    }
+    this.evictChunks();
   }
 
   render(sim: Simulation, cam: Camera, view: RenderView, alpha: number, opts: RenderOptions): void {
@@ -129,17 +253,9 @@ export class Renderer {
     ctx.setTransform(z, 0, 0, z, (this.cssW / 2 - cam.x * cam.zoom) * this.dpr, (this.cssH / 2 - cam.y * cam.zoom) * this.dpr);
     ctx.imageSmoothingEnabled = true;
 
-    // Static layer (blit only the visible slice).
-    const scale = cacheScaleFor(cam.zoom, this.dpr);
-    const layer = this.ensureStatic(theme, scale);
+    // Static world (cached; only the visible slice is blitted).
     const vis = cam.visibleRect();
-    const sx = Math.max(0, vis.x);
-    const sy = Math.max(0, vis.y);
-    const ex = Math.min(WORLD_W, vis.x + vis.w);
-    const ey = Math.min(WORLD_H, vis.y + vis.h);
-    if (ex > sx && ey > sy) {
-      ctx.drawImage(layer, sx * scale, sy * scale, (ex - sx) * scale, (ey - sy) * scale, sx, sy, ex - sx, ey - sy);
-    }
+    this.drawStatic(theme, cam, vis);
 
     const inView = (x: number, y: number, pad = 64) => x > vis.x - pad && y > vis.y - pad && x < vis.x + vis.w + pad && y < vis.y + vis.h + pad;
 
@@ -412,15 +528,35 @@ export function pickBot(sim: Simulation, p: Point, radius = 18): SimBot | null {
 // Static world (baked)
 // ---------------------------------------------------------------------------
 
-export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens): void {
+type Region = { x: number; y: number; w: number; h: number };
+
+function hits(a: Region | undefined, x: number, y: number, w: number, h: number, pad = 0): boolean {
+  if (!a) return true;
+  return x - pad < a.x + a.w && x + w + pad > a.x && y - pad < a.y + a.h && y + h + pad > a.y;
+}
+
+/**
+ * Draw the static world. With `region`, only geometry intersecting it is
+ * drawn (used to rasterize individual cache chunks cheaply).
+ */
+export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): void {
   const w = theme.world;
+  if (region) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(region.x, region.y, region.w, region.h);
+    ctx.clip();
+  }
   // Void + subtle map hatch (flat, plan-view drafting feel).
   ctx.fillStyle = w.void;
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  if (region) ctx.fillRect(region.x, region.y, region.w, region.h);
+  else ctx.fillRect(0, 0, WORLD_W, WORLD_H);
   ctx.strokeStyle = w.corridorLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let i = -WORLD_H; i < WORLD_W; i += 24) {
+  const iMin = region ? Math.floor((region.x - (region.y + region.h) + WORLD_H) / 24) * 24 - WORLD_H : -WORLD_H;
+  const iMax = region ? region.x + region.w - region.y : WORLD_W;
+  for (let i = Math.max(-WORLD_H, iMin); i < Math.min(WORLD_W, iMax); i += 24) {
     ctx.moveTo(i, 0);
     ctx.lineTo(i + WORLD_H, WORLD_H);
   }
@@ -438,6 +574,7 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens): void {
   // Rooms.
   for (const room of ROOMS) {
     const r = roomRect(room);
+    if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 8)) continue;
     const accent = ROOM_ACCENT[room.id];
     // Floor.
     let floor = w.floor;
@@ -485,6 +622,13 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens): void {
 
   // Pneumatic tubes (overhead glass).
   for (const route of TUBE_ROUTES) {
+    if (region) {
+      const xs = route.points.map((p) => p.x);
+      const ys = route.points.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      if (!hits(region, minX, minY, Math.max(...xs) - minX, Math.max(...ys) - minY, 10)) continue;
+    }
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -526,7 +670,12 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens): void {
   }
 
   // Prop bodies.
-  for (const room of ROOMS) for (const prop of room.props) drawPropStatic(ctx, room, prop, theme);
+  for (const room of ROOMS) {
+    const r = roomRect(room);
+    if (!hits(region, r.x, r.y, r.w, r.h, 16)) continue;
+    for (const prop of room.props) drawPropStatic(ctx, room, prop, theme);
+  }
+  if (region) ctx.restore();
 }
 
 function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string): void {

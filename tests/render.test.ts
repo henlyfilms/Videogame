@@ -4,7 +4,7 @@ import { makeEvent } from '../src/adapters/events';
 import { Camera } from '../src/engine/camera';
 import { Simulation } from '../src/engine/sim';
 import { WORLD_H, WORLD_W } from '../src/engine/world';
-import { cacheScaleFor, drawStaticWorld, pickBot, Renderer, MAX_CACHE_PIXELS } from '../src/render/renderer';
+import { cacheScaleFor, CHUNK, drawStaticWorld, pickBot, Renderer, SCALE_LADDER } from '../src/render/renderer';
 import { drawBotSprite, hexA, traceShape } from '../src/render/sprites';
 import { emptyView } from '../src/render/view';
 import { THEMES, THEME_ORDER } from '../src/theme/tokens';
@@ -42,16 +42,45 @@ describe('renderer', () => {
       r.render(sim, cam, view, 0.5, opts);
       r.render(sim, cam, view, 0.5, opts);
     }
-    expect(r.stats.staticBuilds).toBe(3);
+    expect(r.stats.staticBuilds + r.stats.chunkBuilds).toBeGreaterThanOrEqual(3);
     expect(r.stats.frames).toBe(6);
     expect(r.stats.botsDrawn).toBeGreaterThan(0);
     expect(canvas.width).toBe(2560);
   });
 
-  it('chooses a bounded cache scale', () => {
+  it('picks a cache scale that never upscales', () => {
     expect(cacheScaleFor(0.5, 1)).toBe(1);
-    const s = cacheScaleFor(2, 2);
-    expect(WORLD_W * s * WORLD_H * s).toBeLessThanOrEqual(MAX_CACHE_PIXELS + 1);
+    expect(cacheScaleFor(1, 1)).toBe(1);
+    expect(cacheScaleFor(1, 2)).toBe(2);
+    expect(cacheScaleFor(1.17, 2)).toBe(3);
+    expect(cacheScaleFor(2.5, 3)).toBe(SCALE_LADDER[SCALE_LADDER.length - 1]);
+    for (const z of [0.6, 0.9, 1.2, 1.6, 2.1]) expect(cacheScaleFor(z, 2)).toBeGreaterThanOrEqual(Math.min(5, z * 2 * 0.97));
+  });
+
+  it('rasterizes visible chunks progressively and reuses them', () => {
+    const canvas = document.createElement('canvas');
+    const r = new Renderer(canvas);
+    r.resize(800, 600, 2);
+    const cam = new Camera(WORLD_W, WORLD_H);
+    cam.zoom = cam.targetZoom = 1.5;
+    const sim = busySim();
+    const view = emptyView('light');
+    r.render(sim, cam, view, 1, opts);
+    expect(r.stats.chunkBuilds).toBeGreaterThan(0);
+    expect(r.stats.staticBuilds).toBe(1); // base layer fills not-yet-built chunks
+    for (let i = 0; i < 10; i++) r.render(sim, cam, view, 1, opts);
+    const built = r.stats.chunkBuilds;
+    const visibleChunks = Math.ceil((800 / 1.5) / CHUNK + 1) * Math.ceil((600 / 1.5) / CHUNK + 1);
+    expect(built).toBeLessThanOrEqual(visibleChunks);
+    for (let i = 0; i < 5; i++) r.render(sim, cam, view, 1, opts);
+    expect(r.stats.chunkBuilds).toBe(built); // cached
+    r.invalidate();
+    expect(r.cachedChunks).toBe(0);
+  });
+
+  it('region-culled static drawing does not throw', () => {
+    const ctx = makeMockContext();
+    expect(() => drawStaticWorld(ctx, THEMES.soft, { x: 512, y: 256, w: 258, h: 258 })).not.toThrow();
   });
 
   it('draws the static world and every bot shape', () => {
