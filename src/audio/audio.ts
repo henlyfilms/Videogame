@@ -101,6 +101,11 @@ export class AudioEngine {
     }
   }
 
+  /** Resume a context created before the first user gesture. */
+  resume(): void {
+    void this.ctx?.resume?.();
+  }
+
   update(inputs: MusicInputs): void {
     this.inputs = inputs;
     if (!inputs.muted) {

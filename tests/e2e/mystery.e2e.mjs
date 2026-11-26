@@ -97,7 +97,8 @@ try {
   await host.getByText('your tasks').waitFor();
   await host.keyboard.press('Escape');
   check('desktop map opens', true);
-  await phone.getByRole('button', { name: 'Stats' }).click();
+  // Bots may report a body first: the HUD (and Stats) returns after the meeting.
+  await phone.getByRole('button', { name: 'Stats' }).click({ timeout: 180000 });
   await phone.getByText('Match stats').waitFor();
   await phone.keyboard.press('Escape');
   check('iPhone stats panel opens', true);

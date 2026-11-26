@@ -414,6 +414,8 @@ class Sfx {
   bind(): () => void {
     if (this.bound) return () => {};
     this.bound = true;
+    // Entering Marion Mystery: take over the music from the host page.
+    this.refreshScene();
     const offEv = runtime.on((ev: MatchEvent, snap) => {
       const me = snap.you.id;
       const p = ev.pos;
@@ -585,6 +587,9 @@ class Sfx {
       document.removeEventListener('pointerover', onOver, true);
       document.removeEventListener('input', onInput, true);
       this.stopAlarm();
+      // Leaving Marion Mystery: hand music/ambience back to the host (Marion HQ).
+      this.ambience('');
+      music.play(null, 0.6);
     };
   }
 }

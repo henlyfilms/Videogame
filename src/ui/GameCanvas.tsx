@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { RoomId } from '../data/bots';
 import { hotspotAt, roomAtWorld, type HotspotAction } from '../engine/world';
-import { hq } from '../game/hq';
-import { pickBot } from '../render/renderer';
+import { hq, type HqRenderer } from '../game/hq';
+import { pickBot, Renderer } from '../render/renderer';
+import { useGame } from '../store/gameStore';
 
 export interface GameCanvasProps {
   onSelectBot: (id: string | null) => void;
@@ -11,29 +12,56 @@ export interface GameCanvasProps {
 }
 
 const DRAG_THRESHOLD = 5;
+let attachedOnce = false;
 
 /** Full-viewport canvas with drag-pan, cursor-anchored wheel zoom, pinch and click picking. */
 export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   const cb = useRef({ onSelectBot, onSelectRoom, onHotspot });
   cb.current = { onSelectBot, onSelectRoom, onHotspot };
+  const view = useGame((s) => s.hqView);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const renderer = hq.attach(canvas);
+    let renderer: HqRenderer | null = null;
+    let cancelled = false;
     const fit = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect() ?? { width: window.innerWidth, height: window.innerHeight };
+      if (!renderer) return;
+      const rect = canvas.parentElement?.getBoundingClientRect() ?? {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
       renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
       hq.camera.setViewport(rect.width, rect.height);
       // Keep the overview clear of the top bar and (on wide screens) the activity feed.
       const phone = rect.width < 640;
       hq.camera.insets = phone ? { top: 112, right: 0, bottom: 56, left: 0 } : { top: 56, right: 0, bottom: 0, left: rect.width >= 1100 ? 330 : 0 };
     };
-    fit();
-    if (hq.camera.vw < 640) hq.frameRoom('command');
-    else hq.camera.overview();
-    hq.camera.snap();
+    const firstAttach = !hq.renderer && !attachedOnce;
+    const start = (r: HqRenderer) => {
+      if (cancelled) {
+        r.dispose?.();
+        return;
+      }
+      renderer = hq.attachRenderer(r);
+      fit();
+      if (firstAttach) {
+        attachedOnce = true;
+        if (hq.camera.vw < 640) hq.frameRoom('command');
+        else hq.camera.overview();
+        hq.camera.snap();
+      }
+    };
+    if (view === '3d') {
+      import('../render3d/hq3d')
+        .then((m) => start(new m.HQ3DRenderer(canvas)))
+        .catch((err) => {
+          // No WebGL (or the chunk failed to load): fall back to the floorplan.
+          console.warn('3D HQ unavailable, using 2D', err);
+          useGame.getState().setHqView('2d');
+        });
+    } else start(new Renderer(canvas));
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
     ro?.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', fit);
@@ -42,6 +70,8 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
     let downAt: { x: number; y: number } | null = null;
     let dragged = false;
     let pinchDist = 0;
+
+    const pick = (sx: number, sy: number, w: { x: number; y: number }) => (renderer?.pickBotScreen ? renderer.pickBotScreen(hq.sim, sx, sy) : pickBot(hq.sim, w));
 
     const local = (e: PointerEvent | WheelEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -81,8 +111,8 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
         return;
       }
       // Hover feedback.
-      const w = hq.camera.screenToWorld(p.x, p.y);
-      const bot = pickBot(hq.sim, w);
+      const w = hq.screenToWorld(p.x, p.y);
+      const bot = pick(p.x, p.y, w);
       const hs = bot ? null : hotspotAt(w.x, w.y);
       hq.ui.hoverHotspot = hs ? { roomId: hs.room.id, propId: hs.prop.id } : null;
       hq.ui.hoverRoom = roomAtWorld(hq.sim.grid, w.x, w.y)?.id ?? null;
@@ -94,8 +124,8 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       pointers.delete(e.pointerId);
       if (pointers.size > 0) return;
       if (!dragged && downAt) {
-        const w = hq.camera.screenToWorld(p.x, p.y);
-        const bot = pickBot(hq.sim, w);
+        const w = hq.screenToWorld(p.x, p.y);
+        const bot = pick(p.x, p.y, w);
         if (bot) {
           cb.current.onSelectBot(bot.def.id);
         } else {
@@ -141,18 +171,22 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('pointerleave', onLeave);
       canvas.removeEventListener('wheel', onWheel);
+      cancelled = true;
       hq.detach();
     };
-  }, []);
+  }, [view]);
 
   return (
-    <canvas
-      ref={ref}
-      className="block h-full w-full touch-none select-none"
-      style={{ cursor: 'grab' }}
-      aria-label="Marion HQ floorplan. Drag to pan, scroll to zoom, click a bot or room."
-      role="img"
-      tabIndex={-1}
-    />
+    <div className="absolute inset-0">
+      <canvas
+        key={view}
+        ref={ref}
+        className="block h-full w-full touch-none select-none"
+        style={{ cursor: 'grab' }}
+        aria-label={`Marion HQ ${view === '3d' ? '3D view' : 'floorplan'}. Drag to pan, scroll to zoom, click a bot or room.`}
+        role="img"
+        tabIndex={-1}
+      />
+    </div>
   );
 }

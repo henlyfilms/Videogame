@@ -3,6 +3,7 @@ import type { AdapterKind } from '../adapters/types';
 import { manager } from '../game/runtime';
 import { SPEEDS, useGame } from '../store/gameStore';
 import { THEME_ORDER, THEMES, type ThemeName } from '../theme/tokens';
+import { SEASONS, SEASON_STYLE, seasonFor, type Season, type TimeMode } from '../theme/environment';
 import { countStates, useBots } from './hooks';
 import { Icon } from './Icon';
 
@@ -12,7 +13,11 @@ const ADAPTERS: { kind: AdapterKind; label: string; icon: string }[] = [
   { kind: 'ws', label: 'Socket', icon: 'plug' },
 ];
 
-const THEME_ICON: Record<ThemeName, string> = { light: 'sun', soft: 'soft', dark: 'moon' };
+const THEME_ICON: Record<ThemeName, string> = {
+  light: 'sun',
+  soft: 'soft',
+  dark: 'moon',
+};
 
 export const CONN_META: Record<string, { label: string; dot: string }> = {
   idle: { label: 'Simulated', dot: 'bg-muted' },
@@ -28,6 +33,8 @@ export function TopBar() {
   const bots = useBots(500);
   const counts = countStates(bots);
   const [wsOpen, setWsOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
+  const seasonNow: Season = s.season === 'auto' ? seasonFor() : s.season;
   const conn = CONN_META[s.conn] ?? CONN_META.idle!;
 
   const switchAdapter = (k: AdapterKind) => {
@@ -85,21 +92,65 @@ export function TopBar() {
         </button>
         <div className="flex items-center rounded-card border border-line p-0.5" role="radiogroup" aria-label="Simulation speed">
           {SPEEDS.map((sp) => (
-            <button key={sp} role="radio" aria-checked={s.speed === sp} className={`rounded-[8px] px-1.5 py-0.5 text-[11px] tabular-nums ${s.speed === sp ? 'bg-ink/10 font-semibold text-ink' : 'text-muted hover:text-ink'}`} onClick={() => s.setSpeed(sp)}>
+            <button
+              key={sp}
+              role="radio"
+              aria-checked={s.speed === sp}
+              className={`rounded-[8px] px-1.5 py-0.5 text-[11px] tabular-nums ${s.speed === sp ? 'bg-ink/10 font-semibold text-ink' : 'text-muted hover:text-ink'}`}
+              onClick={() => s.setSpeed(sp)}
+            >
               {sp}×
             </button>
           ))}
         </div>
 
         <Divider />
+        <div className="flex items-center rounded-card border border-line p-0.5" role="radiogroup" aria-label="HQ view">
+          {(['2d', '3d'] as const).map((v) => (
+            <button
+              key={v}
+              role="radio"
+              aria-checked={s.hqView === v}
+              title={v === '3d' ? '3D view' : '2D view'} aria-label={v === '3d' ? '3D view' : '2D view'}
+              className={`rounded-[8px] px-1.5 py-0.5 text-[11px] font-semibold ${s.hqView === v ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}
+              onClick={() => s.setHqView(v)}
+            >
+              {v.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`hq-btn h-7 gap-1 px-1.5 ${envOpen ? 'border-accent' : ''}`}
+          onClick={() => setEnvOpen((o) => !o)}
+          aria-expanded={envOpen}
+          aria-label="Season and time of day"
+          title="Season & time of day"
+        >
+          <span aria-hidden>{SEASON_STYLE[seasonNow].emoji}</span>
+          <Icon name={s.timeMode === 'night' ? 'moon' : s.timeMode === 'day' ? 'sun' : 'clock'} size={12} />
+        </button>
         <div className="flex items-center rounded-card border border-line p-0.5" role="radiogroup" aria-label="Theme">
           {THEME_ORDER.map((t) => (
-            <button key={t} role="radio" aria-checked={s.theme === t} title={THEMES[t].label} aria-label={`${THEMES[t].label} theme`} className={`rounded-[8px] p-1 ${s.theme === t ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`} onClick={() => s.setTheme(t)}>
+            <button
+              key={t}
+              role="radio"
+              aria-checked={s.theme === t}
+              title={THEMES[t].label}
+              aria-label={`${THEMES[t].label} theme`}
+              className={`rounded-[8px] p-1 ${s.theme === t ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}
+              onClick={() => s.setTheme(t)}
+            >
               <Icon name={THEME_ICON[t]} size={13} />
             </button>
           ))}
         </div>
-        <button className={`hq-btn h-7 w-7 p-0 ${!s.muted ? 'border-accent text-accent' : ''}`} onClick={s.toggleMute} aria-label={s.muted ? 'Unmute audio' : 'Mute audio'} aria-pressed={!s.muted} title={s.muted ? 'Sound off' : 'Sound on'}>
+        <button
+          className={`hq-btn h-7 w-7 p-0 ${!s.muted ? 'border-accent text-accent' : ''}`}
+          onClick={s.toggleMute}
+          aria-label={s.muted ? 'Unmute audio' : 'Mute audio'}
+          aria-pressed={!s.muted}
+          title={s.muted ? 'Sound off' : 'Sound on'}
+        >
           <Icon name={s.muted ? 'mute' : 'volume'} size={13} />
         </button>
         <button className={`hq-btn h-7 px-1.5 ${s.showFps ? 'border-accent text-accent' : ''}`} onClick={s.toggleFps} aria-pressed={s.showFps} title="Toggle FPS">
@@ -116,6 +167,7 @@ export function TopBar() {
       </div>
 
       {wsOpen && s.adapter === 'ws' && <WsPopover onClose={() => setWsOpen(false)} />}
+      {envOpen && <EnvPopover onClose={() => setEnvOpen(false)} />}
     </header>
   );
 }
@@ -131,6 +183,77 @@ function StatusChip({ label, n, cls }: { label: string; n: number; cls: string }
 
 function Divider() {
   return <span className="mx-0.5 hidden h-5 w-px bg-line sm:block" />;
+}
+
+const TIMES: { id: TimeMode; label: string; icon: string }[] = [
+  { id: 'auto', label: 'Auto', icon: 'clock' },
+  { id: 'day', label: 'Day', icon: 'sun' },
+  { id: 'night', label: 'Night', icon: 'moon' },
+];
+
+/** Season, time-of-day and view picker for the HQ grounds. */
+function EnvPopover({ onClose }: { onClose: () => void }) {
+  const s = useGame();
+  const opt = (on: boolean) =>
+    `flex flex-col items-center gap-0.5 rounded-[10px] border px-2 py-1.5 text-[11px] font-medium ${on ? 'border-accent bg-accent/10 text-ink' : 'border-line text-muted hover:text-ink'}`;
+  return (
+    <div className="hq-card pointer-events-auto absolute right-3 top-14 z-30 w-[min(320px,calc(100vw-24px))] space-y-3 p-3" role="dialog" aria-label="Season and time of day">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-semibold">HQ world</h2>
+        <button className="hq-btn h-6 w-6 p-0" onClick={onClose} aria-label="Close">
+          <Icon name="close" size={12} />
+        </button>
+      </div>
+      <section>
+        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">View</h3>
+        <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="View">
+          {(['2d', '3d'] as const).map((v) => (
+            <button key={v} role="radio" aria-checked={s.hqView === v} className={opt(s.hqView === v)} onClick={() => s.setHqView(v)}>
+              <span className="text-sm font-bold">{v.toUpperCase()}</span>
+              <span>{v === '2d' ? 'Floorplan' : 'Diorama'}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Season</h3>
+        <div className="grid grid-cols-5 gap-1" role="radiogroup" aria-label="Season">
+          <button
+            role="radio"
+            aria-checked={s.season === 'auto'}
+            className={opt(s.season === 'auto')}
+            onClick={() => s.setSeason('auto')}
+            title={`Follows the calendar (${SEASON_STYLE[seasonFor()].label})`}
+          >
+            <span className="text-base" aria-hidden>
+              📅
+            </span>
+            Auto
+          </button>
+          {SEASONS.map((x) => (
+            <button key={x} role="radio" aria-checked={s.season === x} className={opt(s.season === x)} onClick={() => s.setSeason(x)}>
+              <span className="text-base" aria-hidden>
+                {SEASON_STYLE[x].emoji}
+              </span>
+              {SEASON_STYLE[x].label}
+            </button>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Time of day</h3>
+        <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Time of day">
+          {TIMES.map((x) => (
+            <button key={x.id} role="radio" aria-checked={s.timeMode === x.id} className={opt(s.timeMode === x.id)} onClick={() => s.setTimeMode(x.id)}>
+              <Icon name={x.icon} size={14} />
+              {x.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-[10px] text-muted">Auto follows your local clock, with dusk and dawn.</p>
+      </section>
+    </div>
+  );
 }
 
 function WsPopover({ onClose }: { onClose: () => void }) {

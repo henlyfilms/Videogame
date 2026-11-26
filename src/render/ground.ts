@@ -7,6 +7,8 @@
 import { ANNEX_Y, CORRIDOR, MAP_H, MAP_W, ROOMS, TILE, type RoomDef } from '../engine/world';
 import type { ThemeTokens } from '../theme/tokens';
 import { hexA, roundRect } from './sprites';
+import { SEASON_STYLE } from '../theme/environment';
+import { env } from './seasonal';
 
 type Ctx = CanvasRenderingContext2D;
 type Region = { x: number; y: number; w: number; h: number };
@@ -70,12 +72,40 @@ interface Garden {
   line: string;
 }
 
+function mixHex(a: string, b: string, k: number): string {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return (
+    '#' +
+    x
+      .map((v, i) =>
+        Math.round(v + (y[i]! - v) * k)
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')
+  );
+}
+
+/** Season-themed garden (Marion Mystery saturation), dimmed for soft/dark themes. */
 function gardenPalette(th: ThemeTokens): Garden {
-  if (th.name === 'dark')
-    return { grass: '#0f1c15', grassAlt: '#12211a', hedge: '#16301f', hedgeDark: '#0b1d12', tree: '#1b3a26', treeLight: '#2b5a3a', path: '#1a1f27', water: '#0d2236', line: '#1f2e25' };
-  if (th.name === 'soft')
-    return { grass: '#d6dcc4', grassAlt: '#cfd6bb', hedge: '#a9b98c', hedgeDark: '#93a576', tree: '#8fa874', treeLight: '#b3c79a', path: '#e6e0d2', water: '#b9d3d8', line: '#c4cbb0' };
-  return { grass: '#e2efdc', grassAlt: '#d9ead2', hedge: '#a7d3a0', hedgeDark: '#8cc285', tree: '#86c27e', treeLight: '#b5e0ad', path: '#f4f5f7', water: '#cfe6f6', line: '#cde3c6' };
+  const s = SEASON_STYLE[env.season];
+  const winter = env.season === 'winter';
+  const base: Garden = {
+    grass: mixHex(s.ground, '#ffffff', 0.12),
+    grassAlt: s.ground,
+    hedge: s.foliage[0]!,
+    hedgeDark: mixHex(s.foliage[0]!, '#000000', 0.25),
+    tree: s.foliage[1] ?? s.foliage[0]!,
+    treeLight: mixHex(s.foliage[1] ?? s.foliage[0]!, '#ffffff', 0.35),
+    path: winter ? '#cfd9e6' : '#efe6d2',
+    water: winter ? '#dcefff' : '#7cc4ef',
+    line: mixHex(s.ground, '#000000', 0.15),
+  };
+  if (th.name === 'light') return base;
+  const k = th.name === 'dark' ? 0.72 : 0.25;
+  const to = th.name === 'dark' ? '#0b1220' : '#e8e4d8';
+  return Object.fromEntries(Object.entries(base).map(([key, v]) => [key, mixHex(v, to, k)])) as unknown as Garden;
 }
 
 function tree(ctx: Ctx, x: number, y: number, r: number, g: Garden): void {
@@ -104,7 +134,13 @@ export function terraceBeds(): Region[] {
     if (x0 - x > TILE * 2) beds.push({ x: x + 8, y: top, w: x0 - x - 22, h: bottom - top - 8 });
     x = x1;
   }
-  if ((MAP_W - 0.5) * TILE - x > TILE * 2) beds.push({ x: x + 14, y: top, w: (MAP_W - 0.5) * TILE - x - 22, h: bottom - top - 8 });
+  if ((MAP_W - 0.5) * TILE - x > TILE * 2)
+    beds.push({
+      x: x + 14,
+      y: top,
+      w: (MAP_W - 0.5) * TILE - x - 22,
+      h: bottom - top - 8,
+    });
   return beds;
 }
 
@@ -232,7 +268,7 @@ export function drawArcadeCarpet(ctx: Ctx, room: RoomDef, th: ThemeTokens): void
   ctx.fillStyle = base;
   ctx.fillRect(x0, y0, w, h);
   ctx.fillStyle = alt;
-  for (let ty = 0; ty < room.h; ty++) for (let tx = (ty & 1); tx < room.w; tx += 2) ctx.fillRect(x0 + tx * TILE, y0 + ty * TILE, TILE, TILE);
+  for (let ty = 0; ty < room.h; ty++) for (let tx = ty & 1; tx < room.w; tx += 2) ctx.fillRect(x0 + tx * TILE, y0 + ty * TILE, TILE, TILE);
   const neon = ['#ff4fd8', '#22d3ee', '#fbbf24', '#a3e635', '#a78bfa'];
   ctx.lineWidth = 1.6;
   ctx.lineCap = 'round';

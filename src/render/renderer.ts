@@ -7,26 +7,16 @@ import type { RoomId } from '../data/bots';
 import { bubbleAlpha, layoutBubbles, type Rect } from '../engine/bubbles';
 import type { Camera } from '../engine/camera';
 import type { Simulation, SimBot } from '../engine/sim';
-import {
-  doorTilesLocal,
-  propCenter,
-  propRect,
-  roomRect,
-  ROOMS,
-  ROOM_BY_ID,
-  TILE,
-  TUBE_ROUTES,
-  tubePort,
-  WORLD_H,
-  WORLD_W,
-  type Point,
-} from '../engine/world';
+import { doorTilesLocal, propCenter, propRect, roomRect, ROOMS, ROOM_BY_ID, TILE, TUBE_ROUTES, tubePort, WORLD_H, WORLD_W, type Point } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
+import { drawBerry } from '../mystery/characters/draw2d';
+import { env as seasonEnv, drawOutdoors, drawTrees, lookFor, roomFloorTexture, setEnvironment, updateDrawParticles } from './seasonal';
+import type { Season } from '../theme/environment';
 import { createNightMaskCanvas, drawDaylight, drawLightFixtures, NIGHT_MASK_SCALE, nightFactor } from './daylight';
 import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
 import { accentSpill, floorKeyLight, propShadow, propShadowShape, roomOcclusion, softShadow, wallBevel } from './lighting';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
-import { drawBotSprite, drawGlow, hexA, roundRect } from './sprites';
+import { drawGlow, hexA, roundRect } from './sprites';
 import { MODEL_COLORS, type RenderView } from './view';
 import type { RelayModel } from '../adapters/events';
 
@@ -40,7 +30,11 @@ export interface RenderOptions {
   showNames: boolean;
   /** Local hour (0–24, fractional) for the day/night cycle; omitted = noon. */
   hour?: number;
+  /** Season theme for the grounds, trees and falling particles. */
+  season?: Season;
 }
+
+const envVersion = () => seasonEnv.version;
 
 /** World-px size of one static-layer chunk. */
 export const CHUNK = 256;
@@ -126,10 +120,20 @@ export class Renderer {
   private baseKey = '';
   private chunks = new Map<string, Chunk>();
   private chunkPixels = 0;
+  private lastParticleAt = performance.now();
+  /** Disable falling particles (reduced motion). */
+  reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** Screen-sized offscreen for the night light mask (created on first dusk). */
   private nightMask: CanvasRenderingContext2D | null = null;
+  private envVersion = -1;
   /** Counters for perf overlays/tests. */
-  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0, lights: 0 };
+  stats = {
+    staticBuilds: 0,
+    chunkBuilds: 0,
+    frames: 0,
+    botsDrawn: 0,
+    lights: 0,
+  };
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -174,7 +178,12 @@ export class Renderer {
     const r = rasterize(size * scale, size * scale, (c) => {
       c.scale(scale, scale);
       c.translate(-(cx * CHUNK - 1), -(cy * CHUNK - 1));
-      drawStaticWorld(c, theme, { x: cx * CHUNK - 1, y: cy * CHUNK - 1, w: size, h: size });
+      drawStaticWorld(c, theme, {
+        x: cx * CHUNK - 1,
+        y: cy * CHUNK - 1,
+        w: size,
+        h: size,
+      });
     });
     this.stats.chunkBuilds++;
     return { image: r.image, pixels: r.pixels, used: this.stats.frames };
@@ -247,6 +256,11 @@ export class Renderer {
     const theme = THEMES[view.theme];
     const t = sim.time;
     this.stats.frames++;
+    setEnvironment(opts.season ?? 'spring', nightFactor(opts.hour ?? 12));
+    if (envVersion() !== this.envVersion) {
+      this.envVersion = envVersion();
+      this.invalidate();
+    }
     cam.setViewport(this.cssW, this.cssH);
 
     // Background.
@@ -259,9 +273,12 @@ export class Renderer {
     ctx.setTransform(z, 0, 0, z, (this.cssW / 2 - cam.x * cam.zoom) * this.dpr, (this.cssH / 2 - cam.y * cam.zoom) * this.dpr);
     ctx.imageSmoothingEnabled = true;
 
-    // Static world (cached; only the visible slice is blitted).
+    // Seasonal outdoors (lawn / meadow / leaf litter / snow) around the building.
     const vis = cam.visibleRect();
+    drawOutdoors(ctx, vis);
+    // Static world (cached; only the visible slice is blitted).
     this.drawStatic(theme, cam, vis);
+    drawTrees(ctx, vis);
 
     const inView = (x: number, y: number, pad = 64) => x > vis.x - pad && y > vis.y - pad && x < vis.x + vis.w + pad && y < vis.y + vis.h + pad;
 
@@ -385,7 +402,7 @@ export class Renderer {
     for (const bot of bots) {
       const p = lerpPos(bot, alpha);
       if (!inView(p.x, p.y)) continue;
-      drawBotSprite(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts, radius));
+      drawBerryBot(ctx, bot, p.x, p.y, radius, t, spriteOpts(bot, theme, t, opts, radius));
       this.stats.botsDrawn++;
       if ((opts.showNames && namesOn) || bot.def.id === opts.selectedBot) drawNameTag(ctx, bot.def.name, p.x, p.y + radius + 12, theme, bot.def.id === opts.selectedBot);
     }
@@ -415,6 +432,12 @@ export class Renderer {
       }
       ctx.restore();
     }
+
+    // Seasonal weather: petals, fireflies, leaves or snow.
+    const now = performance.now();
+    const pdt = Math.min(0.05, (now - this.lastParticleAt) / 1000);
+    this.lastParticleAt = now;
+    updateDrawParticles(ctx, vis, pdt, t, this.reducedMotion);
 
     // Room name chips (screen space) once baked labels get too small to read.
     this.drawRoomChips(cam, theme, opts);
@@ -507,7 +530,12 @@ export class Renderer {
       const p = lerpPos(bot, alpha);
       const s = cam.worldToScreen(p.x, p.y - 18);
       const w = Math.min(220, ctx.measureText(b.text).width + 16);
-      return { x: s.x - w / 2, y: s.y - 30 * Math.max(0.6, Math.min(1.2, cam.zoom)), w, h: 22 };
+      return {
+        x: s.x - w / 2,
+        y: s.y - 30 * Math.max(0.6, Math.min(1.2, cam.zoom)),
+        w,
+        h: 22,
+      };
     });
     const placed = layoutBubbles(desired);
     items.forEach((b, i) => {
@@ -552,7 +580,10 @@ function isHorizontalAt(points: Point[], t: number): boolean {
 }
 
 export function lerpPos(bot: SimBot, alpha: number): Point {
-  return { x: bot.prevX + (bot.x - bot.prevX) * alpha, y: bot.prevY + (bot.y - bot.prevY) * alpha };
+  return {
+    x: bot.prevX + (bot.x - bot.prevX) * alpha,
+    y: bot.prevY + (bot.y - bot.prevY) * alpha,
+  };
 }
 
 /** Name tag under a bot: a small pill so it reads on any floor (dark Arcade carpet included). */
@@ -631,22 +662,8 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     ctx.rect(region.x, region.y, region.w, region.h);
     ctx.clip();
   }
-  // Void + subtle map hatch (flat, plan-view drafting feel).
-  ctx.fillStyle = w.void;
-  if (region) ctx.fillRect(region.x, region.y, region.w, region.h);
-  else ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-  ctx.strokeStyle = w.corridorLine;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const iMin = region ? Math.floor((region.x - (region.y + region.h) + WORLD_H) / 24) * 24 - WORLD_H : -WORLD_H;
-  const iMax = region ? region.x + region.w - region.y : WORLD_W;
-  for (let i = Math.max(-WORLD_H, iMin); i < Math.min(WORLD_W, iMax); i += 24) {
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + WORLD_H, WORLD_H);
-  }
-  ctx.globalAlpha = 0.35;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  // The ground outside the building is transparent here: the seasonal
+  // outdoors (drawn per frame underneath) shows through.
 
   // Outdoor terrace garden on the annex Void cells.
   drawTerrace(ctx, theme, region);
@@ -676,12 +693,22 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     if (room.id === 'arcade') {
       drawArcadeCarpet(ctx, room, theme);
       floorKeyLight(ctx, r, theme, '#ff8fe6', true);
-    } else {
+    } else if (room.id === 'cutting') {
       ctx.fillStyle = floor;
       roundRect(ctx, r.x, r.y, r.w, r.h, 10);
       ctx.fill();
-      ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.045);
-      ctx.fill();
+      floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
+    } else {
+      // Marion Mystery floor materials (tile, wood, carpet, metal, rug…).
+      ctx.save();
+      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+      ctx.clip();
+      ctx.drawImage(roomFloorTexture(room, accent, floor), r.x, r.y, r.w, r.h);
+      if (theme.name !== 'light') {
+        ctx.fillStyle = `rgba(6,10,24,${theme.name === 'dark' ? 0.45 : 0.22})`;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+      }
+      ctx.restore();
       floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
     }
     // Floor tile grid.
@@ -791,9 +818,19 @@ function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wal
   const w = tw * TILE;
   const h = th * TILE;
   ctx.save();
-  ctx.strokeStyle = wall;
-  ctx.lineWidth = 6;
-  roundRect(ctx, x + 3, y + 3, w - 6, h - 6, 9);
+  // Marion Mystery-style 2.5D walls: thick body, a darker inner face under the
+  // top wall (so rooms read as raised boxes) and a lit cap line.
+  // Mystery's navy walls in light/soft themes; the dark theme keeps its own.
+  const body = theme?.name === 'light' ? '#3a4874' : theme?.name === 'soft' ? '#59627f' : wall;
+  ctx.strokeStyle = body;
+  ctx.lineWidth = 10;
+  roundRect(ctx, x + 5, y + 5, w - 10, h - 10, 10);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(10,15,35,0.22)';
+  ctx.fillRect(x + 10, y + 10, w - 20, 8);
+  ctx.strokeStyle = theme?.name === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(150,170,220,0.95)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 11);
   ctx.stroke();
   if (theme) wallBevel(ctx, { x, y, w, h }, theme);
   // Punch doors.
@@ -821,4 +858,58 @@ function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wal
     ctx.stroke();
   }
   ctx.restore();
+}
+
+/** HQ bots drawn as Marion berry characters (state badges kept). */
+function drawBerryBot(ctx: Ctx, bot: SimBot, x: number, y: number, radius: number, t: number, o: ReturnType<typeof spriteOpts>): void {
+  const scale = radius / 15;
+  const look = lookFor(bot.def.id, bot.def.color);
+  const emote = o.mood === 'cheer' ? 'cheer' : o.mood === 'play' ? 'dance' : o.mood === 'sulk' ? 'shrug' : bot.state === 'huddling' ? 'wave' : null;
+  ctx.save();
+  if (bot.state === 'asleep') ctx.globalAlpha = 0.75;
+  if (o.selected) {
+    ctx.strokeStyle = 'rgba(110,161,255,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, y + radius * 0.95, radius * 1.15, radius * 0.42, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(10,15,40,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + radius * 0.95, radius * 0.9, radius * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+  drawBerry(ctx, look, x, y + radius, scale, {
+    time: t + bot.phase,
+    moving: bot.state === 'walking',
+    dir: bot.facing,
+    emote,
+    blink: bot.state === 'asleep',
+  });
+  ctx.restore();
+  const top = y - radius * 1.9;
+  if (bot.state === 'needs_input') {
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(x + radius * 0.9, top, 6 + Math.sin(t * 6) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1f1300';
+    ctx.font = '900 9px ui-sans-serif, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('!', x + radius * 0.9, top + 3.2);
+  } else if (bot.state === 'asleep') {
+    ctx.fillStyle = 'rgba(199,210,254,0.9)';
+    ctx.font = `700 ${8 + Math.sin(t * 2) * 1.5}px ui-sans-serif, system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText('z', x + radius * 0.8, top + 2 - (t % 2) * 3);
+    ctx.fillText('Z', x + radius * 1.2, top - 6 - (t % 2) * 3);
+  } else if (bot.state === 'working') {
+    ctx.fillStyle = o.color;
+    for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = 0.4 + 0.6 * Math.max(0, Math.sin(t * 6 - i));
+      ctx.beginPath();
+      ctx.arc(x - 5 + i * 5, top + 2, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
 }

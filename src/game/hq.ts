@@ -7,7 +7,7 @@ import type { RoomId } from '../data/bots';
 import { makeEvent, type EventPayloads, type MarionEvent, type MarionEventType } from '../adapters/events';
 import { Camera } from '../engine/camera';
 import { GameLoop } from '../engine/loop';
-import { Simulation, type SimEffect } from '../engine/sim';
+import { Simulation, type SimBot, type SimEffect } from '../engine/sim';
 import { roomRect, ROOM_BY_ID, WORLD_H, WORLD_W } from '../engine/world';
 import { Renderer, type RenderOptions } from '../render/renderer';
 import { localHour } from '../render/daylight';
@@ -16,12 +16,24 @@ import { EventBus } from './bus';
 
 export type Ticker = (dtMs: number) => void;
 
+/** What the HQ loop draws with: the 2D floorplan or the 3D diorama. */
+export interface HqRenderer {
+  render(sim: Simulation, cam: Camera, view: RenderView, alpha: number, opts: RenderOptions): void;
+  resize(cssW: number, cssH: number, dpr: number): void;
+  invalidate(): void;
+  /** Ground point under a screen point (defaults to the 2D camera mapping). */
+  screenToWorld?(sx: number, sy: number): { x: number; y: number };
+  /** Screen-space bot picking (3D bodies stand up off the floor). */
+  pickBotScreen?(sim: Simulation, sx: number, sy: number): SimBot | null;
+  dispose?(): void;
+}
+
 export class HQ {
   readonly bus = new EventBus();
   readonly sim: Simulation;
   readonly camera = new Camera(WORLD_W, WORLD_H);
   readonly loop: GameLoop;
-  renderer: Renderer | null = null;
+  renderer: HqRenderer | null = null;
   paused = false;
   speed = 1;
   /** Fixed hour for the day/night cycle (e.g. 22.5), or null to follow the local clock. */
@@ -32,7 +44,13 @@ export class HQ {
   renderSuspended = false;
   /** Keys currently held for WASD/arrow panning. */
   readonly keys = new Set<string>();
-  ui: RenderOptions = { selectedBot: null, selectedRoom: null, hoverRoom: null, hoverHotspot: null, showNames: true };
+  ui: RenderOptions = {
+    selectedBot: null,
+    selectedRoom: null,
+    hoverRoom: null,
+    hoverHotspot: null,
+    showNames: true,
+  };
   getView: () => RenderView = () => emptyView();
   private tickers = new Set<Ticker>();
   private effectListeners = new Set<(e: SimEffect) => void>();
@@ -86,13 +104,27 @@ export class HQ {
   }
 
   attach(canvas: HTMLCanvasElement): Renderer {
-    this.renderer = new Renderer(canvas);
+    const r = new Renderer(canvas);
+    this.attachRenderer(r);
+    return r;
+  }
+
+  /** Draw with any HQ renderer (2D floorplan or 3D diorama). */
+  attachRenderer(r: HqRenderer): HqRenderer {
+    this.renderer?.dispose?.();
+    this.renderer = r;
     this.loop.start();
-    return this.renderer;
+    return r;
+  }
+
+  /** World point under a screen point for the active renderer. */
+  screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    return this.renderer?.screenToWorld?.(sx, sy) ?? this.camera.screenToWorld(sx, sy);
   }
 
   detach(): void {
     this.loop.stop();
+    this.renderer?.dispose?.();
     this.renderer = null;
   }
 

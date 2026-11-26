@@ -34,7 +34,14 @@ npm install && npm run dev      # http://localhost:5173
 | `⇧⌘S` / `Ctrl+Shift+S` | Pin a screenshot Polaroid for Kanye |
 | `Esc` · `?` | Close panels · help |
 
-The top bar shows live status counts, the Live / Replay / Socket switcher with a connection badge, pause and 0.5×–4× speed, Light / Soft / Dark themes, audio (muted by default), an FPS readout, the palette and help.
+The top bar shows live status counts, the Live / Replay / Socket switcher with a connection badge, pause and 0.5×–4× speed, the **2D / 3D** view switch, the **season & time-of-day** picker, Light / Soft / Dark themes, audio, an FPS readout, the palette and help.
+
+### Views, seasons and day / night
+
+- **2D floorplan** or **3D diorama**: pick it in the top bar (or the 🌸/☀️/🍁/❄️ world picker); the choice is saved. Both share the same camera (drag, scroll / pinch, click), data and Marion Mystery look: navy walls, painted floors (tile, wood, carpet, metal, rugs), berry characters for every bot. The 3D view loads lazily (three.js only downloads when you choose it) and falls back to 2D without WebGL; phones get a lighter quality tier.
+- **Seasons**: Auto (follows the calendar), Spring (blossom trees, petals), Summer (deep greens, fireflies at dusk), Fall (orange canopies, drifting leaves) and Winter (snowy pines, snowfall). The lawn, gardens, trees, scattered blooms / leaves / snow and the falling particles all change.
+- **Time of day**: Auto (your local clock with dusk and dawn), Day or Night. Night dims the sky, lights lamp pools, lit windows and glowing props; fireflies glow brighter.
+- **Sound**: a music track per season by day plus a night lo-fi, seasonal ambience (birds, cicadas, crickets, owls, wind, rustling leaves, far-off sleigh bells), and a sound for every button, toggle, slider and canvas pick. Audio starts on your first tap or key press and hands over to Marion Mystery while it is open.
 
 ## The roster (all `glow: true`)
 
@@ -182,8 +189,8 @@ new WebSocketServer({ port: 8787, path: '/marion' }).on('connection', (ws) =>
 You can also paste raw event JSON into the **⌘K** palette to inject it, or use the 13 one‑click injector presets there. The *Arcade* group adds presets for the three arcade events, a "bots play a match" demo, and Play / Quick Play for Marion Mystery.
 
 ## Persistence & audio
-- **Saved in `localStorage`** (`marion-hq:v1`): theme, mute, FPS toggle, WebSocket URL, turntable, custom bots, slotted skills, streak / polish progress, Planner cards, and the **arcade leaderboard + last 10 results** (validated on load; the live match is session‑only). Corrupt or blocked storage falls back to defaults.
-- **Audio is muted by default.** The `AudioContext` is created on first unmute. Sounds include soft chimes, a pneumatic whoosh, a stamp thud, a spawn arpeggio and a lo‑fi turntable loop (Fmaj7–Em7–Dm7–Cmaj7, 72 bpm, vinyl crackle). The loop fades to silence during any dictation wave and comes back afterwards.
+- **Saved in `localStorage`** (`marion-hq:v1`): theme, 2D/3D view, season, time of day, mute, FPS toggle, WebSocket URL, turntable, custom bots, slotted skills, streak / polish progress, Planner cards, and the **arcade leaderboard + last 10 results** (validated on load; the live match is session‑only). Corrupt or blocked storage falls back to defaults.
+- **Audio is on by default** and starts on the first tap / key press (browser and iOS policy); the top-bar speaker mutes everything. Sim effects (soft chimes, pneumatic whoosh, stamp thud, spawn arpeggio) play on the effects engine; the seasonal soundtrack and ambience play on the Marion Mystery engine. Music ducks to silence during any dictation wave and comes back afterwards, and the Life room turntable toggles it.
 
 ## Verification
 

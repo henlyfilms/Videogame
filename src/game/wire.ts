@@ -5,6 +5,7 @@ import { BOT_SHAPES, CORE_BOTS, makeCustomBot, type BotShape } from '../data/bot
 import type { RelayModel } from '../adapters/events';
 import type { RenderView } from '../render/view';
 import { applyThemeToDocument } from '../theme/tokens';
+import { seasonFor } from '../theme/environment';
 import { useGame, type GameState } from '../store/gameStore';
 import type { HQ } from './hq';
 import { arcadeRanking, redPenWords, throughputFor } from './mechanics';
@@ -25,8 +26,19 @@ export function buildView(s: GameState, now = Date.now()): RenderView {
       draftWords: draft ? redPenWords(draft, now) : 0,
       draftTarget: draft ? Math.round(draft.words * 0.45) : 0,
     },
-    media: { queued: m.media.queue.length, insights: m.media.insights.length, llm: m.media.llm, distilling: false },
-    cutting: { queued: m.cutting.queue.length, keepers: m.cutting.keepers, outtakes: m.cutting.outtakes, render: m.cutting.render, green: m.cutting.green },
+    media: {
+      queued: m.media.queue.length,
+      insights: m.media.insights.length,
+      llm: m.media.llm,
+      distilling: false,
+    },
+    cutting: {
+      queued: m.cutting.queue.length,
+      keepers: m.cutting.keepers,
+      outtakes: m.cutting.outtakes,
+      render: m.cutting.render,
+      green: m.cutting.green,
+    },
     life: {
       cards: m.life.cards.map((c) => ({ lane: c.lane, done: c.done })),
       streak: m.progress.streak,
@@ -36,9 +48,17 @@ export function buildView(s: GameState, now = Date.now()): RenderView {
       dictating: m.life.dictating,
       turntable: s.turntable,
     },
-    engine: { queue: m.engine.commands.filter((c) => c.status !== 'done').length, polaroids: m.engine.polaroids, activeModels: [...active] },
+    engine: {
+      queue: m.engine.commands.filter((c) => c.status !== 'done').length,
+      polaroids: m.engine.polaroids,
+      activeModels: [...active],
+    },
     foundry: { skills: m.foundry.skills, custom: m.foundry.customBots.length },
-    command: { releases: m.command.releases, brain: m.command.brain, huddling: m.command.huddles.length > 0 },
+    command: {
+      releases: m.command.releases,
+      brain: m.command.brain,
+      huddling: m.command.huddles.length > 0,
+    },
     arcade: {
       top: arcadeRanking(m.arcade)
         .slice(0, 4)
@@ -55,7 +75,16 @@ export function populateSim(hq: HQ, s: GameState = useGame.getState()): void {
   for (const b of CORE_BOTS) hq.sim.addBot(b);
   for (const c of s.mech.foundry.customBots) {
     const shape = (BOT_SHAPES as readonly string[]).includes(c.shape) ? (c.shape as BotShape) : 'blueberry';
-    hq.sim.addBot(makeCustomBot({ id: c.botId, name: c.name, job: c.job, shape, color: c.color, glowColor: c.glowColor }));
+    hq.sim.addBot(
+      makeCustomBot({
+        id: c.botId,
+        name: c.name,
+        job: c.job,
+        shape,
+        color: c.color,
+        glowColor: c.glowColor,
+      }),
+    );
   }
 }
 
@@ -86,12 +115,23 @@ export function wire(hq: HQ, store = useGame): () => void {
     hq.ui.selectedBot = s.selectedBot;
     hq.ui.selectedRoom = s.selectedRoom;
   };
+  let lastTime: string | null = null;
+  const syncEnv = (s: GameState) => {
+    hq.ui.season = s.season === 'auto' ? seasonFor() : s.season;
+    if (s.timeMode !== lastTime) {
+      // 'auto' keeps a ?hour= override from the URL until the player picks.
+      if (lastTime !== null || s.timeMode !== 'auto') hq.clockOverride = s.timeMode === 'day' ? 12.5 : s.timeMode === 'night' ? 22.5 : null;
+      lastTime = s.timeMode;
+    }
+  };
+  syncEnv(store.getState());
   sync(store.getState());
   let lastTheme = store.getState().theme;
   if (typeof document !== 'undefined') applyThemeToDocument(lastTheme);
   unsubs.push(
     store.subscribe((s) => {
       sync(s);
+      syncEnv(s);
       if (s.theme !== lastTheme) {
         lastTheme = s.theme;
         if (typeof document !== 'undefined') applyThemeToDocument(s.theme);

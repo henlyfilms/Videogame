@@ -7,6 +7,7 @@ import { startPersistence, useGame } from '../store/gameStore';
 import { hq } from './hq';
 import { populateSim, wire } from './wire';
 import { wireAudio } from './wireAudio';
+import { wireHqSound } from '../audio/hqSound';
 
 export const manager = new AdapterManager(hq);
 let booted = false;
@@ -17,7 +18,8 @@ export function boot(): void {
   populateSim(hq);
   wire(hq);
   startPersistence();
-  wireAudio(hq);
+  wireAudio(hq, undefined, undefined, { legacyMusic: false });
+  wireHqSound(hq);
   manager.use(useGame.getState().adapter);
   // `?hour=22` pins the day/night cycle (handy for demos and screenshots).
   if (typeof location !== 'undefined') {

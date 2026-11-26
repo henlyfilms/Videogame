@@ -314,6 +314,115 @@ const credits: TrackDef = {
   },
 };
 
+// --- Marion HQ: one theme per season (day) + a night lo-fi ------------------
+
+/** Spring: light bossa — e-piano comping, music-box melody, brushed rim + shaker. */
+const hqSpring: TrackDef = {
+  id: 'hq-spring',
+  name: 'Blossom Standup (HQ · Spring)',
+  mood: 'Fresh, hopeful bossa',
+  bpm: 96,
+  bars: 4,
+  swing: 0.12,
+  step(step, bar, t, s) {
+    const c = ['Fmaj7', 'Em7', 'Dm7', 'Cmaj7'][bar]!;
+    const notes = chord(c, 3);
+    if (hit('x..x..x...x..x..', step)) for (const f of notes.slice(1)) engine.epiano(s.out, f * 2, t, s.dur * 2, 0.16, { del: 0.2, rev: 0.3 });
+    if (step === 0 || step === 6 || step === 10) engine.bass(s.out, rootOf(c) * (step === 6 ? 1.5 : 1), t, s.dur * 3, 0.42, { cutoff: 700 });
+    if (step % 2 === 0) engine.shaker(s.out, t, step % 4 ? 0.1 : 0.16);
+    if (hit('..x...x..x....x.', step)) engine.rim(s.out, t, 0.22);
+    if (step === 0) engine.kick(s.out, t, 0.32, 0.9);
+    const m: Mel = [
+      [0, 'A5', 2], [2, 'C6', 2], [4, 'E6', 4], [10, 'D6', 2], [12, 'C6', 4],
+      [16, 'G5', 2], [18, 'B5', 2], [20, 'D6', 4], [26, 'C6', 2], [28, 'B5', 4],
+      [32, 'F5', 2], [34, 'A5', 2], [36, 'C6', 4], [42, 'E6', 2], [44, 'D6', 4],
+      [48, 'E5', 2], [50, 'G5', 2], [52, 'B5', 6], [60, 'C6', 4],
+    ];
+    if (s.loop % 2 === 1) mel(m, bar * 16 + step, (f, _len, v) => engine.bell(s.out, f, t, 0.13 * v + 0.05, { kind: 'musicbox', del: 0.25, rev: 0.4 }));
+  },
+};
+
+/** Summer: sunny marimba groove with a walking bass and claps. */
+const hqSummer: TrackDef = {
+  id: 'hq-summer',
+  name: 'Sunroof Sprint (HQ · Summer)',
+  mood: 'Bright, bouncy, warm',
+  bpm: 112,
+  bars: 4,
+  swing: 0.08,
+  step(step, bar, t, s) {
+    const c = ['C6', 'Am7', 'Dm7', 'G7'][bar]!;
+    const notes = chord(c, 4);
+    if (hit('x.x..x.x..x.x..x', step)) engine.bell(s.out, notes[(step + bar) % notes.length]!, t, 0.2, { kind: 'marimba', pan: ((step % 4) - 1.5) * 0.25 });
+    if (step % 4 === 0) engine.bass(s.out, rootOf(c) * Math.pow(2, [0, 4, 7, 9][step / 4]! / 12), t, s.dur * 3, 0.45, { cutoff: 800 });
+    if (step === 0 || step === 8 || step === 11) engine.kick(s.out, t, 0.42, 0.95);
+    if (step === 4 || step === 12) engine.clap(s.out, t, 0.3);
+    if (step % 2 === 1) engine.hat(s.out, t, 0.1);
+    if (step === 0) engine.pad(s.out, chord(c, 3), t, s.dur * 16, 0.1, { cutoff: 1600, attack: 0.3 });
+    if (s.loop % 2 === 1 && step % 4 === 2) engine.pluck(s.out, notes[(bar + step / 2) % notes.length]! * 2, t, 0.16, { len: 0.5, bright: 0.8, del: 0.3 });
+  },
+};
+
+/** Fall: warm swung lo-fi — crackle, Rhodes, mellow reed counter-line. */
+const hqFall: TrackDef = {
+  id: 'hq-fall',
+  name: 'Cider Commit (HQ · Fall)',
+  mood: 'Cozy, nostalgic lo-fi',
+  bpm: 82,
+  bars: 4,
+  swing: 0.24,
+  bed: (out) => engine.crackleBed(out, 0.35),
+  step(step, bar, t, s) {
+    const c = ['Am7', 'Dm7', 'G7', 'Cmaj7'][bar]!;
+    if (step === 0 || step === 7) for (const f of chord(c, 3).slice(1)) engine.epiano(s.out, f, t, s.dur * 6, 0.2, { rev: 0.35, bright: 0.4 });
+    if (step === 0 || step === 10) engine.bass(s.out, rootOf(c), t, s.dur * 5, 0.5, { cutoff: 520 });
+    if (step === 0 || step === 9) engine.kick(s.out, t, 0.5, 0.85);
+    if (step === 4 || step === 12) engine.snare(s.out, t, 0.24);
+    if (step % 2 === 0) engine.hat(s.out, t, step % 4 ? 0.08 : 0.14);
+    if (bar % 2 === 1 && step === 2) engine.reed(s.out, chord(c, 4)[2]!, t, s.dur * 6, 0.18);
+    if (bar % 2 === 1 && step === 9) engine.reed(s.out, chord(c, 4)[1]!, t, s.dur * 5, 0.15);
+  },
+};
+
+/** Winter: gentle 3/4-feel celesta waltz over warm pads, sleigh shaker. */
+const hqWinter: TrackDef = {
+  id: 'hq-winter',
+  name: 'Snowfall Sync (HQ · Winter)',
+  mood: 'Twinkly, warm, festive',
+  bpm: 92,
+  bars: 4,
+  step(step, bar, t, s) {
+    const c = ['Gmaj7', 'Em7', 'Cmaj7', 'D7'][bar]!;
+    const notes = chord(c, 4);
+    if (step === 0) engine.pad(s.out, chord(c, 3), t, s.dur * 16, 0.16, { cutoff: 1200, attack: 0.5, rev: 0.5 });
+    if (step === 0 || step === 6 || step === 12) engine.bass(s.out, rootOf(c), t, s.dur * 4, 0.35, { cutoff: 500 });
+    if (hit('x.x.x.x.x.x.x.x.', step)) engine.bell(s.out, notes[(step / 2 + bar) % notes.length]! * (step % 6 === 0 ? 2 : 1), t, 0.12, { kind: 'musicbox', rev: 0.5, del: 0.2 });
+    if (s.loop % 2 === 1 && (step === 3 || step === 11)) engine.bell(s.out, notes[3 % notes.length]! * 2, t, 0.1, { kind: 'glass', rev: 0.6 });
+    if (step % 2 === 0) engine.shaker(s.out, t, step % 6 === 0 ? 0.14 : 0.07);
+    if (step === 0) engine.kick(s.out, t, 0.24, 0.8);
+  },
+};
+
+/** Night: slow, dusty lo-fi for late-night commits (all seasons). */
+const hqNight: TrackDef = {
+  id: 'hq-night',
+  name: 'Night Build (HQ · Night)',
+  mood: 'Mellow, sleepy lo-fi',
+  bpm: 72,
+  bars: 4,
+  swing: 0.2,
+  bed: (out) => engine.crackleBed(out, 0.45),
+  step(step, bar, t, s) {
+    const c = ['Dm9', 'G7', 'Cmaj9', 'Am7'][bar]!;
+    if (step === 0 || step === 10) for (const f of chord(c, 3).slice(1, 5)) engine.epiano(s.out, f, t, s.dur * 8, 0.17, { rev: 0.45, bright: 0.25, del: 0.25 });
+    if (step === 0 || step === 11) engine.bass(s.out, rootOf(c), t, s.dur * 6, 0.45, { cutoff: 420 });
+    if (step === 0 || step === 7) engine.kick(s.out, t, 0.38, 0.8);
+    if (step === 8) engine.snare(s.out, t, 0.16);
+    if (step % 4 === 2) engine.hat(s.out, t, 0.07);
+    if (s.loop % 2 === 1 && bar === 2 && step === 4) engine.bell(s.out, chord(c, 5)[1]!, t, 0.07, { kind: 'glass', rev: 0.7, del: 0.4 });
+  },
+};
+
 export const TRACKS: TrackDef[] = [
   title,
   lobby,
@@ -328,6 +437,11 @@ export const TRACKS: TrackDef[] = [
   results,
   freeplay,
   credits,
+  hqSpring,
+  hqSummer,
+  hqFall,
+  hqWinter,
+  hqNight,
 ];
 export const TRACK_BY_ID: Record<string, TrackDef> = Object.fromEntries(TRACKS.map((t) => [t.id, t]));
 

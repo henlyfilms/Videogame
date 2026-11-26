@@ -11,12 +11,17 @@ export function musicInputsFrom(s: GameState) {
   return { muted: s.muted, turntable: s.turntable, dictating: s.mech.life.dictating || s.bridgeDictating };
 }
 
-export function wireAudio(hq: HQ, engine: AudioEngine = defaultAudio, store = useGame): () => void {
+/**
+ * `legacyMusic: false` silences the old turntable loop (the seasonal HQ
+ * soundtrack in hqSound.ts replaces it); sim effects still play here.
+ */
+export function wireAudio(hq: HQ, engine: AudioEngine = defaultAudio, store = useGame, opts: { legacyMusic?: boolean } = {}): () => void {
   let last = '';
   const sync = (s: GameState) => {
     const i = musicInputsFrom(s);
     // The HQ lo-fi loop stays quiet while an Arcade game is on screen.
     if (useArcade.getState().open) i.muted = true;
+    if (opts.legacyMusic === false) i.turntable = false;
     const key = `${i.muted}|${i.turntable}|${i.dictating}`;
     if (key === last) return;
     last = key;

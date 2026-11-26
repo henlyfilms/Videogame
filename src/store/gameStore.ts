@@ -9,6 +9,7 @@ import { CORE_BOTS, type RoomId } from '../data/bots';
 import { describeEvent, isQuietEvent } from '../game/describe';
 import { ARCADE_RECENT, initialMechanics, reduceMechanics, type MechanicsState } from '../game/mechanics';
 import { nextTheme, type ThemeName } from '../theme/tokens';
+import { SEASONS, type HqView, type Season, type TimeMode } from '../theme/environment';
 
 import type { AdapterKind, ConnStatus } from '../adapters/types';
 export type { AdapterKind, ConnStatus };
@@ -35,6 +36,11 @@ export interface GameState {
   mech: MechanicsState;
   feed: FeedItem[];
   theme: ThemeName;
+  /** HQ view: classic plan (2D) or the 3D diorama. */
+  hqView: HqView;
+  /** 'auto' follows the calendar. */
+  season: Season | 'auto';
+  timeMode: TimeMode;
   muted: boolean;
   showFps: boolean;
   fps: number;
@@ -59,6 +65,9 @@ export interface GameState {
   resetMechanics: (keepPersistent?: boolean) => void;
   restoreFromStorage: () => void;
   setTheme: (t: ThemeName) => void;
+  setHqView: (v: HqView) => void;
+  setSeason: (s: Season | 'auto') => void;
+  setTimeMode: (t: TimeMode) => void;
   cycleTheme: () => void;
   toggleMute: () => void;
   toggleFps: () => void;
@@ -85,6 +94,9 @@ export const SPEEDS = [0.5, 1, 2, 4] as const;
 
 export interface Persisted {
   theme: ThemeName;
+  hqView?: HqView;
+  season?: Season | 'auto';
+  timeMode?: TimeMode;
   muted: boolean;
   showFps: boolean;
   wsUrl: string;
@@ -118,6 +130,9 @@ export function loadPersisted(): Partial<Persisted> {
 export function persistedFrom(s: GameState): Persisted {
   return {
     theme: s.theme,
+    hqView: s.hqView,
+    season: s.season,
+    timeMode: s.timeMode,
     muted: s.muted,
     showFps: s.showFps,
     wsUrl: s.wsUrl,
@@ -182,7 +197,10 @@ function makeStore() {
     mech: hydrateMechanics(p),
     feed: [],
     theme: p.theme === 'light' || p.theme === 'soft' || p.theme === 'dark' ? p.theme : 'light',
-    muted: p.muted ?? true,
+    hqView: p.hqView === '3d' ? '3d' : '2d',
+    season: p.season && (p.season === 'auto' || SEASONS.includes(p.season)) ? p.season : 'auto',
+    timeMode: p.timeMode === 'day' || p.timeMode === 'night' ? p.timeMode : 'auto',
+    muted: p.muted ?? false,
     showFps: p.showFps ?? false,
     fps: 60,
     speed: 1,
@@ -235,6 +253,9 @@ function makeStore() {
     },
     restoreFromStorage: () => set({ mech: hydrateMechanics(loadPersisted()), feed: [], bridgeDictating: false }),
     setTheme: (theme) => set({ theme }),
+    setHqView: (hqView) => set({ hqView }),
+    setSeason: (season) => set({ season }),
+    setTimeMode: (timeMode) => set({ timeMode }),
     cycleTheme: () => set({ theme: nextTheme(get().theme) }),
     toggleMute: () => set({ muted: !get().muted }),
     toggleFps: () => set({ showFps: !get().showFps }),
