@@ -364,6 +364,10 @@ export interface MatchResult {
   mvp: string | null;
   awards: { id: string; title: string; playerId: string }[];
   endedAt: number;
+  /** Full (now public) timeline of key moments. */
+  timeline: { t: number; type: MatchEvent['type']; actor?: string; target?: string; detail?: string }[];
+  /** Everyone's stats, revealed at the end. */
+  stats: Record<string, PlayerStats & { alive: boolean; tasksTotal: number }>;
 }
 
 export interface BatteryPickup {

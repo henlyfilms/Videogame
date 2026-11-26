@@ -1310,7 +1310,19 @@ export function endMatch(st: MatchState, _ctx: MatchCtx, team: Team | 'draw', re
   add('detective', best((p) => p.stats.correctVotes, 2));
   add('marathon', best((p) => p.stats.distance, 50));
   add('reaper', best((p) => p.stats.kills, 2));
-  st.result = { winningTeam: team, reason, winners: [...winners], mvp: mvp?.id ?? null, awards, endedAt: st.t };
+  const keep = new Set<MatchEvent['type']>(['kill', 'report', 'emergency', 'eject', 'sabotage', 'fixed', 'misfire', 'gun.pickup', 'poison', 'shield.hit', 'final', 'blackout']);
+  const timeline = st.events
+    .filter((e) => keep.has(e.type))
+    .map((e) => ({
+      t: Math.round(e.t),
+      type: e.type,
+      actor: e.actor,
+      target: e.target,
+      detail: e.data ? String(e.data.weapon ?? e.data.kind ?? e.data.room ?? (e.data.skipped ? 'skipped' : e.data.tie ? 'tie' : '')) : undefined,
+    }));
+  const stats: Record<string, PlayerState['stats'] & { alive: boolean; tasksTotal: number }> = {};
+  for (const p of players) stats[p.id] = { ...p.stats, alive: p.alive, tasksTotal: p.team === 'crew' ? p.tasks.length : 0 };
+  st.result = { winningTeam: team, reason, winners: [...winners], mvp: mvp?.id ?? null, awards, endedAt: st.t, timeline, stats };
   emit(st, { t: st.t, type: 'end', data: { team, reason } });
 }
 

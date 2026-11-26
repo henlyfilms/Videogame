@@ -28,6 +28,8 @@ export interface MysteryState {
   transport: 'ws' | 'local' | null;
   pid: string;
   room: RoomInfo | null;
+  /** performance.now() when the last room update arrived (for countdowns). */
+  roomAt: number;
   snap: Snapshot | null;
   chat: ChatMsg[];
   listing: RoomListing[];
@@ -121,7 +123,10 @@ export const useMystery = create<MysteryState>((set, get) => {
   function onServer(m: ServerMsg) {
     switch (m.t) {
       case 'welcome':
-        if (m.pid) set({ pid: m.pid });
+        if (m.pid) {
+          set({ pid: m.pid });
+          runtime.pid = m.pid;
+        }
         if (m.pid) lastWelcome = [m.pid, m.secret];
         if (m.pid && currentCode && transport?.kind === 'ws') saveSession(currentCode, m.pid, m.secret);
         break;
@@ -129,7 +134,7 @@ export const useMystery = create<MysteryState>((set, get) => {
         const prev = get().room;
         currentCode = m.room.code;
         if (lastWelcome && transport?.kind === 'ws') saveSession(m.room.code, lastWelcome[0], lastWelcome[1]);
-        const patch: Partial<MysteryState> = { room: m.room, screen: 'room', error: null };
+        const patch: Partial<MysteryState> = { room: m.room, roomAt: performance.now(), screen: 'room', error: null };
         if (m.room.stage === 'match' && prev?.stage !== 'match') {
           const pol = m.room.settings.view;
           patch.matchView = pol === 'choice' ? get().prefs.view : pol;
@@ -232,6 +237,7 @@ export const useMystery = create<MysteryState>((set, get) => {
     transport: null,
     pid: '',
     room: null,
+    roomAt: 0,
     snap: null,
     chat: [],
     listing: [],
