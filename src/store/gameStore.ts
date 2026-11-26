@@ -10,8 +10,8 @@ import { describeEvent, isQuietEvent } from '../game/describe';
 import { initialMechanics, reduceMechanics, type MechanicsState } from '../game/mechanics';
 import { nextTheme, type ThemeName } from '../theme/tokens';
 
-export type AdapterKind = 'live' | 'replay' | 'ws';
-export type ConnStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'fallback' | 'closed';
+import type { AdapterKind, ConnStatus } from '../adapters/types';
+export type { AdapterKind, ConnStatus };
 
 export interface FeedItem {
   id: string;
@@ -57,6 +57,7 @@ export interface GameState {
 
   ingest: (ev: MarionEvent) => void;
   resetMechanics: (keepPersistent?: boolean) => void;
+  restoreFromStorage: () => void;
   setTheme: (t: ThemeName) => void;
   cycleTheme: () => void;
   toggleMute: () => void;
@@ -205,6 +206,7 @@ function makeStore() {
       }
       set({ mech: m, feed: [], bridgeDictating: false });
     },
+    restoreFromStorage: () => set({ mech: hydrateMechanics(loadPersisted()), feed: [], bridgeDictating: false }),
     setTheme: (theme) => set({ theme }),
     cycleTheme: () => set({ theme: nextTheme(get().theme) }),
     toggleMute: () => set({ muted: !get().muted }),
@@ -233,6 +235,8 @@ let lastSaved = '';
 /** Persist relevant slices whenever they change. Returns an unsubscribe. */
 export function startPersistence(): () => void {
   return useGame.subscribe((s) => {
+    // Replays are deterministic sandboxes: never persist their state.
+    if (s.adapter === 'replay') return;
     const json = JSON.stringify(persistedFrom(s));
     if (json !== lastSaved) {
       lastSaved = json;

@@ -715,6 +715,16 @@ export class Simulation {
     }
   }
 
+  /** Remove every bot and transient effect (caller re-populates). */
+  clear(): void {
+    this.bots.clear();
+    this.packets = [];
+    this.particles = [];
+    this.waves = [];
+    this.huddles.clear();
+    this.bubbles.clear();
+  }
+
   /** Reset everything except bot definitions (used by replay seeking). */
   reset(): void {
     const defs = [...this.bots.values()].map((b) => b.def);

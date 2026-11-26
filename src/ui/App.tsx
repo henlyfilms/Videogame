@@ -3,8 +3,8 @@ import type { RoomId } from '../data/bots';
 import type { HotspotAction } from '../engine/world';
 import { actions } from '../game/actions';
 import { hq } from '../game/hq';
-import { populateSim, wire } from '../game/wire';
-import { startPersistence, useGame } from '../store/gameStore';
+import { boot } from '../game/runtime';
+import { useGame } from '../store/gameStore';
 import { GameCanvas } from './GameCanvas';
 import { RoomPopover } from './RoomPopover';
 
@@ -15,13 +15,7 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    populateSim(hq);
-    const unwire = wire(hq);
-    const unpersist = startPersistence();
-    return () => {
-      unwire();
-      unpersist();
-    };
+    boot();
   }, []);
 
   useEffect(() => {
