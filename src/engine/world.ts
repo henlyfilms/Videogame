@@ -689,7 +689,11 @@ export function roomAtTile(grid: Grid, x: number, y: number): RoomDef | null {
 }
 
 export function roomAtWorld(grid: Grid, wx: number, wy: number): RoomDef | null {
-  return roomAtTile(grid, Math.floor(wx / TILE), Math.floor(wy / TILE));
+  const room = roomAtTile(grid, Math.floor(wx / TILE), Math.floor(wy / TILE));
+  // Tiles under an angled corner belong to the room's bounding grid; only count
+  // points inside the real outline (so clicks just outside a cut corner miss).
+  if (room && !pointInPoly({ x: wx, y: wy }, roomPolygon(room), true)) return null;
+  return room;
 }
 
 /** Global tile coordinate of a named spot. */
