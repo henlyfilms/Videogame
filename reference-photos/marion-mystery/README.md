@@ -72,3 +72,5 @@ and rooms stay the characters and setting.
 | 30-scene-kill-cutscene.webp | IMG_2310 | Elimination cutscene, red energy slash on starfield |
 | 31-hud-discussion-vote.png | IMG_2309 | Discussion: accusing, name tags, timer, Vote button |
 | 32-hud-crewmate-nametags.jpg | IMG_2308 | Crewmate HUD in a dark room, name tags, report icon |
+| 33-scene-medbay-corridor.webp | IMG_2305 | Corridor: riveted teal walls, yellow/pink guide stripes, lit ceiling strips, medbay cross sign |
+| 34-scene-o2-room-body-found.jpg | IMG_2304 | O2 room: tanks, green fan wall, plant pond under floor glass; body found, killer fleeing |
