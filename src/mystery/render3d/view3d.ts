@@ -607,6 +607,13 @@ export class ThreeDView implements ViewRenderer {
       const fogCol = sab ? '#05070f' : f.mode === 'lobby' ? '#0b1020' : '#141a33';
       this.scene.fog = f.mode === 'lobby' ? new THREE.Fog(fogCol, 25, 60) : new THREE.Fog(fogCol, Math.max(1, vis * 0.6), vis * 1.35 + 2);
     }
+    // Critical sabotage: red alert lighting (pulsing unless reduced motion).
+    if (f.critical && f.mode === 'match') {
+      const pulse = f.reducedMotion ? 0.6 : 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(f.t * 6));
+      this.hemi.color.lerp(new THREE.Color('#ff3b3b'), 0.55 * pulse);
+      this.sun.color.set('#ffd0c8').lerp(new THREE.Color('#ff5a4a'), 0.5 * pulse);
+      if (this.scene.fog instanceof THREE.Fog) this.scene.fog.color.lerp(new THREE.Color('#3a0508'), 0.6 * pulse);
+    } else this.sun.color.set('#fff4e0');
     this.sun.position.set(f.focus.x + 8, 16, f.focus.y + 6);
     this.sun.target.position.set(f.focus.x, 0, f.focus.y);
     // Camera.

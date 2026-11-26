@@ -41,7 +41,7 @@ One Vite + React app with two parts:
 
 ### Reference photos
 
-There are 51 reference screenshots plus a README describing them. They are deliberately **not**
+There are 55 reference screenshots plus a README describing them (more may be added). They are deliberately **not**
 in this branch, because they are captures of another game. Read them from the other branch:
 
 ```bash
