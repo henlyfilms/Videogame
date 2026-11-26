@@ -3,9 +3,10 @@
  * and the murderers' sabotage map all reuse it.
  */
 import { useEffect, useRef } from 'react';
-import { Cell, type CompiledMap } from '../core/map';
+import type { CompiledMap } from '../core/map';
 import type { Vec2 } from '../core/types';
-import { mix, rgba } from '../render2d/paint';
+import { paintMapOverview } from '../render2d/overview';
+import { rgba } from '../render2d/paint';
 
 export interface MapMarker {
   pos: Vec2;
@@ -17,25 +18,17 @@ export interface MapMarker {
 const thumbCache = new Map<string, HTMLCanvasElement>();
 
 function baseImage(map: CompiledMap, px: number, night: boolean): HTMLCanvasElement {
-  const key = `${map.def.id}:${px}:${night}`;
+  // Legend-style overview (world art lives in render2d/overview); baked at ≥6 px/tile.
+  const q = Math.max(px, 6);
+  const key = `${map.def.id}:${q}:${night}`;
   const hit = thumbCache.get(key);
   if (hit) return hit;
   const c = document.createElement('canvas');
-  c.width = map.w * px;
-  c.height = map.h * px;
+  c.width = map.w * q;
+  c.height = map.h * q;
   const g = c.getContext('2d');
   if (!g) return c;
-  for (let y = 0; y < map.h; y++)
-    for (let x = 0; x < map.w; x++) {
-      const i = y * map.w + x;
-      if (map.cells[i] === Cell.Void) continue;
-      const ri = map.roomIdx[i]!;
-      const col = ri >= 0 ? map.def.rooms[ri]!.color : '#94a3b8';
-      g.fillStyle = night ? mix(col, '#0b1022', 0.55) : mix(col, '#e2e8f0', ri >= 0 ? 0.55 : 0.2);
-      g.fillRect(x * px, y * px, px, px);
-    }
-  g.fillStyle = night ? 'rgba(200,215,255,0.5)' : 'rgba(20,30,60,0.55)';
-  for (const wi of map.walls) g.fillRect((wi % map.w) * px, Math.floor(wi / map.w) * px, px, px);
+  paintMapOverview(g, map, q, night);
   thumbCache.set(key, c);
   return c;
 }

@@ -7,12 +7,16 @@
 import * as THREE from 'three';
 import { createBerry, createBody, createPet, type BerryRig } from '../characters/rig3d';
 import { castRay, type CompiledMap } from '../core/map';
-import type { Cosmetics, MatchEvent, Vec2 } from '../core/types';
+import type { MatchEvent, Vec2 } from '../core/types';
 import type { Prefs } from '../client/prefs';
 import { input } from '../client/controls';
-import type { FrameData } from '../render2d/renderer';
+import { roomAt } from '../core/map';
+import { WORLD } from '../render2d/paint';
+import { drawKeyHint, drawKillBadge, drawNameTag, drawReportBadge, drawVentArrow, easeOutBack, measureTag, PromptFader } from '../render2d/prompts';
+import { tagStyleFor, type DrawPlayer, type FrameData } from '../render2d/renderer';
 import type { ViewRenderer } from '../ui/GameView';
-import { buildMapScene, radialTexture, type MapScene, type Quality } from './scene';
+import { buildMapScene, radialTexture, toon, type MapScene, type Quality } from './scene';
+import { addHull, dottedRingTexture, hullMaterial } from './worldkit';
 
 interface Actor {
   rig: BerryRig;
@@ -23,6 +27,41 @@ interface Actor {
   labelKey: string;
   seen: number;
   heading: number;
+  /** Ink outline hulls on the body meshes (re-found after cosmetic rebuilds). */
+  hulls: THREE.Mesh[];
+}
+
+/** Canvas → sprite with a fixed world height. */
+function canvasSprite(w: number, h: number, worldH: number, draw: (g: CanvasRenderingContext2D) => void): THREE.Sprite {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  draw(g);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true, fog: false }));
+  spr.scale.set((worldH * w) / h, worldH, 1);
+  spr.userData.baseScale = spr.scale.clone();
+  spr.renderOrder = 20;
+  return spr;
+}
+
+function disposeSprite(s: THREE.Object3D): void {
+  s.traverse((o) => {
+    const sp = o as THREE.Sprite;
+    if (sp.isSprite) {
+      sp.material.map?.dispose();
+      sp.material.dispose();
+    }
+  });
+}
+
+function tagSprite(p: Pick<DrawPlayer, 'name' | 'cosmetics' | 'nameColor' | 'local' | 'ghost'>): THREE.Sprite {
+  const H = 56;
+  const probe = document.createElement('canvas').getContext('2d')!;
+  const w = Math.ceil(measureTag(probe, p.name.slice(0, 20), H) + 16);
+  return canvasSprite(w, H + 16, 0.3, (g) => drawNameTag(g, w / 2, (H + 16) / 2 - 3, H, tagStyleFor(p)));
 }
 
 interface Fx {
@@ -40,29 +79,6 @@ function pickQuality(pref: Prefs['quality']): Quality {
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
   if (coarse || mem <= 4) return 'medium';
   return 'high';
-}
-
-function labelSprite(text: string, color = '#ffffff'): THREE.Sprite {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
-  const g = c.getContext('2d')!;
-  g.font = '700 30px Inter, ui-sans-serif, system-ui, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  const w = Math.min(250, g.measureText(text).width + 28);
-  g.fillStyle = 'rgba(8,12,28,0.6)';
-  g.beginPath();
-  g.roundRect(128 - w / 2, 12, w, 40, 20);
-  g.fill();
-  g.fillStyle = color;
-  g.fillText(text, 128, 33);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  spr.scale.set(1.4, 0.35, 1);
-  spr.renderOrder = 10;
-  return spr;
 }
 
 export class ThreeDView implements ViewRenderer {
@@ -94,6 +110,18 @@ export class ThreeDView implements ViewRenderer {
   private knives = new Map<string, THREE.Mesh>();
   private batteryMeshes = new Map<string, THREE.Mesh>();
   private trackRing: THREE.Mesh;
+  private fader = new PromptFader();
+  private inkHull = hullMaterial(WORLD.ink, 0.032, false);
+  private killHull = hullMaterial(WORLD.kill, 0.06, false);
+  private promptObjs = new Map<string, THREE.Object3D>();
+  private promptTex = new Map<string, { tex: THREE.CanvasTexture; aspect: number }>();
+  private ringTex = dottedRingTexture();
+  private ringGeo = new THREE.PlaneGeometry(1.7, 1.7).rotateX(-Math.PI / 2);
+  private arrowGeo: THREE.BufferGeometry | null = null;
+  private arrowMat = toon(WORLD.task, { emissive: new THREE.Color(WORLD.task), emissiveIntensity: 0.75, fog: false });
+  private arrowInk = hullMaterial(WORLD.ink, 0.02, false);
+  private camDistGoal = 5.2;
+  private tmpV = new THREE.Vector3();
   frameMs = 0;
 
   constructor(
@@ -188,7 +216,7 @@ export class ThreeDView implements ViewRenderer {
     };
     const onUp = () => (dragging = null);
     const onWheel = (e: WheelEvent) => {
-      if (this.mode === 'tp') this.camDist = Math.max(2.5, Math.min(9, this.camDist + e.deltaY * 0.004));
+      if (this.mode === 'tp') this.camDistGoal = Math.max(2.5, Math.min(9, this.camDistGoal + e.deltaY * 0.004));
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
@@ -276,34 +304,36 @@ export class ThreeDView implements ViewRenderer {
     this.scene.background = new THREE.Color(night ? '#04060d' : theme.sky);
   }
 
-  private actor(id: string, cos: Cosmetics, name: string, nameColor?: string): Actor {
+  private actor(p: DrawPlayer): Actor {
+    const cos = p.cosmetics;
     const key = JSON.stringify(cos);
-    let a = this.actors.get(id);
+    let a = this.actors.get(p.id);
     if (a && a.cosKey !== key) {
       a.rig.setCosmetics(cos);
       a.cosKey = key;
+      a.hulls = this.attachHulls(a.rig);
       if (a.pet) {
         this.scene.remove(a.pet.group);
         a.pet = null;
       }
     }
+    const labelKey = `${p.name}|${p.nameColor ?? ''}|${p.local ? 1 : 0}|${p.ghost ? 1 : 0}|${cos.color}|${cos.nameplate}`;
     if (!a) {
       const rig = createBerry(cos, { quality: this.quality });
       rig.group.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) o.castShadow = this.quality === 'high';
       });
       this.scene.add(rig.group);
-      const label = labelSprite(name, nameColor);
+      const label = tagSprite(p);
       this.scene.add(label);
-      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey: name + (nameColor ?? ''), seen: 0, heading: 0 };
-      this.actors.set(id, a);
+      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: this.attachHulls(rig) };
+      this.actors.set(p.id, a);
     }
-    if (a.labelKey !== name + (nameColor ?? '')) {
+    if (a.labelKey !== labelKey) {
       this.scene.remove(a.label);
-      (a.label.material as THREE.SpriteMaterial).map?.dispose();
-      a.label.material.dispose();
-      a.label = labelSprite(name, nameColor);
-      a.labelKey = name + (nameColor ?? '');
+      disposeSprite(a.label);
+      a.label = tagSprite(p);
+      a.labelKey = labelKey;
       this.scene.add(a.label);
     }
     if (!a.pet && cos.pet && cos.pet !== 'none') {
@@ -311,6 +341,28 @@ export class ThreeDView implements ViewRenderer {
       this.scene.add(a.pet.group);
     }
     return a;
+  }
+
+  /** Ink outline (inverted hull) on a rig's body meshes; skipped on low quality. */
+  private attachHulls(rig: BerryRig): THREE.Mesh[] {
+    if (this.quality === 'low') return [];
+    const out: THREE.Mesh[] = [];
+    rig.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || m.userData.matKind !== 'body') return;
+      if (m.userData.hasHull) {
+        const existing = m.children.find((c) => c.userData.hull) as THREE.Mesh | undefined;
+        if (existing) out.push(existing);
+        return;
+      }
+      m.userData.hasHull = true;
+      const h = new THREE.Mesh(m.geometry, this.inkHull);
+      h.userData.hull = true;
+      h.castShadow = false;
+      m.add(h);
+      out.push(h);
+    });
+    return out;
   }
 
   render(f: FrameData, dt: number): void {
@@ -321,11 +373,24 @@ export class ThreeDView implements ViewRenderer {
     // Camera look input (touch / right stick).
     const look = input.consumeLook();
     if (look.x || look.y) this.turn(look.x * 0.004 * this.prefs.sensitivity, look.y * 0.004 * this.prefs.sensitivity);
+    // Prompt visibility (eased in/out so nothing pops).
+    {
+      const pr = f.prompts;
+      const active = new Set<string>();
+      for (const id of f.highlight) active.add(`task:${id}`);
+      if (f.near) active.add(`near:${f.near}`);
+      if (pr?.kill) active.add(`kill:${pr.kill}`);
+      if (pr?.report) active.add(`report:${pr.report}`);
+      if (pr?.vent && !pr.inVent) active.add(`vent:${pr.vent}`);
+      if (pr?.inVent) active.add(`invent:${pr.inVent}`);
+      for (const d of f.map.def.doors) if (f.closedDoors.has(d.id)) active.add(`door:${d.id}`);
+      this.fader.update(active, dt, f.reducedMotion);
+    }
     // Actors.
     const now = performance.now();
     const localPlayer = f.players.find((p) => p.local);
     for (const p of f.players) {
-      const a = this.actor(p.id, p.cosmetics, p.local ? '' : p.name, p.nameColor);
+      const a = this.actor(p);
       a.seen = now;
       const g = a.rig.group;
       g.visible = !(p.local && this.mode === 'fp');
@@ -345,8 +410,16 @@ export class ThreeDView implements ViewRenderer {
         hold: p.hasGun ? 'gun' : f.night && p.flashlight !== undefined ? 'flashlight' : null,
         scared: p.scared,
       });
-      a.label.visible = !p.local && (!p.ghost || !!localPlayer?.ghost);
-      a.label.position.set(p.pos.x, (a.rig.height ?? 1.05) + 0.45 + g.position.y, p.pos.y);
+      a.label.visible = !(p.local && this.mode === 'fp') && (!p.ghost || !!localPlayer?.ghost);
+      a.label.position.set(p.pos.x, (a.rig.height ?? 1.05) + 0.42 + g.position.y, p.pos.y);
+      const lb = a.label.userData.baseScale as THREE.Vector3 | undefined;
+      if (lb) a.label.scale.copy(lb).multiplyScalar(this.distScale(a.label.position));
+      // Ink outline; the kill target gets a pulsing red one.
+      const killK = this.fader.get(`kill:${p.id}`);
+      for (const h of a.hulls) {
+        h.visible = !p.ghost;
+        h.material = killK > 0.05 ? this.killHull : this.inkHull;
+      }
       if (a.pet) {
         const want = new THREE.Vector3(p.pos.x - Math.cos(p.facing) * 0.9, 0, p.pos.y - Math.sin(p.facing) * 0.9);
         a.petPos.lerp(want, Math.min(1, dt * 3));
@@ -362,6 +435,7 @@ export class ThreeDView implements ViewRenderer {
       if (a.pet) a.pet.group.visible = false;
       if (now - a.seen > 30000) {
         this.scene.remove(a.rig.group, a.label);
+        disposeSprite(a.label);
         if (a.pet) this.scene.remove(a.pet.group);
         a.rig.dispose();
         this.actors.delete(id);
@@ -425,20 +499,48 @@ export class ThreeDView implements ViewRenderer {
         this.scene.remove(m);
         this.batteryMeshes.delete(id);
       }
-    // Doors / lanterns / highlight.
-    for (const [id, m] of ms.doorMeshes) m.visible = f.closedDoors.has(id);
+    // Doors slide down (eased), lanterns, in-world prompts.
+    const rm = f.reducedMotion;
+    const pop = (k: number) => (rm ? Math.min(1, k) : easeOutBack(k));
+    for (const [id, m] of ms.doorMeshes) {
+      const k = this.fader.get(`door:${id}`);
+      m.visible = k > 0.01;
+      const e = Math.min(1, pop(k));
+      m.scale.y = Math.max(0.01, e);
+      m.position.y = ms.wallHeight - (ms.wallHeight * e) / 2;
+    }
     for (const [id, m] of ms.lanterns) (m.material as THREE.MeshBasicMaterial).color.set(f.litLanterns.has(id) ? '#fde047' : '#57534e');
-    const hlId = f.near;
-    const hl = hlId ? f.map.stationById.get(hlId) : null;
-    ms.highlight.visible = !!hl;
-    if (hl) {
-      ms.highlight.position.set(hl.x, 0.04, hl.y);
-      ms.highlight.scale.setScalar(1 + Math.sin(now / 200) * 0.06);
+    // Station in reach: solid ring decal (eased).
+    let nearK = 0;
+    let nearSt = null as ReturnType<typeof f.map.stationById.get> | null;
+    for (const st of f.map.def.stations) {
+      const k = this.fader.get(`near:${st.id}`);
+      if (k > nearK) {
+        nearK = k;
+        nearSt = st;
+      }
+    }
+    ms.highlight.visible = !!nearSt && nearK > 0.01;
+    if (nearSt) {
+      ms.highlight.position.set(nearSt.x, 0.035, nearSt.y);
+      ms.highlight.scale.setScalar(pop(nearK) * (1 + (rm ? 0 : Math.sin(now / 200) * 0.05)));
+      (ms.highlight.material as THREE.MeshBasicMaterial).opacity = Math.min(1, nearK * 1.4);
     }
     for (const [id, obj] of ms.stationMeshes) {
-      const pulse = f.highlight.has(id);
-      obj.scale.setScalar(pulse ? 1 + Math.sin(now / 250) * 0.04 : 1);
+      const pulse = f.highlight.has(id) && !rm;
+      obj.scale.setScalar(pulse ? 1 + Math.sin(now / 250) * 0.03 : 1);
     }
+    // Vent outlines: orange pulsing hull when in reach / while inside.
+    for (const [id, v] of ms.vents) {
+      const k = Math.max(this.fader.get(`vent:${id}`), this.fader.get(`invent:${id}`));
+      v.glow.visible = k > 0.01;
+      if (k > 0.01) {
+        (v.glow.material as THREE.MeshBasicMaterial).opacity = Math.min(1, k * 1.4) * (rm ? 1 : 0.75 + 0.25 * Math.sin(now / 160));
+        v.glow.scale.setScalar(0.85 + 0.15 * pop(k));
+      }
+    }
+    this.killHull.uniforms.uThick!.value = 0.055 + (rm ? 0 : 0.015 * Math.sin(now / 120));
+    this.updatePrompts(f, now, pop);
     this.trackRing.visible = !!f.trackPos;
     if (f.trackPos) this.trackRing.position.set(f.trackPos.x, 0.05, f.trackPos.y);
     // Particles.
@@ -513,6 +615,7 @@ export class ThreeDView implements ViewRenderer {
       const dir = new THREE.Vector3(Math.cos(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.sin(this.yaw) * Math.cos(this.pitch));
       this.camera.lookAt(head.clone().add(dir));
     } else {
+      this.camDist += (this.camDistGoal - this.camDist) * Math.min(1, dt * 8);
       const target = new THREE.Vector3(f.focus.x, 1.0, f.focus.y);
       // Collide the camera boom with walls (grid ray in the map plane).
       const back = this.yaw + Math.PI;
@@ -533,6 +636,207 @@ export class ThreeDView implements ViewRenderer {
     this.frameMs = performance.now() - t0;
   }
 
+  /** Screen-friendly sprite scale: smaller up close (first person), capped far away. */
+  private distScale(p: THREE.Vector3): number {
+    return Math.max(0.35, Math.min(1.4, this.camera.position.distanceTo(p) / 5));
+  }
+
+  /** Cached canvas textures for prompt sprites (badges, key hints, labels). */
+  private promptTexture(key: string, w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): { tex: THREE.CanvasTexture; aspect: number } {
+    let t = this.promptTex.get(key);
+    if (!t) {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      draw(c.getContext('2d')!);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      t = { tex, aspect: w / h };
+      this.promptTex.set(key, t);
+    }
+    return t;
+  }
+
+  private promptSprite(key: string, w: number, h: number, worldH: number, draw: (g: CanvasRenderingContext2D) => void): THREE.Sprite {
+    const t = this.promptTexture(key, w, h, draw);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: t.tex, depthTest: false, depthWrite: false, transparent: true, fog: false }));
+    spr.userData.base = new THREE.Vector2(worldH * t.aspect, worldH);
+    spr.scale.set(worldH * t.aspect, worldH, 1);
+    spr.renderOrder = 22;
+    return spr;
+  }
+
+  private keySprite(label: string, worldH = 0.3): THREE.Sprite {
+    return this.promptSprite(`key:${label}`, 96, 96, worldH, (g) => drawKeyHint(g, 48, 48, 36, label));
+  }
+
+  private taskArrowGeo(): THREE.BufferGeometry {
+    if (this.arrowGeo) return this.arrowGeo;
+    const k = 0.2;
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -1.05 * k);
+    sh.lineTo(-1 * k, 0);
+    sh.lineTo(-0.42 * k, 0);
+    sh.lineTo(-0.42 * k, 0.9 * k);
+    sh.lineTo(0.42 * k, 0.9 * k);
+    sh.lineTo(0.42 * k, 0);
+    sh.lineTo(1 * k, 0);
+    sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 });
+    g.translate(0, 0, -0.05);
+    this.arrowGeo = g;
+    return g;
+  }
+
+  private makePrompt(type: string, id: string, f: FrameData): THREE.Object3D | null {
+    const keys = f.prompts?.keys;
+    switch (type) {
+      case 'task': {
+        const st = f.map.stationById.get(id);
+        if (!st) return null;
+        const g = new THREE.Group();
+        g.position.set(st.x, 0, st.y);
+        const arrow = new THREE.Mesh(this.taskArrowGeo(), this.arrowMat);
+        arrow.name = 'arrow';
+        if (this.quality !== 'low') arrow.add(addHull(new THREE.Mesh(arrow.geometry), this.arrowInk));
+        g.add(arrow);
+        const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ map: this.ringTex, transparent: true, depthWrite: false, fog: false }));
+        ring.name = 'ring';
+        ring.position.y = 0.03;
+        ring.renderOrder = 2;
+        g.add(ring);
+        return g;
+      }
+      case 'near':
+        return keys?.use ? this.keySprite(keys.use) : null;
+      case 'vent':
+        return keys?.vent ? this.keySprite(keys.vent) : null;
+      case 'kill':
+        return this.promptSprite(`kill:${keys?.kill ?? ''}`, 160, 160, 0.5, (g) => drawKillBadge(g, 88, 72, 56, keys?.kill ?? ''));
+      case 'report':
+        return this.promptSprite(`report:${keys?.report ?? ''}`, 192, 192, 0.75, (g) => drawReportBadge(g, 100, 92, 72, 0, keys?.report ?? ''));
+      case 'invent': {
+        const v = f.map.ventById.get(id);
+        if (!v) return null;
+        const g = new THREE.Group();
+        for (const lid of v.links) {
+          const lv = f.map.ventById.get(lid);
+          if (!lv) continue;
+          const arrow = this.promptSprite('ventarrow', 128, 128, 0.62, (c) => drawVentArrow(c, 64, 64, 0, 36, ''));
+          arrow.userData.link = lid;
+          arrow.userData.kind = 'arrow';
+          const roomId = roomAt(f.map, lv);
+          const name = ((roomId ? f.map.roomById.get(roomId)?.name : '') ?? '').replace(/^.*?'s /, '');
+          g.add(arrow);
+          if (name) {
+            const probe = document.createElement('canvas').getContext('2d')!;
+            probe.font = '800 30px ui-sans-serif, system-ui, sans-serif';
+            const w = Math.ceil(probe.measureText(name).width + 40);
+            const lab = this.promptSprite(`ventlabel:${name}`, w, 48, 0.2, (c) => {
+              c.beginPath();
+              c.roundRect(2, 2, w - 4, 44, 22);
+              c.fillStyle = 'rgba(17,21,32,0.88)';
+              c.fill();
+              c.font = '800 30px ui-sans-serif, system-ui, sans-serif';
+              c.textAlign = 'center';
+              c.textBaseline = 'middle';
+              c.fillStyle = '#ffffff';
+              c.fillText(name, w / 2, 25);
+            });
+            lab.userData.link = lid;
+            lab.userData.kind = 'label';
+            g.add(lab);
+          }
+        }
+        return g;
+      }
+      default:
+        return null;
+    }
+  }
+
+  /** Position / ease every live prompt; create and dispose as the fader says. */
+  private updatePrompts(f: FrameData, now: number, pop: (k: number) => number): void {
+    const rm = f.reducedMotion;
+    const t = now / 1000;
+    const seen = new Set<string>();
+    const setSprite = (o: THREE.Object3D, e: number, alpha: number) => {
+      const sp = o as THREE.Sprite;
+      const b = sp.userData.base as THREE.Vector2 | undefined;
+      const k = e * this.distScale(sp.getWorldPosition(this.tmpV));
+      if (b) sp.scale.set(b.x * k, b.y * k, 1);
+      sp.material.opacity = alpha;
+    };
+    for (const [k, v] of this.fader.entries()) {
+      const c = k.indexOf(':');
+      const type = k.slice(0, c);
+      const id = k.slice(c + 1);
+      if (type === 'door') continue;
+      let obj = this.promptObjs.get(k);
+      if (!obj) {
+        const made = this.makePrompt(type, id, f);
+        if (!made) continue;
+        obj = made;
+        this.scene.add(obj);
+        this.promptObjs.set(k, obj);
+      }
+      seen.add(k);
+      const e = Math.max(0.001, pop(v));
+      const alpha = Math.min(1, v * 1.4);
+      if (type === 'task') {
+        const arrow = obj.getObjectByName('arrow')!;
+        const ring = obj.getObjectByName('ring') as THREE.Mesh;
+        arrow.position.y = 1.55 + (rm ? 0 : Math.sin(t * 3.2 + obj.position.x) * 0.1);
+        // Face the camera (with a gentle sway) so the arrow never goes edge-on.
+        arrow.rotation.y = Math.atan2(this.camera.position.x - obj.position.x, this.camera.position.z - obj.position.z) + (rm ? 0 : Math.sin(t * 1.6) * 0.35);
+        arrow.scale.setScalar(e);
+        ring.scale.setScalar(e);
+        ring.rotation.y = rm ? 0 : t * 0.5;
+        (ring.material as THREE.MeshBasicMaterial).opacity = alpha;
+      } else if (type === 'near' || type === 'vent') {
+        const p = type === 'near' ? f.map.stationById.get(id) : f.map.ventById.get(id);
+        if (p) obj.position.set(p.x + (type === 'vent' ? -0.6 : 0), type === 'near' ? 1.25 : 0.35, p.y);
+        setSprite(obj, e, alpha);
+      } else if (type === 'kill') {
+        const pl = f.players.find((q) => q.id === id);
+        const a = this.actors.get(id);
+        if (pl) obj.position.set(pl.pos.x, (a?.rig.height ?? 1.05) * 0.7, pl.pos.y);
+        setSprite(obj, e, alpha);
+      } else if (type === 'report') {
+        const b = f.bodies.find((q) => q.id === id);
+        if (b) obj.position.set(b.pos.x, 0.95 + (rm ? 0 : Math.sin(t * 4) * 0.04), b.pos.y);
+        setSprite(obj, e, alpha);
+      } else if (type === 'invent') {
+        const v0 = f.map.ventById.get(id);
+        if (!v0) continue;
+        const o = new THREE.Vector3(v0.x, 0.45, v0.y).project(this.camera);
+        for (const ch of obj.children) {
+          const lv = f.map.ventById.get(ch.userData.link as string);
+          if (!lv) continue;
+          const dx = lv.x - v0.x;
+          const dz = lv.y - v0.y;
+          const l = Math.hypot(dx, dz) || 1;
+          const r = (1.25 + (rm ? 0 : Math.sin(t * 4) * 0.08)) * e;
+          if (ch.userData.kind === 'arrow') {
+            ch.position.set(v0.x + (dx / l) * r, 0.45, v0.y + (dz / l) * r);
+            const sp = new THREE.Vector3(ch.position.x, 0.45, ch.position.z).project(this.camera);
+            (ch as THREE.Sprite).material.rotation = Math.atan2(sp.y - o.y, (sp.x - o.x) * this.camera.aspect);
+          } else ch.position.set(v0.x + (dx / l) * r, 0.12, v0.y + (dz / l) * r);
+          setSprite(ch, e, alpha);
+        }
+      }
+    }
+    for (const [k, obj] of this.promptObjs) {
+      if (seen.has(k)) continue;
+      this.scene.remove(obj);
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if ((m as unknown as THREE.Sprite).isSprite || (m.isMesh && m.name === 'ring')) (m.material as THREE.Material).dispose();
+      });
+      this.promptObjs.delete(k);
+    }
+  }
+
   toScreen(p: Vec2): Vec2 | null {
     const v = new THREE.Vector3(p.x, 1.2, p.y).project(this.camera);
     if (v.z > 1) return null;
@@ -547,6 +851,15 @@ export class ThreeDView implements ViewRenderer {
     this.actors.clear();
     this.mapScene?.dispose();
     this.glowTex.dispose();
+    for (const o of this.promptObjs.values()) this.scene.remove(o);
+    this.promptObjs.clear();
+    for (const t of this.promptTex.values()) t.tex.dispose();
+    this.promptTex.clear();
+    this.ringTex.dispose();
+    this.ringGeo.dispose();
+    this.arrowGeo?.dispose();
+    this.arrowMat.dispose();
+    for (const m of [this.inkHull, this.killHull, this.arrowInk]) m.dispose();
     this.renderer.dispose();
   }
 }

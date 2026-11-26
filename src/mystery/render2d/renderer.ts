@@ -3,11 +3,26 @@
  * and matches. Baked map chunks, y-sorted berries, visibility-polygon fog of
  * war, flashlight cones, lamps and juicy particle effects.
  */
-import { drawBerry, drawBody, drawEmoteBubble, drawNameplate, drawPet } from '../characters/draw2d';
-import { castRay, Cell, type CompiledMap } from '../core/map';
+import { NAMEPLATE_BY_ID, paletteColor } from '../characters/catalog';
+import { drawBerry, drawBody, drawEmoteBubble, drawPet } from '../characters/draw2d';
+import { castRay, Cell, roomAt, type CompiledMap } from '../core/map';
 import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
 import { lampPool, type VisionShape } from '../core/vision';
-import { floorBase, hash2, mix, paintFloorTile, paintProp, paintPropLive, paintStation, paintVent, rgba, stationStyle } from './paint';
+import { hash2, inked, paintProp, paintPropLive, paintStation, paintVent, paintVentShape, paintWorldFloor, rgba, softShadow, stationStyle, WORLD, worldFloorBase } from './paint';
+import { drawDottedRing, drawKeyHint, drawKillBadge, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, type TagStyle } from './prompts';
+
+const tagWidths = new Map<string, number>();
+function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number): number {
+  const k = `${name}|${Math.round(h)}`;
+  let w = tagWidths.get(k);
+  if (w === undefined) {
+    w = measureTag(g, name.slice(0, 20), h);
+    if (tagWidths.size > 400) tagWidths.clear();
+    tagWidths.set(k, w);
+  }
+  return w;
+}
+import { floorAt, paintDiagFloor, paintDoorSills, paintHallEdges, paintLavaGlow, paintRoomNames, paintVoidTile, paintWalls, paintWallShadows, WALL_H, worldInfo } from './world';
 
 export interface DrawPlayer {
   id: string;
@@ -50,6 +65,35 @@ export interface FrameData {
   footprints: boolean;
   trackPos: Vec2 | null;
   zoom: number;
+  /** In-world prompts (filled in matches by client/frame; optional elsewhere). */
+  prompts?: WorldPrompts;
+}
+
+export interface WorldPrompts {
+  /** Player id the local killer would hit right now. */
+  kill: string | null;
+  /** Body id in report range. */
+  report: string | null;
+  /** Vent in range (not inside one). */
+  vent: string | null;
+  /** Vent the local player is hiding in. */
+  inVent: string | null;
+  /** Key-hint labels (empty strings on touch devices). */
+  keys: { use: string; kill: string; report: string; vent: string };
+}
+
+/** Name tag style for a player (shared by the 2D and 3D views). */
+export function tagStyleFor(p: Pick<DrawPlayer, 'name' | 'cosmetics' | 'nameColor' | 'local' | 'ghost'>): TagStyle {
+  const pal = paletteColor(p.cosmetics.color);
+  return {
+    name: p.name,
+    color: p.nameColor,
+    avatar: pal.hex,
+    avatarDark: pal.dark,
+    ring: NAMEPLATE_BY_ID.get(p.cosmetics.nameplate)?.stops ?? ['#ffffff'],
+    local: p.local,
+    ghost: p.ghost,
+  };
 }
 
 interface Particle {
@@ -84,6 +128,9 @@ export class Renderer2D {
   private pets = new Map<string, Vec2>();
   private trails = new Map<string, { x: number; y: number; t: number }[]>();
   private flicker = 0;
+  private fader = new PromptFader();
+  private bitmaps = new Map<string, { c: HTMLCanvasElement | OffscreenCanvas; used: number }>();
+  private frameNo = 0;
   private w = 0;
   private h = 0;
   private dpr = 1;
@@ -171,87 +218,42 @@ export class Renderer2D {
     if (!g) return c;
     g.scale(this.dpr, this.dpr);
     g.translate(-cx * CHUNK * s, -cy * CHUNK * s);
-    const theme = map.def.theme;
+    const info = worldInfo(map);
     const x0 = cx * CHUNK - 1;
     const y0 = cy * CHUNK - 1;
     const x1 = Math.min(map.w, x0 + CHUNK + 2);
     const y1 = Math.min(map.h, y0 + CHUNK + 3);
-    const voidCol = night ? '#05070f' : mix(theme.void, '#1b2540', 0.2);
-    g.fillStyle = voidCol;
+    g.fillStyle = night ? '#05070f' : WORLD.void;
     g.fillRect(x0 * s, y0 * s, (CHUNK + 3) * s, (CHUNK + 3) * s);
-    // starfield / texture in the void
-    for (let i = 0; i < 30; i++) {
-      const sx = (cx * CHUNK + hash2(cx * 31 + i, cy * 17) * CHUNK) * s;
-      const sy = (cy * CHUNK + hash2(cx * 13, cy * 29 + i) * CHUNK) * s;
-      g.fillStyle = `rgba(255,255,255,${0.15 + hash2(i, cx + cy) * 0.35})`;
-      g.fillRect(sx, sy, s * 0.05, s * 0.05);
-    }
-    const hallBase = night ? mix(theme.hall, '#0b1022', 0.6) : mix(theme.hall, '#475569', 0.22);
+    // Void: space far out, purple rock / snow / lava near exterior zones.
+    for (let ty = Math.max(0, y0); ty < y1; ty++)
+      for (let tx = Math.max(0, x0); tx < x1; tx++) if (map.cells[ty * map.w + tx] === Cell.Void) paintVoidTile(g, info, map, tx, ty, s, night);
+    paintLavaGlow(g, info, map, x0 - 2, y0 - 2, x1 + 2, y1 + 2, s);
+    // Floors (cel-shaded plates / grates / carpets / exterior ground).
     for (let ty = Math.max(0, y0); ty < y1; ty++)
       for (let tx = Math.max(0, x0); tx < x1; tx++) {
         const i = ty * map.w + tx;
-        if (map.cells[i] === Cell.Void) continue;
-        const ri = map.roomIdx[i]!;
-        if (ri >= 0) {
-          const room = map.def.rooms[ri]!;
-          paintFloorTile(g, room.floor, tx, ty, s, floorBase(room.floor, room.color, night));
-        } else paintFloorTile(g, 'tile', tx, ty, s, hallBase);
-      }
-    // Soft contact shadows along walls.
-    for (let ty = Math.max(0, y0); ty < y1; ty++)
-      for (let tx = Math.max(0, x0); tx < x1; tx++) {
-        const i = ty * map.w + tx;
-        if (map.cells[i] === Cell.Void) continue;
-        if (ty > 0 && map.cells[i - map.w] === Cell.Void) {
-          const gr = g.createLinearGradient(0, ty * s, 0, ty * s + s * 0.7);
-          gr.addColorStop(0, 'rgba(10,15,40,0.28)');
-          gr.addColorStop(1, 'rgba(10,15,40,0)');
-          g.fillStyle = gr;
-          g.fillRect(tx * s, ty * s, s, s * 0.7);
+        if (map.cells[i] === Cell.Void) {
+          const d = info.diag[i]!;
+          if (d) paintDiagFloor(g, map, d, tx, ty, s, night);
+          continue;
         }
-        if (tx > 0 && map.cells[i - 1] === Cell.Void) {
-          g.fillStyle = 'rgba(10,15,40,0.12)';
-          g.fillRect(tx * s, ty * s, s * 0.25, s);
-        }
+        const f = floorAt(map, tx, ty);
+        paintWorldFloor(g, f.style, tx, ty, s, worldFloorBase(f.style, f.accent, night));
       }
-    // Props, vents, stations bases.
+    paintWallShadows(g, map, x0, y0, x1, y1, s);
+    paintHallEdges(g, info, map, x0, y0, x1, y1, s, night);
+    paintDoorSills(g, map, x0, y0, x1, y1, s, night);
+    // Room names painted on the floor like a map legend.
+    if (s >= 14) paintRoomNames(g, map, x0, y0, x1, y1, s, night);
+    // Props, vents, stations bases (inked).
     const inChunk = (x: number, y: number, pad = 3) => x >= x0 - pad && x <= x1 + pad && y >= y0 - pad && y <= y1 + pad;
     for (const p of map.def.props) if (p.kind === 'rug' && inChunk(p.x, p.y)) paintProp(g, p, s, night);
     for (const v of map.def.vents) if (inChunk(v.x, v.y)) paintVent(g, v, s, night);
     for (const st of map.def.stations) if (inChunk(st.x, st.y)) paintStation(g, st, s, night);
-    for (const p of map.def.props) if (p.kind !== 'rug' && inChunk(p.x, p.y)) paintProp(g, p, s, night);
-    // Walls: raised blocks with a lit top and a darker south face.
-    const wallTop = night ? mix(theme.wallTop, '#0b1022', 0.6) : theme.wallTop;
-    const wallFace = night ? mix(theme.wall, '#0b1022', 0.65) : mix(theme.wall, '#0f172a', 0.15);
-    const trim = theme.trim;
-    for (const wi of map.walls) {
-      const tx = wi % map.w;
-      const ty = (wi / map.w) | 0;
-      if (tx < x0 - 1 || tx > x1 || ty < y0 - 1 || ty > y1) continue;
-      const below = ty + 1 < map.h && map.cells[wi + map.w] !== Cell.Void;
-      g.fillStyle = wallTop;
-      g.fillRect(tx * s, ty * s - s * 0.35, s + 0.5, s);
-      if (below) {
-        g.fillStyle = wallFace;
-        g.fillRect(tx * s, ty * s + s * 0.65, s + 0.5, s * 0.35);
-        g.fillStyle = rgba(trim, night ? 0.5 : 0.35);
-        g.fillRect(tx * s, ty * s + s * 0.62, s + 0.5, s * 0.05);
-      }
-    }
-    // Room name legends.
-    if (s >= 14) {
-      for (const room of map.def.rooms) {
-        const [rx, ry, rw] = room.rect;
-        const lx = rx + rw / 2;
-        const ly = ry + 0.9;
-        if (!inChunk(lx, ly, 8)) continue;
-        g.font = `700 ${Math.max(9, s * 0.36)}px ui-sans-serif, system-ui, sans-serif`;
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillStyle = night ? rgba(room.color, 0.55) : rgba(mix(room.color, '#0f172a', 0.35), 0.55);
-        g.fillText(room.name.toUpperCase(), lx * s, ly * s);
-      }
-    }
+    for (const p of map.def.props) if (p.kind !== 'rug' && inChunk(p.x, p.y, 3 + Math.max(p.w ?? 1, p.h ?? 1) / 2)) paintProp(g, p, s, night);
+    // Walls: riveted panels / wallpaper faces, dark caps, one ink pass.
+    paintWalls(g, info, map, x0 - 1, y0 - 1, x1 + 1, y1 + 2, s, night);
     return c;
   }
 
@@ -270,7 +272,7 @@ export class Renderer2D {
         if (cx < 0 || cy < 0 || cx * CHUNK > map.w || cy * CHUNK > map.h) continue;
         const k = `${cx},${cy}`;
         let c = this.chunks.get(k);
-        if (!c && built < 4) {
+        if (!c && built < 2) {
           c = { canvas: this.bakeChunk(map, cx, cy, s, night), used: now };
           this.chunks.set(k, c);
           built++;
@@ -279,14 +281,27 @@ export class Renderer2D {
         c.used = now;
         this.ctx.drawImage(c.canvas as CanvasImageSource, cx * CHUNK * s, cy * CHUNK * s, CHUNK * s, CHUNK * s);
       }
-    if (this.chunks.size > 48) {
+    // Idle frames pre-bake one ring of chunks around the view, so walking
+    // into a new area rarely has to bake (and hitch) on the spot.
+    if (built === 0) {
+      outer: for (let cy = Math.floor(view.y0 / CHUNK) - 1; cy <= Math.floor(view.y1 / CHUNK) + 1; cy++)
+        for (let cx = Math.floor(view.x0 / CHUNK) - 1; cx <= Math.floor(view.x1 / CHUNK) + 1; cx++) {
+          if (cx < 0 || cy < 0 || cx * CHUNK > map.w || cy * CHUNK > map.h) continue;
+          const k = `${cx},${cy}`;
+          if (this.chunks.has(k)) continue;
+          this.chunks.set(k, { canvas: this.bakeChunk(map, cx, cy, s, night), used: now - 1 });
+          break outer; // one per idle frame
+        }
+    }
+    if (this.chunks.size > 64) {
       const sorted = [...this.chunks.entries()].sort((a, b) => a[1].used - b[1].used);
-      for (const [k] of sorted.slice(0, this.chunks.size - 40)) this.chunks.delete(k);
+      for (const [k] of sorted.slice(0, this.chunks.size - 56)) this.chunks.delete(k);
     }
   }
 
   render(f: FrameData, dt: number): void {
     const t0 = performance.now();
+    this.frameNo++;
     const ctx = this.ctx;
     const s = this.scale(f.zoom);
     // Camera: smooth follow + look-ahead.
@@ -312,26 +327,54 @@ export class Renderer2D {
     const inView = (p: Vec2, pad = 2) => p.x > view.x0 - pad && p.x < view.x1 + pad && p.y > view.y0 - pad && p.y < view.y1 + pad;
     // Live prop details.
     for (const p of f.map.def.props) if ((p.kind === 'server' || p.kind === 'screen' || p.kind === 'console' || p.kind === 'arcade' || p.kind === 'turntable' || p.kind === 'fireplace') && inView(p)) paintPropLive(ctx, p, s, f.t, f.night);
-    // Closed doors (shutters).
+    // Prompt visibility (eased in/out so nothing pops).
+    const pr = f.prompts;
+    const active = new Set<string>();
+    for (const id of f.highlight) active.add(`task:${id}`);
+    if (f.near) active.add(`near:${f.near}`);
+    if (pr?.kill) active.add(`kill:${pr.kill}`);
+    if (pr?.report) active.add(`report:${pr.report}`);
+    if (pr?.vent && !pr.inVent) active.add(`vent:${pr.vent}`);
+    if (pr?.inVent) active.add(`invent:${pr.inVent}`);
+    for (const d of f.map.def.doors) if (f.closedDoors.has(d.id)) active.add(`door:${d.id}`);
+    this.fader.update(active, dt, f.reducedMotion);
+    const fade = (k: string) => this.fader.get(k);
+    // Closed doors: hazard-striped shutters that slide down.
     for (const d of f.map.def.doors) {
-      if (!f.closedDoors.has(d.id)) continue;
+      const k = easeOutBack(fade(`door:${d.id}`));
+      if (k <= 0.001) continue;
       const [x, y, w, h] = d.rect;
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(x * s, y * s, w * s, h * s);
-      ctx.strokeStyle = '#f43f5e';
-      ctx.lineWidth = s * 0.08;
-      for (let i = 0; i < w + h; i++) {
-        ctx.beginPath();
-        ctx.moveTo((x + i) * s, y * s);
-        ctx.lineTo((x + i - h) * s, (y + h) * s);
-        ctx.stroke();
-      }
+      const top = (y - WALL_H) * s;
+      const full = (h + 0.02) * s;
+      const hh = full * Math.min(1, k);
+      inked(ctx, x * s, top, w * s, full, Math.max(1.2, s * 0.06), (g) => {
+        g.fillStyle = WORLD.capTop;
+        g.fillRect(x * s, top, w * s, hh);
+        g.save();
+        g.beginPath();
+        g.rect(x * s, top + hh - WALL_H * s, w * s, WALL_H * s);
+        g.clip();
+        g.fillStyle = WORLD.guideYellow;
+        g.fillRect(x * s, top + hh - WALL_H * s, w * s, WALL_H * s);
+        g.fillStyle = WORLD.ink;
+        for (let i = -2; i < (w + WALL_H) / 0.4 + 2; i++) {
+          const bx = (x + i * 0.4) * s;
+          const by = top + hh;
+          g.beginPath();
+          g.moveTo(bx, by);
+          g.lineTo(bx + 0.2 * s, by);
+          g.lineTo(bx + (0.2 + WALL_H) * s, by - WALL_H * s);
+          g.lineTo(bx + WALL_H * s, by - WALL_H * s);
+          g.fill();
+        }
+        g.restore();
+      });
     }
-    // Station highlights (your tasks, facilities in range).
+    // Floor-level markers: dotted rings under your tasks, a solid ring on the
+    // station in reach, pulsing rings on facilities, orange vent outline.
+    const rm = f.reducedMotion;
     for (const st of f.map.def.stations) {
       if (!inView(st)) continue;
-      const hl = f.highlight.has(st.id);
-      const near = f.near === st.id;
       const lit = st.kind === 'lightLantern' && f.litLanterns.has(st.id);
       const style = stationStyle(st.kind);
       if (lit) {
@@ -343,23 +386,51 @@ export class Renderer2D {
         ctx.arc(st.x * s, st.y * s, s * 2.4, 0, Math.PI * 2);
         ctx.fill();
       }
-      if (!hl && !near && style.icon !== 'button' && style.icon !== 'recharge' && style.icon !== 'critical') continue;
-      const pulse = 0.5 + 0.5 * Math.sin(f.t * 4 + st.x);
-      const col = hl ? '#fde047' : style.color;
-      ctx.strokeStyle = rgba(col, near ? 0.95 : 0.45 + pulse * 0.35);
-      ctx.lineWidth = s * (near ? 0.1 : 0.07);
-      ctx.beginPath();
-      ctx.arc(st.x * s, st.y * s, s * (0.55 + pulse * 0.08), 0, Math.PI * 2);
-      ctx.stroke();
-      if (hl) {
-        ctx.fillStyle = rgba('#fde047', 0.9);
-        ctx.beginPath();
-        const by = st.y * s - s * (1.05 + 0.12 * Math.sin(f.t * 3));
-        ctx.moveTo(st.x * s, by + s * 0.25);
-        ctx.lineTo(st.x * s - s * 0.18, by);
-        ctx.lineTo(st.x * s + s * 0.18, by);
-        ctx.fill();
+      const kt = fade(`task:${st.id}`);
+      const kn = fade(`near:${st.id}`);
+      if (kt > 0) {
+        const e = easeOutBack(kt);
+        const pulse = rm ? 1 : 1 + Math.sin(f.t * 3 + st.x) * 0.04;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, kt * 1.4);
+        this.blit('ring', st.x * s, st.y * s + s * 0.15, s * 1.7, s * 0.9, e * pulse, (g, w, h) => drawDottedRing(g, 0, 0, w * 0.46, h * 0.44, s * 0.055, 0));
+        ctx.restore();
       }
+      if (kn > 0) {
+        const pulse = rm ? 0.5 : 0.5 + 0.5 * Math.sin(f.t * 5);
+        const col = f.highlight.has(st.id) ? WORLD.task : style.color;
+        ctx.save();
+        ctx.globalAlpha = kn;
+        ctx.lineWidth = s * 0.14;
+        ctx.strokeStyle = rgba(WORLD.ink, 0.6);
+        ctx.beginPath();
+        ctx.ellipse(st.x * s, st.y * s + s * 0.15, s * (0.66 + pulse * 0.05), s * (0.36 + pulse * 0.03), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = s * 0.08;
+        ctx.strokeStyle = col;
+        ctx.stroke();
+        ctx.restore();
+      } else if (kt <= 0 && (style.icon === 'button' || style.icon === 'recharge' || style.icon === 'critical')) {
+        const pulse = rm ? 0.5 : 0.5 + 0.5 * Math.sin(f.t * 3 + st.x);
+        ctx.strokeStyle = rgba(style.color, 0.35 + pulse * 0.3);
+        ctx.lineWidth = s * 0.06;
+        ctx.beginPath();
+        ctx.ellipse(st.x * s, st.y * s + s * 0.15, s * 0.62, s * 0.34, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    for (const v of f.map.def.vents) {
+      const k = Math.max(fade(`vent:${v.id}`), fade(`invent:${v.id}`));
+      if (k <= 0 || !inView(v)) continue;
+      const pulse = rm ? 0.6 : 0.6 + 0.4 * Math.sin(f.t * 6);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 1.3);
+      const night = f.night;
+      // Orange outline around the vent; the outline "breathes" with a slight scale pulse.
+      this.blit(`ventglow|${night ? 1 : 0}`, v.x * s, v.y * s, s * 1.6, s * 1.4, (0.94 + 0.06 * easeOutBack(k)) * (1 + 0.03 * pulse), (g) => {
+        inked(g, -s * 0.7, -s * 0.6, s * 1.4, s * 1.2, s * 0.1, (h) => paintVentShape(h, 0, 0, s, night), WORLD.vent);
+      });
+      ctx.restore();
     }
     // Footprints (detective).
     if (f.footprints) {
@@ -438,37 +509,28 @@ export class Renderer2D {
       ents.push({
         y: p.pos.y,
         draw: () => {
-          if (!p.ghost) {
-            ctx.fillStyle = 'rgba(10,15,40,0.22)';
-            ctx.beginPath();
-            ctx.ellipse(p.pos.x * s, p.pos.y * s, s * 0.34, s * 0.12, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          if (p.local && !p.ghost) {
-            ctx.strokeStyle = 'rgba(110,161,255,0.55)';
-            ctx.lineWidth = s * 0.04;
-            ctx.beginPath();
-            ctx.ellipse(p.pos.x * s, p.pos.y * s, s * 0.42, s * 0.16, 0, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          drawBerry(ctx, p.cosmetics, p.pos.x * s, p.pos.y * s, s / 40, {
+          if (!p.ghost) softShadow(ctx, p.pos.x * s, p.pos.y * s + s * 0.02, s * 0.42, s * 0.15, 0.38);
+          const pose = {
             time: f.t + hash2(p.id.length, p.id.charCodeAt(1) || 0) * 10,
             moving: p.moving,
             dir,
             emote: p.emote ?? null,
             ghost: p.ghost,
-            hold: p.hasGun ? 'gun' : p.flashlight !== undefined && f.night ? 'flashlight' : null,
+            hold: p.hasGun ? ('gun' as const) : p.flashlight !== undefined && f.night ? ('flashlight' as const) : null,
             flashlightOn: !!p.flashlight,
             scared: p.scared,
-          });
+          };
+          const kk = fade(`kill:${p.id}`);
+          if (kk > 0 && !p.ghost) {
+            // Kill target: thick red outline around the whole berry.
+            const pulse = f.reducedMotion ? 1 : 0.8 + 0.2 * Math.sin(f.t * 8);
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, kk * 1.4);
+            inked(ctx, p.pos.x * s - s, p.pos.y * s - s * 1.7, s * 2, s * 2.1, s * 0.075 * pulse * easeOutBack(kk), (g) => drawBerry(g, p.cosmetics, p.pos.x * s, p.pos.y * s, s / 40, pose), WORLD.kill);
+            ctx.restore();
+            if (kk < 1) drawBerry(ctx, p.cosmetics, p.pos.x * s, p.pos.y * s, s / 40, pose);
+          } else drawBerry(ctx, p.cosmetics, p.pos.x * s, p.pos.y * s, s / 40, pose);
           if (p.emote) drawEmoteBubble(ctx, p.emote, p.pos.x * s, p.pos.y * s - s * 1.5, s / 40, f.t);
-          drawNameplate(ctx, p.cosmetics.nameplate, p.name, p.pos.x * s, p.pos.y * s - s * 1.45, Math.max(0.7, s / 44));
-          if (p.nameColor) {
-            ctx.fillStyle = p.nameColor;
-            ctx.beginPath();
-            ctx.arc(p.pos.x * s, p.pos.y * s - s * 1.85, s * 0.07, 0, Math.PI * 2);
-            ctx.fill();
-          }
         },
       });
     }
@@ -551,9 +613,145 @@ export class Renderer2D {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, this.w, this.h);
     }
+    // Name tags + in-world prompts stay crisp above fog and vignette.
+    ctx.save();
+    ctx.translate(Math.round(this.w / 2 - cx * s), Math.round(this.h / 2 - cy * s));
+    this.drawOverlays(f, s, inView);
+    ctx.restore();
     // Off-screen tracker arrow.
     if (f.trackPos) this.edgeArrow(f.trackPos, s, cx, cy, '#38bdf8');
     this.frameMs = performance.now() - t0;
+  }
+
+  /** Name tags, task arrows, report / kill / vent badges, vent travel arrows. */
+  private drawOverlays(f: FrameData, s: number, inView: (p: Vec2, pad?: number) => boolean): void {
+    const ctx = this.ctx;
+    const rm = f.reducedMotion;
+    const keys = f.prompts?.keys;
+    const fade = (k: string) => this.fader.get(k);
+    const pop = (k: number) => (rm ? Math.min(1, k) : easeOutBack(k));
+    // Name tags (dark pill, avatar dot, local player outlined green).
+    const tagH = Math.max(13, s * 0.34);
+    for (const p of f.players) {
+      if (!inView(p.pos, 3) || (p.ghost && !p.local && !f.players.find((q) => q.local)?.ghost)) continue;
+      const lift = p.emote ? 1.95 : 1.5;
+      const st = tagStyleFor(p);
+      const tw = measureTagCached(ctx, st.name, tagH) + 8;
+      this.blit(`tag|${st.name}|${st.color}|${st.avatar}|${st.ring.join()}|${st.local ? 1 : 0}|${st.ghost ? 1 : 0}`, p.pos.x * s, p.pos.y * s - s * lift, tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, st));
+    }
+    // Task arrows (bob over the dotted ring) + "use" key hint on the station in reach.
+    for (const st of f.map.def.stations) {
+      if (!inView(st)) continue;
+      const kt = fade(`task:${st.id}`);
+      if (kt > 0) {
+        const bob = rm ? 0 : Math.sin(f.t * 3.2 + st.x) * s * 0.12;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, kt * 1.4);
+        const e = pop(kt);
+        ctx.translate(st.x * s, st.y * s - s * 1.25 + bob);
+        ctx.scale(e, e);
+        this.blit('arrow', 0, 0, s * 0.7, s * 0.7, 1, (g) => drawTaskArrow(g, 0, -s * 0.02, s * 0.26));
+        ctx.restore();
+      }
+      const kn = fade(`near:${st.id}`);
+      if (kn > 0 && keys?.use) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, kn * 1.4);
+        const e = pop(kn);
+        ctx.translate(st.x * s + s * 0.55, st.y * s - s * 0.55);
+        ctx.scale(e, e);
+        this.blit(`key|${keys.use}`, 0, 0, s * 0.5, s * 0.5, 1, (g) => drawKeyHint(g, 0, 0, s * 0.2, keys.use));
+        ctx.restore();
+      }
+    }
+    // Report: burst badge over a body in range.
+    for (const b of f.bodies) {
+      const k = fade(`report:${b.id}`);
+      if (k <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 1.4);
+      const e = pop(k);
+      const bob = rm ? 0 : Math.sin(f.t * 4) * s * 0.05;
+      ctx.translate(b.pos.x * s, b.pos.y * s - s * 1.05 + bob);
+      ctx.scale(e, e);
+      const rk = keys?.report ?? '';
+      this.blit(`report|${rk}`, 0, 0, s * 1.1, s * 1.1, 1, (g) => drawReportBadge(g, 0, 0, s * 0.42, 0, rk, true));
+      ctx.restore();
+    }
+    // Kill target: berry-skull badge above the target's tag.
+    for (const p of f.players) {
+      const k = fade(`kill:${p.id}`);
+      if (k <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 1.4);
+      const e = pop(k);
+      ctx.translate(p.pos.x * s, p.pos.y * s - s * 0.95);
+      ctx.scale(e, e);
+      const kk = keys?.kill ?? '';
+      this.blit(`kill|${kk}`, 0, 0, s * 0.8, s * 0.8, 1, (g) => drawKillBadge(g, 0, 0, s * 0.3, kk));
+      ctx.restore();
+    }
+    // Vent in reach: key hint; inside a vent: arrows to linked vents.
+    for (const v of f.map.def.vents) {
+      const kv = fade(`vent:${v.id}`);
+      if (kv > 0 && keys?.vent) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, kv * 1.4);
+        const e = pop(kv);
+        ctx.translate(v.x * s - s * 0.55, v.y * s + s * 0.1);
+        ctx.scale(e, e);
+        this.blit(`key|${keys.vent}`, 0, 0, s * 0.5, s * 0.5, 1, (g) => drawKeyHint(g, 0, 0, s * 0.2, keys.vent));
+        ctx.restore();
+      }
+      const ki = fade(`invent:${v.id}`);
+      if (ki <= 0) continue;
+      const e = pop(ki);
+      for (const lid of v.links) {
+        const lv = f.map.ventById.get(lid);
+        if (!lv) continue;
+        const a = Math.atan2(lv.y - v.y, lv.x - v.x);
+        const pulse = rm ? 0 : Math.sin(f.t * 4) * 0.08;
+        const r = (1.3 + pulse) * e;
+        const roomId = roomAt(f.map, lv);
+        const label = (roomId ? f.map.roomById.get(roomId)?.name : '') ?? '';
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, ki * 1.4);
+        drawVentArrow(ctx, (v.x + Math.cos(a) * r) * s, (v.y + Math.sin(a) * r) * s - s * 0.3, a, s * 0.28 * e, label.replace(/^.*?'s /, ''));
+        ctx.restore();
+      }
+    }
+  }
+
+  /**
+   * Cached bitmap blit: `draw` renders once (centred at 0,0 in a w×h CSS-px
+   * box at device resolution), later frames just drawImage it. Keeps prompts,
+   * tags and rings cheap on software rasterisers.
+   */
+  private blit(key: string, x: number, y: number, w: number, h: number, scale: number, draw: (g: CanvasRenderingContext2D, w: number, h: number) => void): void {
+    const k = `${key}|${Math.round(w)}x${Math.round(h)}|${this.dpr}`;
+    let e = this.bitmaps.get(k);
+    if (!e) {
+      const W = Math.max(1, Math.ceil(w * this.dpr));
+      const H = Math.max(1, Math.ceil(h * this.dpr));
+      const c: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(W, H) : Object.assign(document.createElement('canvas'), { width: W, height: H });
+      const g = c.getContext('2d') as CanvasRenderingContext2D | null;
+      if (g) {
+        g.scale(this.dpr, this.dpr);
+        g.translate(w / 2, h / 2);
+        draw(g, w, h);
+      }
+      e = { c, used: 0 };
+      this.bitmaps.set(k, e);
+      if (this.bitmaps.size > 160) {
+        const old = [...this.bitmaps.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, 40);
+        for (const [ok] of old) this.bitmaps.delete(ok);
+      }
+    }
+    e.used = this.frameNo;
+    const sw = w * scale;
+    const sh = h * scale;
+    if (sw < 0.5 || sh < 0.5) return;
+    this.ctx.drawImage(e.c as CanvasImageSource, x - sw / 2, y - sh / 2, sw, sh);
   }
 
   private drawNightTint(a: number): void {
@@ -605,8 +803,11 @@ export class Renderer2D {
       const pts: Vec2[] = [];
       for (let i = 0; i <= steps; i++) {
         const a = a0 + ((a1 - a0) * i) / steps;
-        const d = Math.min(radius, castRay(f.map, origin, a, radius, closed) + 0.35);
-        pts.push(toFog({ x: origin.x + Math.cos(a) * d, y: origin.y + Math.sin(a) * d }));
+        const hit = castRay(f.map, origin, a, radius, closed);
+        const d = Math.min(radius, hit + 0.35);
+        // Rays that stop on a wall to the north also reveal its (lifted) face.
+        const up = hit < radius && Math.sin(a) < 0 ? WALL_H * Math.min(1, -Math.sin(a) * 1.6) : 0;
+        pts.push(toFog({ x: origin.x + Math.cos(a) * d, y: origin.y + Math.sin(a) * d - up }));
       }
       return pts;
     };
