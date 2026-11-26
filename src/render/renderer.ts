@@ -10,6 +10,7 @@ import type { Simulation, SimBot } from '../engine/sim';
 import {
   doorTilesLocal,
   propCenter,
+  propRect,
   roomRect,
   ROOMS,
   ROOM_BY_ID,
@@ -22,6 +23,7 @@ import {
 } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
 import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
+import { accentSpill, floorKeyLight, propShadow, propShadowShape, roomOcclusion, softShadow, wallBevel } from './lighting';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
 import { drawBotSprite, drawGlow, hexA, roundRect } from './sprites';
 import { MODEL_COLORS, type RenderView } from './view';
@@ -624,7 +626,9 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   // Outdoor terrace garden on the annex Void cells.
   drawTerrace(ctx, theme, region);
 
-  // Corridor slab (core block + the corridor ring around the Arcade).
+  // Corridor slab (core block + the corridor ring around the Arcade), lifted off
+  // the ground by a soft drop shadow.
+  softShadow(ctx, () => traceBuildingOutline(ctx), theme, 20, 3, 9, 0.035);
   traceBuildingOutline(ctx);
   ctx.fillStyle = w.corridor;
   ctx.fill();
@@ -634,19 +638,24 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   // Rooms.
   for (const room of ROOMS) {
     const r = roomRect(room);
-    if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 8)) continue;
+    if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 24)) continue;
     const accent = ROOM_ACCENT[room.id];
+    // Drop shadow: rooms sit a step above the corridor.
+    softShadow(ctx, () => roundRect(ctx, r.x, r.y, r.w, r.h, 10), theme, 10, 1.5, 5, 0.04);
     // Floor.
     let floor = w.floor;
+    const darkFloor = room.id === 'cutting' || room.id === 'arcade';
     if (room.id === 'cutting') floor = theme.name === 'light' ? '#20242f' : theme.name === 'soft' ? '#262a33' : '#0c0f16';
     if (room.id === 'arcade') {
       drawArcadeCarpet(ctx, room, theme);
+      floorKeyLight(ctx, r, theme, '#ff8fe6', true);
     } else {
       ctx.fillStyle = floor;
       roundRect(ctx, r.x, r.y, r.w, r.h, 10);
       ctx.fill();
-      ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.035);
+      ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.045);
       ctx.fill();
+      floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
     }
     // Floor tile grid.
     ctx.save();
@@ -664,10 +673,13 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     }
     ctx.stroke();
     ctx.restore();
+    // Ambient occlusion where floor meets wall.
+    roomOcclusion(ctx, r, theme, darkFloor);
 
     // Walls (with door gaps; thresholds match this room's floor).
-    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door);
-    // Accent strip along the top wall.
+    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door, theme);
+    // Accent strip along the top wall, spilling a little coloured light onto the floor.
+    accentSpill(ctx, r, accent, theme);
     ctx.fillStyle = hexA(accent, 0.75);
     roundRect(ctx, r.x + TILE * 0.6, r.y + 4, TILE * 2.2, 3, 1.5);
     ctx.fill();
@@ -696,8 +708,8 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.strokeStyle = hexA('#6ea1ff', theme.name === 'dark' ? 0.16 : 0.18);
-    ctx.lineWidth = 9;
+    ctx.strokeStyle = hexA('#6ea1ff', theme.name === 'dark' ? 0.16 : 0.15);
+    ctx.lineWidth = 8;
     ctx.beginPath();
     route.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
@@ -737,12 +749,16 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   for (const room of ROOMS) {
     const r = roomRect(room);
     if (!hits(region, r.x, r.y, r.w, r.h, 16)) continue;
-    for (const prop of room.props) drawPropStatic(ctx, room, prop, theme);
+    for (const prop of room.props) {
+      const shape = prop.blocking ? propShadowShape(prop.kind, propRect(room, prop)) : null;
+      if (shape) propShadow(ctx, propRect(room, prop), theme, shape.inset, shape.radius);
+      drawPropStatic(ctx, room, prop, theme);
+    }
   }
   if (region) ctx.restore();
 }
 
-function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string): void {
+function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string, theme?: ThemeTokens): void {
   const x = tx * TILE;
   const y = ty * TILE;
   const w = tw * TILE;
@@ -752,6 +768,7 @@ function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wal
   ctx.lineWidth = 6;
   roundRect(ctx, x + 3, y + 3, w - 6, h - 6, 9);
   ctx.stroke();
+  if (theme) wallBevel(ctx, { x, y, w, h }, theme);
   // Punch doors.
   ctx.strokeStyle = door;
   ctx.lineWidth = 8;

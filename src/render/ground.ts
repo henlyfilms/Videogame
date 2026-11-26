@@ -72,7 +72,7 @@ interface Garden {
 
 function gardenPalette(th: ThemeTokens): Garden {
   if (th.name === 'dark')
-    return { grass: '#0c1611', grassAlt: '#0f1b14', hedge: '#16301f', hedgeDark: '#0b1d12', tree: '#1b3a26', treeLight: '#2b5a3a', path: '#1a1f27', water: '#0d2236', line: '#1f2e25' };
+    return { grass: '#0f1c15', grassAlt: '#12211a', hedge: '#16301f', hedgeDark: '#0b1d12', tree: '#1b3a26', treeLight: '#2b5a3a', path: '#1a1f27', water: '#0d2236', line: '#1f2e25' };
   if (th.name === 'soft')
     return { grass: '#d6dcc4', grassAlt: '#cfd6bb', hedge: '#a9b98c', hedgeDark: '#93a576', tree: '#8fa874', treeLight: '#b3c79a', path: '#e6e0d2', water: '#b9d3d8', line: '#c4cbb0' };
   return { grass: '#e2efdc', grassAlt: '#d9ead2', hedge: '#a7d3a0', hedgeDark: '#8cc285', tree: '#86c27e', treeLight: '#b5e0ad', path: '#f4f5f7', water: '#cfe6f6', line: '#cde3c6' };
@@ -177,7 +177,10 @@ export function drawTerrace(ctx: Ctx, th: ThemeTokens, region?: Region): void {
       }
     }
     ctx.restore();
-    // Hedge along the building edge.
+    // Hedge along the building edge (with a soft shadow on the lawn).
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    roundRect(ctx, b.x + 8, b.y + 10, b.w - 12, 14, 7);
+    ctx.fill();
     ctx.fillStyle = g.hedgeDark;
     roundRect(ctx, b.x + 6, b.y + 4, b.w - 12, 14, 7);
     ctx.fill();
