@@ -13,6 +13,7 @@ import { installDebugHook, useMystery } from '../client/store';
 import { normalizeCode, isValidCode } from '../net/protocol';
 import { sfx } from '../audio/sfx';
 import { BerryAvatar, MIcon } from './common';
+import { EnergySlash, starfield } from './kit';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { BrowseScreen, HowToScreen, JoinScreen, ProfileScreen, SettingsScreen, TitleScreen } from './Menus';
@@ -27,16 +28,22 @@ import './mystery.css';
 
 const MenuBackdrop3D = lazy(() => import('../render3d/backdrop3d').then((m) => ({ default: m.MenuBackdrop3D })));
 
+const DEATH_STARS = starfield(23, 110);
+
 function DeathCinematic() {
   const pid = useMystery((s) => s.pid);
   const reduced = useMystery((s) => s.prefs.reducedMotion);
   const [ev, setEv] = useState<{ killer: string | null; weapon: string } | null>(null);
+  const [out, setOut] = useState(false);
   useEffect(
     () =>
       runtime.on((e: MatchEvent) => {
         if (e.type === 'kill' && e.target === pid) {
+          setOut(false);
           setEv({ killer: e.actor ?? null, weapon: String(e.data?.weapon ?? 'knife') });
-          setTimeout(() => setEv(null), reduced ? 1200 : 2600);
+          const len = reduced ? 1200 : 2600;
+          setTimeout(() => setOut(true), len - 300);
+          setTimeout(() => setEv(null), len);
         }
       }),
     [pid, reduced],
@@ -46,43 +53,39 @@ function DeathCinematic() {
   if (!ev || !snap) return null;
   const killer = ev.killer ? snap.players.find((p) => p.id === ev.killer) : null;
   const me = snap.players.find((p) => p.id === pid);
-  if (use3d && me)
-    return (
-      <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 47, background: 'radial-gradient(circle, rgba(120,10,30,0.85), rgba(5,3,10,0.95))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
-        <Suspense fallback={null}>
-          <Stage3D
-            actors={[...(killer ? [{ cosmetics: killer.cosmetics, pose: (ev.weapon === 'gun' ? 'gun-spin' : 'kill-lunge') as StagePose, x: -0.9, fromX: -6, enter: 0.6 }] : []), { cosmetics: me.cosmetics, pose: 'squish' as StagePose, x: 0.9 }]}
-            width={Math.min(560, innerWidth - 24)}
-            height={260}
-            light="#ff8a8a"
-            reducedMotion={reduced}
-          />
-        </Suspense>
-        <div className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(36px, 8vw, 72px)', background: 'linear-gradient(180deg,#fff,#ff4d5e)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
-          {ev.weapon === 'tag' ? 'FOUND!' : ev.weapon === 'poison' ? 'POISONED' : 'ELIMINATED'}
-        </div>
-        <div style={{ fontWeight: 700 }}>{ev.weapon === 'tag' ? 'The seeker got you.' : 'You’re a ghost now — keep helping your team.'}</div>
-      </div>
-    );
+  const title = ev.weapon === 'tag' ? 'Found!' : ev.weapon === 'poison' ? 'Poisoned' : 'Eliminated';
+  const sub = ev.weapon === 'tag' ? 'The seeker got you.' : 'You’re a ghost now — keep helping your team.';
   return (
-    <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 47, background: 'radial-gradient(circle, rgba(120,10,30,0.85), rgba(5,3,10,0.95))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 30, animation: reduced ? undefined : 'mm-shake 0.35s 2' }}>
-        {killer && (
-          <div style={{ animation: reduced ? undefined : 'mm-lunge 0.7s cubic-bezier(.2,.9,.3,1.3) both' }}>
-            <BerryAvatar cosmetics={killer.cosmetics} size={170} emote={ev.weapon === 'gun' ? 'gun-spin' : 'kill-lunge'} />
-          </div>
-        )}
-        {me && (
-          <div style={{ animation: reduced ? undefined : 'mm-squish 0.9s 0.35s ease-in both' }}>
-            <BerryAvatar cosmetics={me.cosmetics} size={150} emote="scared" />
-          </div>
-        )}
-      </div>
-      <style>{'@keyframes mm-lunge{from{transform:translateX(-60vw) scale(.8)}to{transform:none}} @keyframes mm-squish{0%{transform:none}50%{transform:scale(1.2,.6)}100%{transform:scale(1.5,.15) translateY(40px);opacity:.3}}'}</style>
-      <div className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(36px, 8vw, 72px)', background: 'linear-gradient(180deg,#fff,#ff4d5e)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
-        {ev.weapon === 'tag' ? 'FOUND!' : ev.weapon === 'poison' ? 'POISONED' : 'ELIMINATED'}
-      </div>
-      <div style={{ fontWeight: 700 }}>{ev.weapon === 'tag' ? 'The seeker got you.' : 'You’re a ghost now — keep helping your team.'}</div>
+    <div className="mmd" data-state={out ? 'out' : 'in'} style={{ backgroundImage: DEATH_STARS }} role="alert">
+      <EnergySlash />
+      {use3d && me ? (
+        <div className="mmd-stage">
+          <Suspense fallback={null}>
+            <Stage3D
+              actors={[...(killer ? [{ cosmetics: killer.cosmetics, pose: (ev.weapon === 'gun' ? 'gun-spin' : 'kill-lunge') as StagePose, x: -0.9, fromX: -6, enter: 0.6 }] : []), { cosmetics: me.cosmetics, pose: 'squish' as StagePose, x: 0.9 }]}
+              width={Math.min(560, innerWidth - 24)}
+              height={260}
+              light="#ff8a8a"
+              reducedMotion={reduced}
+            />
+          </Suspense>
+        </div>
+      ) : (
+        <div className="mmd-cast">
+          {killer && (
+            <div className="mmd-killer">
+              <BerryAvatar cosmetics={killer.cosmetics} size={180} emote={ev.weapon === 'gun' ? 'gun-spin' : 'kill-lunge'} />
+            </div>
+          )}
+          {me && (
+            <div className="mmd-victim">
+              <BerryAvatar cosmetics={me.cosmetics} size={160} emote="scared" />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="mmd-title">{title}</div>
+      <div className="mmd-sub">{sub}</div>
     </div>
   );
 }
@@ -101,9 +104,9 @@ function Captions() {
   }, [on]);
   if (!on || !lines.length) return null;
   return (
-    <div style={{ position: 'absolute', bottom: '22%', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, zIndex: 70, pointerEvents: 'none' }} aria-live="polite">
+    <div className="mm-captions" aria-live="polite">
       {lines.map((l) => (
-        <span key={l.id} style={{ background: 'rgba(0,0,0,0.75)', padding: '3px 10px', borderRadius: 6, fontSize: '0.9em' }}>
+        <span key={l.id} className="mm-caption">
           [{l.text}]
         </span>
       ))}
@@ -114,9 +117,10 @@ function Captions() {
 function Toasts() {
   const toasts = useMystery((s) => s.toasts);
   return (
-    <div style={{ position: 'absolute', top: 'max(70px, 9vh)', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, zIndex: 80, pointerEvents: 'none' }} role="status">
+    <div className="mm-toasts" role="status">
       {toasts.map((t) => (
-        <div key={t.id} className="mm-panel mm-anim-pop" style={{ padding: '8px 14px', borderColor: t.tone === 'bad' ? '#ff4d5e' : t.tone === 'good' ? '#4ade80' : undefined }}>
+        <div key={t.id} className="mm-toast" data-tone={t.tone}>
+          <MIcon name={t.tone === 'bad' ? 'close' : t.tone === 'good' ? 'check' : 'help'} size={16} stroke={2.6} />
           {t.text}
         </div>
       ))}
@@ -130,11 +134,9 @@ function MatchScreen() {
   const view = useMystery((s) => s.matchView) ?? '2d';
   if (!snap)
     return (
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
-        <div style={{ animation: 'mm-spin 1.2s linear infinite' }}>
-          <MIcon name="berry" size={48} />
-        </div>
-        <div className="mm-muted">Shuffling roles…</div>
+      <div className="mm-loading">
+        <div className="mm-spinner" aria-hidden />
+        <div className="mm-label">Shuffling roles…</div>
       </div>
     );
   const settings = room.settings;
@@ -156,16 +158,25 @@ function Wardrobe() {
   const prefs = useMystery((s) => s.prefs);
   const setPrefs = useMystery((s) => s.setPrefs);
   const setScreen = useMystery((s) => s.setScreen);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setScreen('title');
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [setScreen]);
   return (
-    <div className="mm-safe" style={{ position: 'absolute', inset: 0, overflowY: 'auto' }}>
-      <div className="mm-panel" style={{ maxWidth: 1000, margin: '0 auto', padding: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <button className="mm-btn" onClick={() => setScreen('title')} aria-label="Back" style={{ padding: 8 }}>
-            <MIcon name="back" />
-          </button>
-          <h2 style={{ margin: 0 }}>Wardrobe</h2>
+    <div className="mm-safe mmw">
+      <div className="mmw-top mm-in-down">
+        <button className="mm-round" onClick={() => setScreen('title')} aria-label="Back">
+          <MIcon name="back" />
+        </button>
+        <div className="mmw-tabs" role="presentation">
+          <span className="mmw-tab" data-on="true">
+            Wardrobe
+          </span>
         </div>
-        <CustomizeEditor value={prefs.cosmetics} onChange={(c) => setPrefs({ cosmetics: c })} name={prefs.name} onNameChange={(n) => setPrefs({ name: n.slice(0, 16) })} preview={prefs.view === '2d' ? '2d' : '3d'} />
+      </div>
+      <div className="mmw-body mm-in-up">
+        <CustomizeEditor value={prefs.cosmetics} onChange={(c) => setPrefs({ cosmetics: c })} name={prefs.name} onNameChange={(n) => setPrefs({ name: n.slice(0, 16) })} preview={prefs.view === '2d' ? '2d' : '3d'} onDone={() => setScreen('title')} />
       </div>
     </div>
   );
@@ -229,9 +240,12 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       {!inRoom && screen === 'freeplay' && <FreeplayScreen />}
       {!inRoom && screen === 'wardrobe' && <Wardrobe />}
       {!inRoom && screen === 'room' && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+        <div className="mm-loading">
           <BerryAvatar cosmetics={prefs.cosmetics} size={110} moving />
-          <div className="mm-muted">Connecting…</div>
+          <div className="mm-label">Connecting…</div>
+          <div className="mm-loadbar" aria-hidden>
+            <i />
+          </div>
           <button className="mm-btn" onClick={() => setScreen('title')}>
             Cancel
           </button>
@@ -240,7 +254,7 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       {inRoom && (stage === 'lobby' || stage === 'countdown') && <WaitingRoom />}
       {inRoom && (stage === 'match' || stage === 'results') && <MatchScreen />}
       {onExit && !inRoom && (
-        <button className="mm-btn" style={{ position: 'absolute', top: 'max(12px, env(safe-area-inset-top))', left: 'max(12px, env(safe-area-inset-left))', zIndex: 30 }} onClick={onExit}>
+        <button className="mm-btn mm-exit" onClick={onExit}>
           <MIcon name="back" /> Marion HQ
         </button>
       )}

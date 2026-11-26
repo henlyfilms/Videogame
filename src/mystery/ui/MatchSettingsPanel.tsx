@@ -12,7 +12,7 @@ import type { ModeId, ViewPolicy } from '../core/types';
 import type { RoomInfo } from '../net/protocol';
 import { useMystery } from '../client/store';
 import { MIcon, teamColors } from './common';
-import { MapThumb } from './MapThumb';
+import { SchematicMap } from './kit';
 
 type NumKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
 type BoolKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
@@ -139,13 +139,17 @@ export function MatchSettingsPanel({ room, isHost }: { room: RoomInfo; isHost: b
   const disabled = !isHost;
   return (
     <div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+      {!isHost && (
+        <div style={{ marginBottom: 8 }}>
+          <span className="mm-chip">Only the host can change settings</span>
+        </div>
+      )}
+      <div className="mms-tabs" role="tablist" aria-label="Match settings sections" style={{ marginBottom: 12 }}>
         {(['game', 'roles', 'rules'] as const).map((t) => (
-          <button key={t} className={`mm-btn ${tab === t ? 'mm-btn-primary' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize', minHeight: 40 }}>
+          <button key={t} role="tab" aria-selected={tab === t} className="mms-tab" onClick={() => setTab(t)}>
             {t === 'game' ? 'Mode & map' : t}
           </button>
         ))}
-        {!isHost && <span className="mm-chip">Only the host can change settings</span>}
       </div>
       {tab === 'game' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -169,9 +173,10 @@ export function MatchSettingsPanel({ room, isHost }: { room: RoomInfo; isHost: b
                     textAlign: 'left',
                     padding: 12,
                     minHeight: 86,
-                    background: `linear-gradient(150deg, ${m.colors[0]}${s.mode === m.id ? 'cc' : '55'}, transparent 75%)`,
-                    borderColor: s.mode === m.id ? m.colors[1] : undefined,
-                    boxShadow: s.mode === m.id ? `0 0 22px ${m.colors[1]}55` : undefined,
+                    background: `linear-gradient(90deg, ${m.colors[1]} 0 6px, ${s.mode === m.id ? '#1f1c0b' : '#0b0d10'} 6px)`,
+                    borderColor: s.mode === m.id ? 'var(--mm-yellow)' : undefined,
+                    boxShadow: s.mode === m.id ? '0 0 0 1px var(--mm-yellow)' : undefined,
+                    paddingLeft: 18,
                     opacity: 1,
                   }}
                 >
@@ -190,7 +195,9 @@ export function MatchSettingsPanel({ room, isHost }: { room: RoomInfo; isHost: b
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
               {maps.map((m) => (
                 <button key={m.id} disabled={disabled} className="mm-btn" onClick={() => patch({ map: m.id as Settings['map'] })} style={{ flexDirection: 'column', padding: 8, alignItems: 'stretch', borderColor: s.map === m.id ? 'var(--mm-accent2)' : undefined, boxShadow: s.map === m.id ? '0 0 0 1px var(--mm-accent2)' : undefined, opacity: 1 }}>
-                  <MapThumb map={getMap(m.id as Settings['map'])} height={84} night={s.mode === 'lightsout'} />
+                  <span style={{ display: 'flex', justifyContent: 'center', background: '#0a0d11', borderRadius: 6 }}>
+                    <SchematicMap map={getMap(m.id as Settings['map'])} width={180} height={84} theme={s.mode === 'lightsout' ? 'night' : 'crew'} />
+                  </span>
                   <b style={{ marginTop: 6 }}>{m.name}</b>
                   <span className="mm-muted" style={{ fontSize: '0.76em', fontWeight: 500 }}>
                     {m.rooms.length} rooms · {m.tagline}
@@ -326,7 +333,7 @@ export function MatchSettingsPanel({ room, isHost }: { room: RoomInfo; isHost: b
                 return (
                   <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.9em' }}>
                     <span style={{ flex: 1 }}>{lbl[0]}</span>
-                    <input type="range" min={range[0]} max={range[1]} step={range[2]} value={s[k] as number} disabled={disabled} onChange={(e) => patch({ [k]: Number(e.target.value) } as Partial<Settings>)} style={{ width: 110, accentColor: '#2f6fed' }} />
+                    <input type="range" min={range[0]} max={range[1]} step={range[2]} value={s[k] as number} disabled={disabled} onChange={(e) => patch({ [k]: Number(e.target.value) } as Partial<Settings>)} style={{ width: 110, accentColor: 'var(--mm-yellow)' }} />
                     <span className="mm-muted" style={{ width: 56, textAlign: 'right' }}>
                       {lbl[1](s[k] as number)}
                     </span>
@@ -345,7 +352,7 @@ export function MatchSettingsPanel({ room, isHost }: { room: RoomInfo; isHost: b
               {g.bools.map((k) => (
                 <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: '0.9em', cursor: disabled ? 'default' : 'pointer' }}>
                   <span style={{ flex: 1 }}>{BOOL_LABELS[k] ?? k}</span>
-                  <input type="checkbox" disabled={disabled} checked={s[k] as boolean} onChange={(e) => patch({ [k]: e.target.checked } as Partial<Settings>)} style={{ width: 20, height: 20, accentColor: '#2f6fed' }} />
+                  <input type="checkbox" disabled={disabled} checked={s[k] as boolean} onChange={(e) => patch({ [k]: e.target.checked } as Partial<Settings>)} style={{ width: 20, height: 20, accentColor: 'var(--mm-yellow)' }} />
                 </label>
               ))}
             </section>

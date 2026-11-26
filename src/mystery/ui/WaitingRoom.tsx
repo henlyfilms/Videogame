@@ -1,21 +1,26 @@
 /**
- * The waiting room: a walkable Launch Bay (2D or 3D) with the room code, QR
- * and invite link, player list with ready/ping/platform, host controls, chat,
- * the wardrobe mirror and the host laptop (match settings).
+ * The waiting room: a walkable Launch Bay (2D or 3D) with the lobby board
+ * (room code + copy, room settings, capacity, preset, privacy toggle,
+ * edit/view settings), a settings summary, the crew list with ready / ping /
+ * platform, host controls, chat, the wardrobe mirror, invite (QR) and the
+ * "waiting for players" bar + host prompt.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { availableMaps } from '../core/maps';
 import { MODES } from '../core/modes';
 import { CONFIGURABLE_ROLES, ROLES } from '../core/roles';
+import { PRESETS, type Settings } from '../core/settings';
 import { BOT_LOOKS } from '../server/looks';
 import { bindUi, currentContext, doUse } from '../client/controls';
 import { filterProfanity } from '../client/prefs';
 import { useMystery } from '../client/store';
-import { BerryAvatar, colorHex, MIcon, Modal, PLATFORM_ICON, teamColors } from './common';
+import { BerryAvatar, colorHex, MIcon, Modal, PLATFORM_ICON, readable, teamColors } from './common';
 import { CustomizeEditor } from './CustomizeEditor';
 import { GameView } from './GameView';
+import { Hazard, Kbd, Presence, useViewport } from './kit';
 import { MatchSettingsPanel } from './MatchSettingsPanel';
+import { SettingsMenu } from './Menus';
 import { Joystick, useCoarsePointer } from './TouchControls';
 
 function inviteLink(code: string): string {
@@ -39,7 +44,33 @@ function QrCode({ text, size = 180 }: { text: string; size?: number }) {
       live = false;
     };
   }, [text, size]);
-  return src ? <img src={src} width={size} height={size} alt={`QR code for ${text}`} style={{ borderRadius: 12, background: '#fff' }} /> : <div style={{ width: size, height: size }} />;
+  return src ? <img src={src} width={size} height={size} alt={`QR code for ${text}`} className="mml-qr" /> : <div style={{ width: size, height: size }} />;
+}
+
+function presetName(s: Settings): string {
+  for (const p of PRESETS) {
+    const a = p.apply(s) as unknown as Record<string, unknown>;
+    const b = s as unknown as Record<string, unknown>;
+    if (Object.keys(b).every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]))) return p.name;
+  }
+  return 'Custom';
+}
+
+/** One line per headline setting (left column, like a ship's notice board). */
+function summaryLines(s: Settings, roleSummary: string[]): [string, string][] {
+  const out: [string, string][] = [];
+  if (s.mode === 'hideseek') out.push(['Seekers', String(s.hnsSeekers)], ['Hide time', `${s.hnsHideTime}s`]);
+  else out.push(['Roles', roleSummary.join(', ') || 'Crew only']);
+  out.push(['Player speed', `${s.playerSpeed}×`]);
+  if (s.mode !== 'hideseek') {
+    out.push(['Kill cooldown', `${s.killCooldown}s`]);
+    out.push(['Meetings', `${s.emergencyMeetings} each · ${s.emergencyCooldown}s cooldown`]);
+    out.push(['Discuss / vote', `${s.discussionTime}s / ${s.votingTime}s`]);
+  }
+  out.push(['Tasks', `${s.tasksCommon} common · ${s.tasksShort} short · ${s.tasksLong} long`]);
+  out.push(['Match timer', s.durationMin ? `${s.durationMin} min` : 'Off']);
+  if (s.mode !== 'hideseek') out.push(['Confirm ejects', s.confirmEjects ? 'On' : 'Off']);
+  return out;
 }
 
 export function WaitingRoom() {
@@ -52,23 +83,30 @@ export function WaitingRoom() {
   const toast = useMystery((s) => s.toast);
   const transport = useMystery((s) => s.transport);
   const coarse = useCoarsePointer();
+  const vp = useViewport();
+  const narrow = vp.w < 760;
   const isHost = room.hostId === pid;
   const me = room.players.find((p) => p.id === pid);
-  const [panel, setPanel] = useState<null | 'wardrobe' | 'settings' | 'invite'>(null);
-  const [showPlayers, setShowPlayers] = useState(() => typeof innerWidth === 'number' && innerWidth > 700);
+  const host = room.players.find((p) => p.id === room.hostId);
+  const [panel, setPanel] = useState<null | 'wardrobe' | 'settings' | 'invite' | 'menu'>(null);
+  const [showPlayers, setShowPlayers] = useState(() => typeof innerWidth === 'number' && innerWidth > 760);
+  const [showBoard, setShowBoard] = useState(() => typeof innerWidth === 'number' && innerWidth > 760);
   const [chat, setChat] = useState('');
   const [nearLabel, setNearLabel] = useState<string | null>(null);
   const [now, setNow] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [showBots, setShowBots] = useState(false);
   const tc = teamColors(prefs.colorblind !== 'none');
   const link = inviteLink(room.code);
   const mapName = useMemo(() => availableMaps().find((m) => m.id === room.settings.map)?.name ?? room.settings.map, [room.settings.map]);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const s = room.settings;
 
   useEffect(() => {
     bindUi({
       openWardrobe: () => setPanel('wardrobe'),
       openSettings: () => setPanel('settings'),
-      openMenu: () => setPanel(null),
+      openMenu: () => setPanel((p) => (p ? null : 'menu')),
     });
     const t = setInterval(() => {
       setNearLabel(currentContext.use?.label ?? null);
@@ -77,198 +115,285 @@ export function WaitingRoom() {
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ block: "end" });
+    chatEnd.current?.scrollIntoView({ block: 'end' });
   }, [room.chat.length]);
 
-  const roomAt = useMystery((s) => s.roomAt);
+  const roomAt = useMystery((st) => st.roomAt);
   const countdown = room.stage === 'countdown' && room.countdownEnds !== null ? Math.max(0, Math.ceil(room.countdownEnds - room.now - (now - roomAt) / 1000)) : null;
-  const roleSummary = CONFIGURABLE_ROLES.filter((r) => room.settings.roles[r].count > 0).map((r) => `${room.settings.roles[r].count}× ${ROLES[r].name}`);
+  const roleSummary = CONFIGURABLE_ROLES.filter((r) => s.roles[r].count > 0).map((r) => `${s.roles[r].count}× ${ROLES[r].name}`);
   const v = room.validation;
+  const preset = useMemo(() => presetName(s), [s]);
+  const botFill = Math.max(0, s.bots - room.players.filter((p) => p.kind === 'bot').length);
+  const total = room.players.length + botFill;
+  const need = Math.max(0, 4 - total);
+  const humansReady = room.players.filter((p) => p.kind !== 'bot' && p.id !== room.hostId).every((p) => p.ready);
   const copy = (text: string, what: string) =>
     navigator.clipboard?.writeText(text).then(
-      () => toast(`${what} copied`, 'good'),
+      () => {
+        toast(`${what} copied`, 'good');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1400);
+      },
       () => toast('Copy failed', 'bad'),
     );
+  const privacyNext = s.privacy === 'code' ? 'public' : 'code';
+  const lines = summaryLines(s, roleSummary);
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div className="mml">
       <GameView view={prefs.view} />
       {coarse && <Joystick />}
-      {/* Top bar: room code + mode/map board */}
-      <div className="mm-safe" style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', gap: 10, alignItems: 'flex-start', pointerEvents: 'none', flexWrap: 'wrap', zIndex: 10 }}>
-        <div className="mm-panel mm-anim-rise" style={{ padding: '10px 14px', pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="mm-btn" style={{ padding: 8, minHeight: 40 }} onClick={leave} aria-label="Leave room">
-            <MIcon name="back" />
-          </button>
-          <div>
-            <div className="mm-muted" style={{ fontSize: '0.7em', fontWeight: 800, letterSpacing: '0.12em' }}>
-              {transport === 'local' ? 'SOLO ROOM' : 'ROOM CODE'}
-            </div>
-            <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 900, fontSize: '1.6em', letterSpacing: '0.12em' }}>{room.code}</div>
-          </div>
-          {transport !== 'local' && (
-            <>
-              <button className="mm-btn" style={{ padding: 8, minHeight: 40 }} onClick={() => copy(room.code, 'Code')} aria-label="Copy code">
-                <MIcon name="copy" />
-              </button>
-              <button className="mm-btn" style={{ padding: 8, minHeight: 40 }} onClick={() => setPanel('invite')} aria-label="Invite (QR)">
-                <MIcon name="qr" />
-              </button>
-            </>
-          )}
-        </div>
-        <div className="mm-panel mm-anim-rise" style={{ padding: '10px 14px', pointerEvents: 'auto', maxWidth: 420, background: `linear-gradient(150deg, ${MODES[room.settings.mode].colors[0]}88, transparent 70%), var(--mm-panel)` }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <b style={{ fontSize: '1.1em' }}>{MODES[room.settings.mode].name}</b>
-            <span className="mm-muted">· {mapName}</span>
-            <span className="mm-chip">{room.settings.view === 'choice' ? 'View: your choice' : `View: ${room.settings.view}`}</span>
-          </div>
-          <div className="mm-muted" style={{ fontSize: '0.8em', marginTop: 4 }}>
-            {room.settings.mode === 'hideseek' ? `${room.settings.hnsSeekers} seeker(s) · ${room.settings.durationMin || 5} min` : roleSummary.join(' · ')}
-          </div>
-          <button className="mm-btn" style={{ marginTop: 8, minHeight: 36, padding: '4px 12px' }} onClick={() => setPanel('settings')}>
-            <MIcon name="gear" size={16} /> {isHost ? 'Match settings' : 'View settings'}
-          </button>
-        </div>
+
+      {/* Top-left: leave + mode */}
+      <div className="mml-tl mm-safe">
+        <button className="mm-round" onClick={leave} aria-label="Leave room">
+          <MIcon name="back" />
+        </button>
+        <span className="mml-mode mm-in-down">
+          <b>{MODES[s.mode].name}</b>
+          {narrow && !showBoard ? <span className="mml-mode-code">Code {room.code}</span> : <span>{mapName}</span>}
+        </span>
       </div>
 
-      {/* Players panel */}
-      <div className="mm-safe" style={{ position: 'absolute', top: coarse ? 150 : 96, right: 0, width: showPlayers ? 'min(340px, 92vw)' : undefined, pointerEvents: 'none', bottom: 120, zIndex: 10 }}>
-        <div className="mm-panel" style={{ pointerEvents: 'auto', padding: 12, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}>
-          <button className="mm-btn" style={{ minHeight: 36, padding: '4px 10px', justifyContent: 'space-between' }} onClick={() => setShowPlayers((x) => !x)} aria-expanded={showPlayers}>
-            <MIcon name="users" size={16} />
+      {/* Left: notice-board summary + crew list */}
+      <div className="mml-left mm-safe">
+        {!narrow && (
+          <ul className="mml-summary" aria-label="Match settings summary">
+            {lines.map(([k, val], i) => (
+              <li key={k} style={{ ['--i' as string]: i }}>
+                <MIcon name="gear" size={18} />
+                <span>
+                  <b>{k}</b> — {val}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Presence show={showPlayers} anim="left" className="mml-crew">
+          <div className="mml-crew-head">
+            <MIcon name="users" size={18} />
+            <span>Crew aboard</span>
             <b>
-              {room.players.length}/{room.settings.maxPlayers}
+              {room.players.length}/{s.maxPlayers}
             </b>
-            {showPlayers ? 'Hide' : 'Players'}
-          </button>
-          {showPlayers && (
-            <>
-              <div className="mm-scroll" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0, flex: 1 }}>
-                {room.players.map((p) => (
-                  <div key={p.id} className="mm-anim-rise" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 12, background: p.id === pid ? 'rgba(47,111,237,0.18)' : 'rgba(255,255,255,0.03)' }}>
-                    <BerryAvatar cosmetics={p.cosmetics} size={40} animate={false} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.host && <span title="Host">👑 </span>}
-                        {p.name}
-                        {p.id === pid && <span className="mm-muted"> (you)</span>}
-                      </div>
-                      <div className="mm-muted" style={{ fontSize: '0.72em', display: 'flex', gap: 6 }}>
-                        <span title={p.platform}>{PLATFORM_ICON[p.platform] ?? '•'} {p.kind === 'bot' ? 'Marion agent' : p.kind === 'agent' ? 'Agent' : p.platform}</span>
-                        <span style={{ width: 10, height: 10, borderRadius: 3, background: colorHex(p.cosmetics.color), display: 'inline-block', marginTop: 2 }} />
-                        {!p.connected && <span style={{ color: 'var(--mm-gold)' }}>reconnecting…</span>}
-                      </div>
-                    </div>
-                    <span className="mm-chip" style={{ color: p.ready ? tc.good : undefined }}>
-                      {p.ready ? '✓ Ready' : '…'}
-                    </span>
-                    {isHost && p.id !== pid && (
-                      <button className="mm-btn" style={{ minHeight: 32, padding: 6 }} onClick={() => send(p.kind === 'bot' ? { t: 'host.removeBot', pid: p.id } : { t: 'host.kick', pid: p.id })} aria-label={`Remove ${p.name}`}>
-                        <MIcon name="close" size={14} />
-                      </button>
+            {isHost && (
+              <button className="mm-round sm" onClick={() => setShowBots((x) => !x)} aria-expanded={showBots} aria-label={showBots ? 'Hide agent list' : 'Add a Marion agent'} data-active={showBots}>
+                <MIcon name={showBots ? 'close' : 'plus'} size={14} />
+              </button>
+            )}
+          </div>
+          <div className="mm-scroll mml-crew-list">
+            {room.players.map((p, i) => (
+              <div key={p.id} className="mml-player" data-you={p.id === pid} style={{ ['--i' as string]: i }}>
+                <BerryAvatar cosmetics={p.cosmetics} size={38} animate={false} />
+                <div className="mml-player-txt">
+                  <div className="mml-player-name">
+                    {p.host && (
+                      <span className="mml-hosttag" title="Host">
+                        <MIcon name="crown" size={13} />
+                      </span>
                     )}
+                    <span className="mm-nocase">{p.name}</span>
+                    {p.id === pid && <span className="mm-muted"> (you)</span>}
                   </div>
+                  <div className="mml-player-sub">
+                    <span title={p.platform}>
+                      {PLATFORM_ICON[p.platform] ?? '•'} {p.kind === 'bot' ? 'Marion agent' : p.kind === 'agent' ? 'Agent' : p.platform}
+                    </span>
+                    <span className="mml-swatch" style={{ background: colorHex(p.cosmetics.color) }} />
+                    {!p.connected && <span style={{ color: 'var(--mm-yellow)' }}>reconnecting…</span>}
+                  </div>
+                </div>
+                <span className="mml-ready" data-on={p.ready} style={{ color: p.ready ? tc.good : undefined }}>
+                  {p.ready ? '✓ Ready' : '…'}
+                </span>
+                {isHost && p.id !== pid && (
+                  <button className="mm-round sm" onClick={() => send(p.kind === 'bot' ? { t: 'host.removeBot', pid: p.id } : { t: 'host.kick', pid: p.id })} aria-label={`Remove ${p.name}`}>
+                    <MIcon name="close" size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {isHost && showBots && (
+            <div className="mml-bots mm-in-down">
+              <div className="mm-label">Add a Marion agent</div>
+              <div className="mml-bots-row">
+                {Object.entries(BOT_LOOKS).map(([id, l]) => (
+                  <button key={id} className="mm-btn sm" title={l.persona} onClick={() => send({ t: 'host.addBot', look: id })} disabled={room.players.length >= s.maxPlayers}>
+                    + <span className="mm-nocase">{l.name}</span>
+                  </button>
                 ))}
               </div>
-              {isHost && (
-                <div style={{ marginTop: 8 }}>
-                  <div className="mm-muted" style={{ fontSize: '0.72em', fontWeight: 800, letterSpacing: '0.08em', marginBottom: 4 }}>
-                    ADD A MARION AGENT
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {Object.entries(BOT_LOOKS).map(([id, l]) => (
-                      <button key={id} className="mm-btn" title={l.persona} style={{ minHeight: 34, padding: '2px 8px', fontSize: '0.8em' }} onClick={() => send({ t: 'host.addBot', look: id })} disabled={room.players.length >= room.settings.maxPlayers}>
-                        + {l.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Lobby chat */}
-              {room.settings.chat && (
-                <div style={{ marginTop: 8 }}>
-                  <div className="mm-scroll" style={{ maxHeight: 110, fontSize: '0.82em', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {room.chat.map((c) => {
-                      const who = room.players.find((p) => p.id === c.from);
-                      return (
-                        <div key={c.id} style={{ color: c.from === 'system' ? 'var(--mm-muted)' : undefined }}>
-                          {who && <b style={{ color: colorHex(who.cosmetics.color) }}>{who.name}: </b>}
-                          {prefs.profanityFilter ? filterProfanity(c.text) : c.text}
-                        </div>
-                      );
-                    })}
-                    <div ref={chatEnd} />
-                  </div>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (chat.trim()) send({ t: 'lobby.chat', text: chat.trim() });
-                      setChat('');
-                    }}
-                    style={{ display: 'flex', gap: 6, marginTop: 6 }}
-                  >
-                    <input className="mm-input" style={{ minHeight: 38 }} value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Say hi…" maxLength={160} aria-label="Lobby chat" />
-                  </form>
-                </div>
-              )}
-            </>
+            </div>
           )}
-        </div>
+          {s.chat && (
+            <div className="mml-chat">
+              <div className="mm-scroll mml-chatlog">
+                {room.chat.map((c) => {
+                  const who = room.players.find((p) => p.id === c.from);
+                  return (
+                    <div key={c.id} className="mm-nocase" style={{ color: c.from === 'system' ? 'var(--mm-muted)' : undefined }}>
+                      {who && <b style={{ color: readable(colorHex(who.cosmetics.color)) }}>{who.name}: </b>}
+                      {prefs.profanityFilter ? filterProfanity(c.text) : c.text}
+                    </div>
+                  );
+                })}
+                <div ref={chatEnd} />
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (chat.trim()) send({ t: 'lobby.chat', text: chat.trim() });
+                  setChat('');
+                }}
+              >
+                <input className="mm-input" value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Say hi…" maxLength={160} aria-label="Lobby chat" />
+              </form>
+            </div>
+          )}
+        </Presence>
       </div>
 
-      {/* Bottom: context + ready/start */}
-      <div className="mm-safe" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 10, pointerEvents: 'none', zIndex: 10 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
-          {!v.ok && isHost && (
-            <div className="mm-chip" style={{ color: 'var(--mm-gold)', background: 'rgba(0,0,0,0.5)' }} role="status">
-              {v.errors[0]}
-            </div>
+      {/* Right: top buttons + lobby board */}
+      <div className="mml-right mm-safe">
+        <div className="mml-topbtns mm-in-right">
+          <button className="mmh-sq" onClick={() => setShowPlayers((x) => !x)} aria-label={showPlayers ? 'Hide crew list and chat' : 'Show crew list and chat'} data-active={showPlayers}>
+            <MIcon name="chat" size={24} />
+          </button>
+          <button className="mmh-sq" onClick={() => setPanel('menu')} aria-label="Settings menu">
+            <MIcon name="gear" size={24} />
+            <Kbd code="Escape" className="mmh-sq-key" />
+          </button>
+          {transport !== 'local' && (
+            <button className="mmh-sq" onClick={() => setPanel('invite')} aria-label="Invite (QR)">
+              <MIcon name="qr" size={24} />
+            </button>
           )}
-          {v.ok && v.warnings[0] && isHost && <div className="mm-chip" style={{ background: 'rgba(0,0,0,0.5)' }}>{v.warnings[0]}</div>}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {nearLabel && (
-              <button className="mm-btn mm-btn-gold mm-anim-pop" onClick={doUse}>
-                <MIcon name="use" /> {nearLabel}
+          {narrow && (
+            <button className="mmh-sq" onClick={() => setShowBoard((x) => !x)} aria-label={showBoard ? 'Hide room board' : 'Show room board'} aria-expanded={showBoard} data-active={showBoard}>
+              <MIcon name="tablet" size={24} />
+            </button>
+          )}
+        </div>
+        <Presence show={showBoard || !narrow} anim="right" className="mml-board">
+          <div className="mml-codehead">
+            <div>
+              <div className="mm-label">{transport === 'local' ? 'Solo room' : 'Room code'}</div>
+              <div className="mml-code">{room.code}</div>
+            </div>
+            {transport !== 'local' && (
+              <button className="mml-copy" data-done={copied} onClick={() => copy(room.code, 'Code')} aria-label="Copy code">
+                <MIcon name={copied ? 'check' : 'copy'} size={22} />
               </button>
             )}
-            <button className="mm-btn" onClick={() => setPanel('wardrobe')}>
-              <MIcon name="shirt" /> Wardrobe
+          </div>
+          <div className="mml-sep" />
+          <div className="mm-label">Room settings</div>
+          <div className="mml-modename">{MODES[s.mode].name}</div>
+          <div className="mml-mapname">{mapName}</div>
+          <div className="mml-rows">
+            <span className="mml-k">Capacity</span>
+            <span className="mml-v">
+              <MIcon name="users" size={18} /> {room.players.length}/{s.maxPlayers}
+            </span>
+            <span className="mml-k">Preset</span>
+            <span className="mml-v">{preset}</span>
+            <span className="mml-k">Privacy</span>
+            <button
+              className="mml-v mml-privacy"
+              data-mode={s.privacy}
+              disabled={!isHost || transport === 'local'}
+              onClick={() => send({ t: 'host.settings', settings: { privacy: privacyNext } })}
+              aria-label={`Privacy: ${s.privacy === 'code' ? 'private' : s.privacy}. ${isHost ? 'Switch' : 'Host only'}`}
+            >
+              <MIcon name={s.privacy === 'code' ? 'lock' : 'unlock'} size={16} />
+              {s.privacy === 'code' ? 'Private' : s.privacy === 'lan' ? 'LAN' : 'Public'}
             </button>
-            {(prefs.cosmetics.emotes.length ? prefs.cosmetics.emotes : ['wave']).slice(0, 4).map((e) => (
-              <button key={e} className="mm-btn" style={{ padding: '6px 10px', textTransform: 'capitalize' }} onClick={() => send({ t: 'lobby.emote', id: e })}>
-                {e}
+          </div>
+          <div className="mm-label">Game settings</div>
+          <div className="mml-edit">
+            <button className="mm-btn mm-btn-primary" disabled={!isHost} onClick={() => setPanel('settings')} aria-label="Edit match settings">
+              Edit
+            </button>
+            <button className="mm-btn mm-btn-primary" onClick={() => setPanel('settings')} aria-label="View match settings">
+              View
+            </button>
+          </div>
+        </Presence>
+      </div>
+
+      {/* Bottom: host line, waiting bar, host prompt, actions */}
+      <div className="mml-bottom mm-safe">
+        {!v.ok && isHost && (
+          <div className="mm-chip warn" role="status">
+            {v.errors[0]}
+          </div>
+        )}
+        {v.ok && v.warnings[0] && isHost && <div className="mm-chip">{v.warnings[0]}</div>}
+        <div className="mml-hostline">
+          <span className="mm-label">Host:</span>
+          {host && <BerryAvatar cosmetics={host.cosmetics} size={30} animate={false} />}
+          <b className="mm-nocase">{host?.name}</b>
+          {isHost && <span className="mm-muted">(You)</span>}
+        </div>
+        <div className="mml-wait" data-ok={need === 0} role="status">
+          <i aria-hidden />
+          <span>{need > 0 ? 'Waiting for players' : isHost ? (humansReady ? 'Crew assembled' : 'Waiting for ready-ups') : 'Waiting for the host'}</span>
+          {need > 0 && <small>{need} more needed</small>}
+        </div>
+        {isHost && room.stage !== 'countdown' && (
+          <div className="mml-pill" key={need > 0 ? 'wait' : 'go'}>
+            {need > 0 ? 'You’re the host — add agents or invite friends' : 'You’re the host — launch when ready'}
+          </div>
+        )}
+        <div className="mml-actions">
+          <Presence show={!!nearLabel} anim="pop" className="mml-use-wrap">
+            <button className="mm-btn mm-btn-gold" onClick={doUse}>
+              <MIcon name="use" /> {nearLabel}
+              <Kbd k="use" />
+            </button>
+          </Presence>
+          <button className="mm-btn" onClick={() => setPanel('wardrobe')}>
+            <MIcon name="hanger" /> Wardrobe
+          </button>
+          {transport !== 'local' && (
+            <button className="mm-btn" onClick={() => setPanel('invite')} aria-label="Invite">
+              <MIcon name="invite" /> Invite
+            </button>
+          )}
+          {!coarse &&
+            (prefs.cosmetics.emotes.length ? prefs.cosmetics.emotes : ['wave']).slice(0, 4).map((e, i) => (
+              <button key={e} className="mm-btn sm mml-emote" onClick={() => send({ t: 'lobby.emote', id: e })}>
+                <kbd className="mm-kbd inline">{i + 1}</kbd> {e}
               </button>
             ))}
-            {!isHost && (
-              <button className={`mm-btn ${me?.ready ? '' : 'mm-btn-primary'}`} onClick={() => send({ t: 'lobby.ready', ready: !me?.ready })}>
-                <MIcon name="ready" /> {me?.ready ? 'Not ready' : 'Ready!'}
-              </button>
-            )}
-            {isHost &&
-              (room.stage === 'countdown' ? (
-                <button className="mm-btn" onClick={() => send({ t: 'host.cancel' })}>
-                  Cancel start
-                </button>
-              ) : (
-                <button className="mm-btn mm-btn-primary" style={{ minWidth: 160 }} onClick={() => send({ t: 'host.start' })} disabled={room.players.length + Math.max(0, room.settings.bots - room.players.filter((p) => p.kind === 'bot').length) < 4}>
-                  <MIcon name="play" /> Start match
-                </button>
-              ))}
-          </div>
-          {isHost && room.players.length < 4 && (
-            <div className="mm-muted" style={{ fontSize: '0.78em', background: 'rgba(0,0,0,0.45)', padding: '4px 10px', borderRadius: 999 }}>
-              Need 4+ players — add Marion agents or set “Fill with Marion bots” in settings.
-            </div>
+          {!isHost && (
+            <button className={`mm-btn mm-pill ${me?.ready ? '' : 'mm-btn-primary'}`} onClick={() => send({ t: 'lobby.ready', ready: !me?.ready })}>
+              <MIcon name="ready" /> {me?.ready ? 'Not ready' : 'Ready!'}
+            </button>
           )}
+          {isHost &&
+            (room.stage === 'countdown' ? (
+              <button className="mm-btn mm-pill mm-btn-danger" onClick={() => send({ t: 'host.cancel' })}>
+                Cancel start
+              </button>
+            ) : (
+              <button className="mm-btn mm-btn-primary mm-pill mml-start" onClick={() => send({ t: 'host.start' })} disabled={total < 4}>
+                <MIcon name="play" /> Start match
+              </button>
+            ))}
         </div>
       </div>
 
       {countdown !== null && (
-        <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', background: 'radial-gradient(circle, rgba(47,111,237,0.25), transparent 60%)' }}>
-          <div key={countdown} className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(90px, 22vw, 200px)' }}>
+        <div className="mml-count" aria-live="assertive">
+          <Hazard className="mml-count-haz top" />
+          <div key={countdown} className="mml-count-num">
             {countdown || 'GO'}
           </div>
+          <div className="mml-count-sub">Launching</div>
+          <Hazard className="mml-count-haz bottom" />
         </div>
       )}
 
@@ -281,6 +406,7 @@ export function WaitingRoom() {
             onNameChange={(n) => setPrefs({ name: n.slice(0, 16) })}
             preview={prefs.view === '2d' ? '2d' : '3d'}
             takenColors={room.players.filter((p) => p.id !== pid).map((p) => p.cosmetics.color)}
+            onDone={() => setPanel(null)}
           />
         </Modal>
       )}
@@ -289,13 +415,18 @@ export function WaitingRoom() {
           <MatchSettingsPanel room={room} isHost={isHost} />
         </Modal>
       )}
+      {panel === 'menu' && (
+        <Modal title="Settings" onClose={() => setPanel(null)} wide>
+          <SettingsMenu startTab="match" inMatch={{ code: room.code, mode: MODES[s.mode].name, map: mapName, onResume: () => setPanel(null), onLeave: leave }} />
+        </Modal>
+      )}
       {panel === 'invite' && (
         <Modal title="Invite players" onClose={() => setPanel(null)}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
+          <div className="mml-invite">
             <QrCode text={link} size={200} />
             <div className="mm-muted">Scan with an iPhone camera on the same Wi-Fi, or share the code:</div>
-            <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 900, fontSize: '2.2em', letterSpacing: '0.18em' }}>{room.code}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div className="mml-code big">{room.code}</div>
+            <div className="mml-invite-btns">
               <button className="mm-btn" onClick={() => copy(room.code, 'Code')}>
                 <MIcon name="copy" /> Copy code
               </button>
