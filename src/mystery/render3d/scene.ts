@@ -278,6 +278,8 @@ export interface MapScene {
   /** Vent lids + their (hidden) orange highlight hulls. */
   vents: Map<string, { mesh: THREE.Mesh; glow: THREE.Mesh }>;
   wallHeight: number;
+  /** Ceiling slabs + lit strips over indoor floors (shown in first person only). */
+  ceiling: THREE.Group;
   lamps: { pos: THREE.Vector3; color: THREE.Color; r: number }[];
   dispose(): void;
 }
@@ -538,8 +540,55 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     fixture.position.set(l.x, wallH - 0.05, l.y);
     group.add(fixture);
   }
+  // Ceiling (first person): dark slabs over indoor rooms and halls, with
+  // dashed light lightStrips down corridors and panel lights in rooms.
+  const ceiling = new THREE.Group();
+  ceiling.visible = false;
+  const OPEN: ReadonlySet<FloorStyle> = new Set<FloorStyle>(['grass', 'snow', 'stone']);
+  const slabs: THREE.BufferGeometry[] = [];
+  const lightStrips: THREE.BufferGeometry[] = [];
+  const slab = (r: Rect) => {
+    const [x, z, w, h] = r;
+    const g = new THREE.PlaneGeometry(w, h);
+    g.rotateX(Math.PI / 2); // faces down
+    g.translate(x + w / 2, wallH, z + h / 2);
+    slabs.push(g);
+  };
+  const lightStrip = (x: number, z: number, w: number, h: number) => {
+    const g = new THREE.PlaneGeometry(w, h);
+    g.rotateX(Math.PI / 2);
+    g.translate(x, wallH - 0.02, z);
+    lightStrips.push(g);
+  };
+  for (const room of map.def.rooms) {
+    if (room.outdoor) continue;
+    for (const r of rectsOf(room)) {
+      slab(r);
+      const [x, z, w, h] = r;
+      for (let px = x + 2; px < x + w - 1; px += 4) for (let pz = z + 2; pz < z + h - 1; pz += 4) lightStrip(px, pz, 1.4, 0.5);
+    }
+  }
+  for (const hl of map.def.halls) {
+    if (hl.floor && OPEN.has(hl.floor)) continue;
+    slab(hl.rect);
+    const [x, z, w, h] = hl.rect;
+    if (w >= h) for (let px = x + 0.6; px < x + w - 0.4; px += 1.6) lightStrip(px + 0.45, z + h / 2, 0.9, 0.16);
+    else for (let pz = z + 0.6; pz < z + h - 0.4; pz += 1.6) lightStrip(x + w / 2, pz + 0.45, 0.16, 0.9);
+  }
+  if (slabs.length) {
+    const sm = new THREE.Mesh(track(mergeGeometries(slabs)!), track(new THREE.MeshBasicMaterial({ color: night ? '#10151f' : '#5a6880' })));
+    ceiling.add(sm);
+    for (const g of slabs) g.dispose();
+  }
+  if (lightStrips.length) {
+    const lm = new THREE.Mesh(track(mergeGeometries(lightStrips)!), track(new THREE.MeshBasicMaterial({ color: night ? '#5b6478' : '#f4f7ff' })));
+    ceiling.add(lm);
+    for (const g of lightStrips) g.dispose();
+  }
+  group.add(ceiling);
   return {
     group,
+    ceiling,
     stationMeshes,
     highlight,
     doorMeshes,

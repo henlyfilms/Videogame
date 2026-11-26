@@ -299,6 +299,7 @@ export class ThreeDView implements ViewRenderer {
     if (this.mapScene) this.scene.remove(this.mapScene.group);
     this.mapScene = buildMapScene(map, this.quality, night);
     this.scene.add(this.mapScene.group);
+    this.mapScene.ceiling.visible = this.mode === 'fp';
     this.mapKey = key;
     const theme = map.def.theme;
     this.scene.background = new THREE.Color(night ? '#04060d' : theme.sky);
