@@ -135,3 +135,7 @@ interesting to navigate and good for hiding, not a spreadsheet of boxes.
 | 51-map-planet-base-layout.webp | IMG_2358 | Planet base map: scattered buildings, snow, lava, exterior paths |
 
 (IMG_2345 was sent again; it is already here as 45.)
+| 52-hud-2d-ghost-task-list.jpg | IMG_2362 | 2D top-down: ghost state, task list with room prefixes, task bar, Use/Report, room labels on floor |
+| 53-anim-2d-walk-cycle.jpg | IMG_2363 | 2D side-view walk cycle mid-stride: bouncy run, floating shadow |
+| 54-scene-red-corridor.webp | IMG_2364 | Corridor under red alert lighting, wall stripes, floor light strips |
+| 55-scene-2d-topdown-corridor.jpg | IMG_2365 | 2D top-down corridor, name tags, role label, vision cone darkness |
