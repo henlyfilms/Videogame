@@ -24,6 +24,25 @@ across, buttons with press/hover feedback, progress bars easing, counters tickin
 (character walk cycles, turning, idle bob, interactions, eliminations, vents, camera moves).
 Use easing, no instant snaps or popping, and keep a steady frame rate.
 
+## Map direction (from the project owner)
+
+The current map (see 49, a tidy 3×3 grid of equal rectangles) is **too orderly and mundane**.
+The map should feel like the maps in 50 and 51: irregular, organic, asymmetric. Use these
+qualities and design an original layout from them, rather than tracing either map:
+
+- Rooms of very different sizes and shapes: octagons, L-shapes, notched and angled walls,
+  a big central hub, small side rooms
+- Winding corridors of varying width that branch, dog-leg and dead-end, not a straight grid
+- An asymmetric overall silhouette; wings that stick out, some areas reachable only one way
+- Outdoor or exterior zones mixed in (snow, rock, lava, open ground) between buildings
+- Dense, specific props per room (tables, tanks, beds, consoles, crates), so each room reads
+  at a glance
+- A map legend style: room names on the floor, vents linked by dashed lines, task markers,
+  camera zones
+
+Rooms can be moved, merged or reshaped freely; the goal is a map that feels hand-made,
+interesting to navigate and good for hiding, not a spreadsheet of boxes.
+
 ## What to take from them
 
 - **Rendering:** cel-shaded / flat colour with thick dark ink outlines on every shape;
@@ -111,3 +130,8 @@ Use easing, no instant snaps or popping, and keep a steady frame rate.
 | 46-ui-customize-hats.jpg | IMG_2344 | Customize panel: hats tab, item slots |
 | 47-ui-customize-colours.jpg | IMG_2343 | Customize panel: colour swatches tab |
 | 48-ui-dead-body-reported.jpg | IMG_2342 | "Dead Body Reported" banner with hazard stripes |
+| 49-avoid-current-grid-map.jpg | IMG_2356 | **Counter-example:** the game's current grid map, too orderly |
+| 50-map-ship-layout.jpg | IMG_2357 | Ship map overview: irregular rooms, corridors, vents, legend |
+| 51-map-planet-base-layout.webp | IMG_2358 | Planet base map: scattered buildings, snow, lava, exterior paths |
+
+(IMG_2345 was sent again; it is already here as 45.)
