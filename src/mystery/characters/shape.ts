@@ -55,7 +55,7 @@ export function berryProfile(berry: BerryType, t: number): number {
 
 /** Height t where the face sits (eye line). */
 export function faceLine(berry: BerryType): number {
-  return berry === 'strawberry' ? 0.6 : berry === 'marionberry' ? 0.6 : 0.57;
+  return berry === 'strawberry' ? 0.63 : berry === 'marionberry' ? 0.62 : 0.625;
 }
 
 export function berryDims(berry: BerryType): { aspect: number; width: number } {

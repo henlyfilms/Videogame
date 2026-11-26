@@ -107,6 +107,10 @@ export interface BodyDims {
   top: number;
   /** Radius at normalised height t. */
   rAt(t: number): number;
+  /** Outer radius for accessories (clears drupelet bumps). */
+  sAt(t: number): number;
+  /** Extra clearance for bumpy (drupelet) berries. */
+  bump: number;
   yAt(t: number): number;
   tf: number;
 }
@@ -119,13 +123,16 @@ export function bodyDims(berry: BerryType): BodyDims {
   const R = 0.35 * def.width;
   const H = 0.7 * def.aspect;
   const y0 = 0.13;
+  const bump = def.surface === 'drupelets' || def.surface === 'glossy-drupelets' || def.surface === 'cluster' ? 0.032 : 0;
   const d: BodyDims = {
     berry,
     R,
     H,
     y0,
     top: y0 + H,
+    bump,
     rAt: (t) => berryProfile(berry, t) * R,
+    sAt: (t) => berryProfile(berry, t) * R + bump,
     yAt: (t) => y0 + t * H,
     tf: faceLine(berry),
   };
@@ -134,12 +141,23 @@ export function bodyDims(berry: BerryType): BodyDims {
 }
 
 /** Lathe points for the body profile between t0..t1 (inflated). */
-export function profilePoints(d: BodyDims, t0: number, t1: number, n: number, inflate = 1): THREE.Vector2[] {
+export function profilePoints(d: BodyDims, t0: number, t1: number, n: number, inflate = 1, pad = 0): THREE.Vector2[] {
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i <= n; i++) {
     // Cosine spacing for rounder ends.
     const u = t0 + (t1 - t0) * (0.5 - 0.5 * Math.cos((i / n) * Math.PI));
-    pts.push(new THREE.Vector2(Math.max(0.0005, d.rAt(u) * inflate), d.yAt(u)));
+    let x = d.rAt(u) * inflate;
+    let y = d.yAt(u);
+    if (pad) {
+      // Offset along the outward profile normal.
+      const e = 0.002;
+      const dr = d.rAt(Math.min(1, u + e)) - d.rAt(Math.max(0, u - e));
+      const dy = d.yAt(Math.min(1, u + e)) - d.yAt(Math.max(0, u - e));
+      const len = Math.hypot(dr, dy) || 1;
+      x += (dy / len) * pad;
+      y += (-dr / len) * pad;
+    }
+    pts.push(new THREE.Vector2(Math.max(0.0005, x), y));
   }
   return pts;
 }
@@ -411,7 +429,7 @@ export interface HairParts {
 }
 
 function capLathe(d: BodyDims, t0: number, inflate: number, col: string, phiStart = 0, phiLen = Math.PI * 2): Geo {
-  const pts = profilePoints(d, t0, 1, 10, inflate).map((v) => new THREE.Vector2(v.x, v.y - d.top));
+  const pts = profilePoints(d, t0, 1, 10, 1, (inflate - 1) * 0.33 + d.bump).map((v) => new THREE.Vector2(v.x, v.y - d.top));
   return finish(new THREE.LatheGeometry(pts, seg(28), phiStart, phiLen), col);
 }
 
@@ -447,11 +465,11 @@ export function buildHair(id: string, d: BodyDims, col: string, covered: boolean
     case 'long':
     case 'wavy':
       backCap(0.56, 0.86);
-      for (const dx of [-1, 1]) cap.push(P.capsule(0.04, d.H * 0.32, col, [dx * d.rAt(0.75) * 0.95, -d.H * 0.33, 0.12], [0.15, 0, dx * 0.12]));
+      for (const dx of [-1, 1]) cap.push(P.capsule(0.04, d.H * 0.32, col, [dx * d.sAt(0.75) * 0.95, -d.H * 0.33, 0.12], [0.15, 0, dx * 0.12]));
       return { cap, tail: { geos: sheet(d.H * 0.78, 0.18, id === 'wavy' ? 0.05 : 0), pivot: [0, -0.06, -0.02], stiffness: 26 } };
     case 'ponytail':
       backCap(0.62, 0.87);
-      return { cap, tail: { geos: [P.sphere(0.03, '#ff86bf', [0, 0, 0]), P.sphere(0.075, col, [0, -0.16, -0.02], [0.8, 2, 0.8]), P.cone(0.05, 0.1, lt, [0, -0.32, -0.02], [Math.PI, 0, 0])], pivot: [0, -0.07, -d.rAt(0.85) - 0.02], stiffness: 18 } };
+      return { cap, tail: { geos: [P.sphere(0.03, '#ff86bf', [0, 0, 0]), P.sphere(0.075, col, [0, -0.16, -0.02], [0.8, 2, 0.8]), P.cone(0.05, 0.1, lt, [0, -0.32, -0.02], [Math.PI, 0, 0])], pivot: [0, -0.07, -d.sAt(0.85) - 0.02], stiffness: 18 } };
     case 'braids': {
       backCap(0.62, 0.88);
       const geos: Geo[] = [];
@@ -459,7 +477,7 @@ export function buildHair(id: string, d: BodyDims, col: string, covered: boolean
         for (let i = 0; i < 6; i++) geos.push(P.sphere(0.042 - i * 0.002, i % 2 ? col : lt, [dx, -0.04 - i * 0.065, 0]));
         geos.push(P.sphere(0.03, '#ff86bf', [dx, -0.43, 0]));
       }
-      return { cap, tail: { geos, pivot: [0, -0.12, -d.rAt(0.75) - 0.02], stiffness: 16 } };
+      return { cap, tail: { geos, pivot: [0, -0.12, -d.sAt(0.75) - 0.02], stiffness: 16 } };
     }
     case 'pigtails': {
       backCap(0.66, 0.87);
@@ -613,19 +631,19 @@ export function buildFaceGear(id: string, d: BodyDims): PartSet {
         glass.push(P.sphere(0.06, '#aaffd2', [e.x, e.y, e.z], [1, 1, 0.3], [0, yaw(e), 0]));
       });
       const y = eyes[0]!.y;
-      s.push(P.torus(d.rAt(d.tf) + 0.02, 0.016, '#5a3d22', [0, y, 0], [Math.PI / 2, 0, 0]));
+      s.push(P.torus(d.sAt(d.tf) + 0.02, 0.016, '#5a3d22', [0, y, 0], [Math.PI / 2, 0, 0]));
       break;
     }
     case 'visor': {
       const y = eyes[0]!.y;
-      const r = d.rAt(d.tf) + 0.035;
+      const r = d.sAt(d.tf) + 0.035;
       s.push(P.cyl(r, r, 0.1, '#6ea1ff', [0, y, 0], [0, 0, 0], 1, 24, true, -1.25, 2.5));
       glass.push(P.cyl(r + 0.004, r + 0.004, 0.08, '#c084fc', [0, y, 0], [0, 0, 0], 1, 24, true, -1.2, 2.4));
       break;
     }
     case 'vr': {
       const y = eyes[0]!.y;
-      const r = d.rAt(d.tf);
+      const r = d.sAt(d.tf);
       s.push(P.box(0.36, 0.15, 0.12, '#eef1f6', [0, y, r + 0.04]), P.box(0.3, 0.09, 0.02, '#1c2233', [0, y, r + 0.105]), P.torus(r + 0.01, 0.015, '#2a2f45', [0, y, 0], [Math.PI / 2, 0, 0]));
       s.push(P.sphere(0.015, '#5cf2ff', [0.12, y, r + 0.12]));
       break;
@@ -648,11 +666,11 @@ export function buildOutfit(id: string, d: BodyDims): Geo[] {
   const out: Geo[] = [];
   const tNeck = 0.31;
   const shell = (col: string, t1 = tNeck, inflate = 1.03): Geo =>
-    finish(new THREE.LatheGeometry(profilePoints(d, 0.02, t1, 8, inflate), seg(28)), col);
-  const front = (t: number, lift = 0.02): THREE.Vector3 => new THREE.Vector3(0, d.yAt(t), d.rAt(t) + lift);
+    finish(new THREE.LatheGeometry(profilePoints(d, 0.02, t1, 8, 1, (inflate - 1) * 0.35 + d.bump), seg(28)), col);
+  const front = (t: number, lift = 0.02): THREE.Vector3 => new THREE.Vector3(0, d.yAt(t), d.sAt(t) + lift);
   const neck = front(tNeck, 0.03);
   const collar = (col: string, tube = 0.03): void => {
-    out.push(P.torus(d.rAt(tNeck) * 1.02, tube, col, [0, d.yAt(tNeck), 0], [Math.PI / 2, 0, 0]));
+    out.push(P.torus(d.sAt(tNeck) * 1.02, tube, col, [0, d.yAt(tNeck), 0], [Math.PI / 2, 0, 0]));
   };
   switch (id) {
     case 'tee':
@@ -674,20 +692,20 @@ export function buildOutfit(id: string, d: BodyDims): Geo[] {
     case 'puffer':
     case 'varsity':
       out.push(shell(o.main));
-      if (id === 'puffer') for (let i = 0; i < 3; i++) out.push(P.torus(d.rAt(0.08 + i * 0.09) * 1.04, 0.02, o.main, [0, d.yAt(0.08 + i * 0.09), 0], [Math.PI / 2, 0, 0]));
-      if (id === 'jersey') out.push(P.torus(d.rAt(0.06) * 1.04, 0.015, o.accent, [0, d.yAt(0.06), 0], [Math.PI / 2, 0, 0]));
-      if (id === 'sweater') out.push(P.torus(d.rAt(0.17) * 1.04, 0.012, o.accent, [0, d.yAt(0.17), 0], [Math.PI / 2, 0, 0]));
+      if (id === 'puffer') for (let i = 0; i < 3; i++) out.push(P.torus(d.sAt(0.08 + i * 0.09) * 1.04, 0.02, o.main, [0, d.yAt(0.08 + i * 0.09), 0], [Math.PI / 2, 0, 0]));
+      if (id === 'jersey') out.push(P.torus(d.sAt(0.06) * 1.04, 0.015, o.accent, [0, d.yAt(0.06), 0], [Math.PI / 2, 0, 0]));
+      if (id === 'sweater') out.push(P.torus(d.sAt(0.17) * 1.04, 0.012, o.accent, [0, d.yAt(0.17), 0], [Math.PI / 2, 0, 0]));
       if (id === 'spacesuit') out.push(P.box(0.12, 0.07, 0.02, '#d3d9e4', [neck.x, neck.y - 0.09, neck.z - 0.02]), P.sphere(0.012, '#ff4d6d', [neck.x - 0.03, neck.y - 0.09, neck.z]), P.sphere(0.012, '#14b8a6', [neck.x + 0.03, neck.y - 0.09, neck.z]));
       if (id === 'hawaiian') for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         const t = 0.1 + (i % 2) * 0.1;
-        out.push(P.sphere(0.035, i % 2 ? o.accent : '#ff86bf', [Math.sin(a) * d.rAt(t) * 1.04, d.yAt(t), Math.cos(a) * d.rAt(t) * 1.04], [1, 1, 0.3], [0, a, 0], 6, 4));
+        out.push(P.sphere(0.035, i % 2 ? o.accent : '#ff86bf', [Math.sin(a) * d.sAt(t) * 1.04, d.yAt(t), Math.cos(a) * d.sAt(t) * 1.04], [1, 1, 0.3], [0, a, 0], 6, 4));
       }
       if (id === 'varsity') out.push(P.box(0.08, 0.08, 0.01, o.accent, [neck.x - 0.08, neck.y - 0.07, neck.z - 0.03], [0, -0.25, 0]));
       if (id === 'hoodie') {
-        out.push(P.sphere(d.R * 0.7, mix(o.main, '#000', 0.1), [0, d.yAt(tNeck) + 0.03, -d.rAt(tNeck) * 0.75], [1.1, 0.55, 0.7]));
+        out.push(P.sphere(d.R * 0.7, mix(o.main, '#000', 0.1), [0, d.yAt(tNeck) + 0.03, -d.sAt(tNeck) * 0.75], [1.1, 0.55, 0.7]));
         for (const dx of [-0.04, 0.04]) out.push(P.cyl(0.006, 0.006, 0.09, '#f2f4f8', [dx, neck.y - 0.05, neck.z]));
-        out.push(P.box(0.18, 0.06, 0.02, mix(o.main, '#fff', 0.08), [0, d.yAt(0.12), d.rAt(0.12) + 0.02]));
+        out.push(P.box(0.18, 0.06, 0.02, mix(o.main, '#fff', 0.08), [0, d.yAt(0.12), d.sAt(0.12) + 0.02]));
       }
       collar(id === 'spacesuit' ? '#b8c1d1' : mix(o.main, '#000', 0.12), id === 'spacesuit' ? 0.035 : 0.022);
       break;
@@ -700,30 +718,30 @@ export function buildOutfit(id: string, d: BodyDims): Geo[] {
       out.push(P.cone(0.07, 0.12, id === 'vest' ? '#f7f4ee' : '#ffffff', [neck.x, neck.y - 0.05, neck.z - 0.025], [Math.PI, 0, 0], [1, 1, 0.25], 3));
       if (id === 'suit') out.push(P.box(0.03, 0.12, 0.012, o.accent, [neck.x, neck.y - 0.07, neck.z - 0.0]));
       if (id === 'tux') out.push(P.sphere(0.03, '#11131a', [neck.x - 0.03, neck.y - 0.01, neck.z], [1.2, 0.8, 0.5]), P.sphere(0.03, '#11131a', [neck.x + 0.03, neck.y - 0.01, neck.z], [1.2, 0.8, 0.5]));
-      if (id === 'trench') out.push(P.torus(d.rAt(0.14) * 1.05, 0.016, o.accent, [0, d.yAt(0.14), 0], [Math.PI / 2, 0, 0]));
-      if (id === 'labcoat') out.push(P.box(0.07, 0.06, 0.01, '#f7f8fb', [-0.12, d.yAt(0.18), d.rAt(0.18) - 0.005], [0, -0.35, 0]), P.cyl(0.006, 0.006, 0.06, '#2f6fed', [-0.12, d.yAt(0.22), d.rAt(0.2)], [0, 0, 0]));
+      if (id === 'trench') out.push(P.torus(d.sAt(0.14) * 1.05, 0.016, o.accent, [0, d.yAt(0.14), 0], [Math.PI / 2, 0, 0]));
+      if (id === 'labcoat') out.push(P.box(0.07, 0.06, 0.01, '#f7f8fb', [-0.12, d.yAt(0.18), d.sAt(0.18) - 0.005], [0, -0.35, 0]), P.cyl(0.006, 0.006, 0.06, '#2f6fed', [-0.12, d.yAt(0.22), d.sAt(0.2)], [0, 0, 0]));
       collar(mix(o.main, '#000', 0.12), 0.02);
       break;
     case 'overalls':
       out.push(shell(o.main, 0.16));
-      out.push(P.box(0.2, 0.12, 0.03, o.main, [0, d.yAt(0.22), d.rAt(0.22) - 0.01], [-0.25, 0, 0]));
-      for (const dx of [-0.07, 0.07]) out.push(P.sphere(0.015, o.accent, [dx, d.yAt(0.27), d.rAt(0.27) + 0.012]));
+      out.push(P.box(0.2, 0.12, 0.03, o.main, [0, d.yAt(0.22), d.sAt(0.22) - 0.01], [-0.25, 0, 0]));
+      for (const dx of [-0.07, 0.07]) out.push(P.sphere(0.015, o.accent, [dx, d.yAt(0.27), d.sAt(0.27) + 0.012]));
       break;
     case 'apron':
-      out.push(P.box(0.26, d.H * 0.32, 0.02, o.main, [0, d.yAt(0.16), d.rAt(0.16) + 0.01], [-0.12, 0, 0]), P.box(0.09, 0.05, 0.024, o.accent, [0, d.yAt(0.15), d.rAt(0.15) + 0.025]));
-      out.push(P.torus(d.rAt(0.2) * 1.02, 0.01, o.accent, [0, d.yAt(0.2), 0], [Math.PI / 2, 0, 0]));
+      out.push(P.box(0.26, d.H * 0.32, 0.02, o.main, [0, d.yAt(0.16), d.sAt(0.16) + 0.01], [-0.12, 0, 0]), P.box(0.09, 0.05, 0.024, o.accent, [0, d.yAt(0.15), d.sAt(0.15) + 0.025]));
+      out.push(P.torus(d.sAt(0.2) * 1.02, 0.01, o.accent, [0, d.yAt(0.2), 0], [Math.PI / 2, 0, 0]));
       break;
     case 'scarf':
-      out.push(P.torus(d.rAt(tNeck) * 1.0, 0.05, o.main, [0, d.yAt(tNeck), 0], [Math.PI / 2, 0, 0], Math.PI * 2, [1, 1, 0.8]));
-      out.push(P.box(0.08, 0.2, 0.03, o.main, [0.1, d.yAt(tNeck) - 0.1, d.rAt(tNeck) + 0.04], [0.15, 0, 0.1]));
-      for (let i = 0; i < 3; i++) out.push(P.box(0.082, 0.015, 0.032, o.accent, [0.1 + i * 0.002, d.yAt(tNeck) - 0.04 - i * 0.05, d.rAt(tNeck) + 0.045], [0.15, 0, 0.1]));
+      out.push(P.torus(d.sAt(tNeck) * 1.0, 0.05, o.main, [0, d.yAt(tNeck), 0], [Math.PI / 2, 0, 0], Math.PI * 2, [1, 1, 0.8]));
+      out.push(P.box(0.08, 0.2, 0.03, o.main, [0.1, d.yAt(tNeck) - 0.1, d.sAt(tNeck) + 0.04], [0.15, 0, 0.1]));
+      for (let i = 0; i < 3; i++) out.push(P.box(0.082, 0.015, 0.032, o.accent, [0.1 + i * 0.002, d.yAt(tNeck) - 0.04 - i * 0.05, d.sAt(tNeck) + 0.045], [0.15, 0, 0.1]));
       break;
     case 'cape':
-      out.push(finish(new THREE.LatheGeometry(profilePoints(d, tNeck - 0.12, tNeck + 0.04, 6, 1.08), seg(28)), o.main));
-      out.push(P.sphere(0.035, o.accent, [0, d.yAt(tNeck), d.rAt(tNeck) + 0.05]));
+      out.push(finish(new THREE.LatheGeometry(profilePoints(d, tNeck - 0.12, tNeck + 0.04, 6, 1, 0.03 + d.bump), seg(28)), o.main));
+      out.push(P.sphere(0.035, o.accent, [0, d.yAt(tNeck), d.sAt(tNeck) + 0.05]));
       break;
     case 'bowtie':
-      out.push(P.cone(0.05, 0.08, o.main, [-0.04, d.yAt(tNeck), d.rAt(tNeck) + 0.03], [0, 0, -Math.PI / 2], [1, 1, 0.5]), P.cone(0.05, 0.08, o.main, [0.04, d.yAt(tNeck), d.rAt(tNeck) + 0.03], [0, 0, Math.PI / 2], [1, 1, 0.5]), P.sphere(0.022, o.accent, [0, d.yAt(tNeck), d.rAt(tNeck) + 0.04]));
+      out.push(P.cone(0.05, 0.08, o.main, [-0.04, d.yAt(tNeck), d.sAt(tNeck) + 0.03], [0, 0, -Math.PI / 2], [1, 1, 0.5]), P.cone(0.05, 0.08, o.main, [0.04, d.yAt(tNeck), d.sAt(tNeck) + 0.03], [0, 0, Math.PI / 2], [1, 1, 0.5]), P.sphere(0.022, o.accent, [0, d.yAt(tNeck), d.sAt(tNeck) + 0.04]));
       break;
   }
   return out;
@@ -745,11 +763,11 @@ export function buildBack(id: string, d: BodyDims): PartSet {
   const anim: AnimPart[] = [];
   const glass: Geo[] = [];
   const ys = d.yAt(0.42);
-  const zb = -d.rAt(0.42);
+  const zb = -d.sAt(0.42);
   switch (id) {
     case 'backpack':
       s.push(P.capsule(0.12, 0.12, '#f08a3c', [0, ys, zb - 0.07], [0, 0, 0], [1.2, 1, 0.65]), P.box(0.18, 0.1, 0.06, '#ffb46b', [0, ys - 0.06, zb - 0.15]));
-      for (const dx of [-0.1, 0.1]) s.push(P.torus(d.rAt(0.45) * 0.98, 0.012, '#8a3f10', [dx, ys, 0], [0, Math.PI / 2, 0], Math.PI, [1, 0.9, 1]));
+      for (const dx of [-0.1, 0.1]) s.push(P.torus(d.sAt(0.45) * 0.98, 0.012, '#8a3f10', [dx, ys, 0], [0, Math.PI / 2, 0], Math.PI, [1, 0.9, 1]));
       break;
     case 'jetpack':
       for (const dx of [-0.08, 0.08]) {
@@ -768,7 +786,7 @@ export function buildBack(id: string, d: BodyDims): PartSet {
     case 'guitar':
       s.push(P.sphere(0.13, '#e0a100', [0.05, ys - 0.06, zb - 0.07], [1, 1, 0.35]), P.sphere(0.1, '#e0a100', [0.0, ys + 0.07, zb - 0.07], [1, 1, 0.35]), P.cyl(0.035, 0.035, 0.012, '#2b1d14', [0.02, ys, zb - 0.115], [Math.PI / 2, 0, 0]));
       s.push(P.box(0.05, 0.42, 0.03, '#5a3d22', [-0.1, ys + 0.3, zb - 0.07], [0, 0, 0.45]), P.box(0.07, 0.08, 0.035, '#2b1d14', [-0.2, ys + 0.5, zb - 0.07], [0, 0, 0.45]));
-      s.push(P.torus(d.rAt(0.45), 0.012, '#2b1d14', [0, ys, 0], [0.5, Math.PI / 2, 0], Math.PI));
+      s.push(P.torus(d.sAt(0.45), 0.012, '#2b1d14', [0, ys, 0], [0.5, Math.PI / 2, 0], Math.PI));
       break;
     case 'cape': {
       const len = d.H * 0.62;
@@ -809,7 +827,7 @@ export function buildBack(id: string, d: BodyDims): PartSet {
 export function buildTop(d: BodyDims, leafCol = '#3fae4b'): Geo[] {
   const def = BERRY_BY_ID[d.berry];
   const out: Geo[] = [];
-  const y = d.top;
+  const y = d.top + d.bump * 0.8;
   switch (def.top) {
     case 'leafy':
       for (let i = 0; i < 6; i++) {

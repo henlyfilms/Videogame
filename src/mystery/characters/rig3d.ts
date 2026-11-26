@@ -514,7 +514,7 @@ function topVisible(c: Cosmetics): boolean {
 }
 
 function hatScale(d: BodyDims): number {
-  return Math.min(1.2, Math.max(0.85, d.rAt(0.85) / 0.27));
+  return Math.min(1.25, Math.max(0.85, d.sAt(0.85) / 0.27));
 }
 
 // ---------------------------------------------------------------------------
@@ -731,9 +731,9 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
     // Gloss highlight.
     if (quality !== 'low') {
       const gl = 0.35 + BERRY_BY_ID[c.berry].gloss * 0.5;
-      const t = 0.8;
-      const phi = -0.55;
-      const p = new THREE.Vector3(Math.sin(phi) * d.rAt(t), d.yAt(t), Math.cos(phi) * d.rAt(t));
+      const t = 0.87;
+      const phi = -0.8;
+      const p = new THREE.Vector3(Math.sin(phi) * d.sAt(t), d.yAt(t) + d.bump * 0.5, Math.cos(phi) * d.sAt(t));
       const gg = cachedGeo(`gloss|${c.berry}`, () => {
         const g = new THREE.SphereGeometry(1, 12, 8);
         g.scale(0.075, 0.042, 0.02);
@@ -766,7 +766,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
 
     // Headwear: hat + hair cap.
     const head = new THREE.Group();
-    head.position.y = d.top;
+    head.position.y = d.top + d.bump * 0.7;
     head.name = 'head';
     inner.add(head);
     const hatDef = HAT_BY_ID.get(c.hat);
@@ -817,7 +817,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
     // Arms.
     const ts = 0.31;
     const shoulderY = d.yAt(ts);
-    const sx = d.rAt(ts) - 0.02;
+    const sx = d.sAt(ts) - 0.02;
     const sleeve = sleeveFor(c.outfit) ?? mix(pal.hex, pal.dark, 0.35);
     const mitten = mix(mix(pal.light, '#ffffff', 0.55), '#ffffff', 0.1);
     const armGeo = cachedGeo(`arm|${sleeve}|${mitten}|${quality}`, () => {
@@ -1271,7 +1271,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
       // Hair spring.
       if (b.hairTail) {
         const bobVel = (bodyPivot.position.y - lastBob) / Math.max(dt, 1e-3);
-        const target = 0.06 + mv * 0.42 * Math.min(1.4, speed / 2.4) + p.leanX * -0.6;
+        const target = 0.06 + mv * 0.3 * Math.min(1.4, speed / 2.4) + p.leanX * -0.6;
         const kS = b.hairStiff;
         hairVel += (kS * (target - hairAng) - 2 * Math.sqrt(kS) * 0.35 * hairVel) * dt - bobVel * 0.6 * dt;
         hairAng += hairVel * dt;

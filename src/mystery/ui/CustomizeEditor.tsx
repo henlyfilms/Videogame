@@ -89,7 +89,7 @@ function renderThumb(key: string, kind: ThumbKind, c: Cosmetics, extra: string, 
         drawBerry(ctx, c, W / 2 - 4, H * 1.08, 3.0, pose);
         break;
       case 'face':
-        drawBerry(ctx, c, W / 2 - 12, H * 1.32, 4.6, pose);
+        drawBerry(ctx, c, W / 2 - 14, H * 1.17, 4.4, pose);
         break;
       case 'pet':
         if (extra !== 'none') drawPet(ctx, extra, W / 2, H * 0.78, 5, 0.9, 1);
@@ -135,10 +135,12 @@ const CSS = `
   background:radial-gradient(120% 90% at 50% 15%,rgba(110,161,255,.22),rgba(20,184,166,.08) 45%,rgba(8,10,18,0) 70%),linear-gradient(180deg,#1c2540,#10141f);
   border:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
 @media(min-width:760px){.mmce-stage{position:sticky;top:12px;min-height:420px}}
-.mmce-canvas{width:100%;height:250px;display:block;flex:1}
-@media(min-width:760px){.mmce-canvas{height:360px}}
-.mmce-stagebar{display:flex;gap:8px;padding:10px;align-items:center;flex-wrap:wrap}
-.mmce-name{flex:1;min-width:120px;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);
+.mmce-canvas{width:100%;height:270px;display:block;flex:0 0 auto}
+@media(min-width:760px){.mmce-canvas{height:380px;flex:1}}
+.mmce-stagebar{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px;align-items:center}
+.mmce-stagebar .mmce-name{grid-column:1/-1}
+.mmce-stagebar .mmce-btn.primary{justify-content:center}
+.mmce-name{width:100%;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);
   color:var(--ce-ink);padding:0 12px;font-size:15px;font-weight:600;outline:none}
 .mmce-name:focus{border-color:var(--ce-teal);box-shadow:0 0 0 3px rgba(20,184,166,.25)}
 .mmce-btn{min-height:44px;min-width:44px;padding:0 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
@@ -147,7 +149,7 @@ const CSS = `
 .mmce-btn:focus-visible{outline:2px solid var(--ce-teal-2);outline-offset:2px}
 .mmce-btn.primary{background:linear-gradient(135deg,var(--ce-cobalt),var(--ce-teal));border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(47,111,237,.35)}
 .mmce-main{min-width:0;display:flex;flex-direction:column;gap:12px}
-.mmce-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;margin:-2px;-webkit-overflow-scrolling:touch}
+.mmce-tabs{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;margin:-2px;-webkit-overflow-scrolling:touch}
 .mmce-tabs::-webkit-scrollbar{display:none}
 .mmce-tab{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);
   color:var(--ce-muted);font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap}
@@ -155,7 +157,7 @@ const CSS = `
 .mmce-tab:focus-visible{outline:2px solid var(--ce-teal-2);outline-offset:2px}
 .mmce-panel{display:flex;flex-direction:column;gap:14px;min-width:0}
 .mmce-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ce-muted);font-weight:800;margin:0 0 -4px}
-.mmce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+.mmce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
 .mmce-grid.wide{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .mmce-grid.swatches{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
 .mmce-item{position:relative;min-height:44px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);
@@ -298,7 +300,7 @@ function usePreview2D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
       const { value: c, name: nm, emote: em } = state.current;
-      const s = Math.min(w / 90, h / 78);
+      const s = Math.min(w / (c.pet !== 'none' ? 92 : 70), h / 72);
       const fx = w / 2 - (c.pet !== 'none' ? 10 * s : 0);
       const fy = h * 0.8;
       // Soft spotlight floor.
@@ -321,7 +323,7 @@ function usePreview2D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
 }
 
 function usePreview3D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmetics, emote: string | null, enabled: boolean, onFail: () => void): void {
-  const rigRef = useRef<{ setCosmetics(c: Cosmetics): void } | null>(null);
+  const rigRef = useRef<{ setCosmetics(c: Cosmetics): void; setPet(id: string): void } | null>(null);
   const emoteRef = useRef(emote);
   emoteRef.current = emote;
   const valueRef = useRef(value);
@@ -347,17 +349,31 @@ function usePreview3D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
         rim.position.set(2, 2, -3);
         scene.add(rim);
         const cam = new THREE.PerspectiveCamera(32, 1, 0.05, 30);
-        cam.position.set(0, 0.95, 3.1);
-        cam.lookAt(0, 0.55, 0);
+        cam.position.set(0, 1.25, 4.3);
+        cam.lookAt(0, 0.58, 0);
         const turn = new THREE.Group();
         scene.add(turn);
         const rig = rigMod.createBerry(valueRef.current, { quality: 'high' });
         turn.add(rig.group);
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(0.75, 48), new THREE.MeshBasicMaterial({ color: 0x6ea1ff, transparent: true, opacity: 0.16 }));
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshBasicMaterial({ color: 0x6ea1ff, transparent: true, opacity: 0.16 }));
         disc.rotation.x = -Math.PI / 2;
         disc.position.y = 0.001;
         scene.add(disc);
-        rigRef.current = rig;
+        let pet: ReturnType<typeof rigMod.createPet> | null = null;
+        let petId = '';
+        const setPet = (id: string): void => {
+          if (id === petId) return;
+          petId = id;
+          if (pet) turn.remove(pet.group);
+          pet = id !== 'none' ? rigMod.createPet(id) : null;
+          if (pet) {
+            pet.group.position.set(0.55, 0, 0.25);
+            pet.group.rotation.y = -0.5;
+            turn.add(pet.group);
+          }
+        };
+        setPet(valueRef.current.pet);
+        rigRef.current = { setCosmetics: (c) => rig.setCosmetics(c), setPet };
         let last = performance.now();
         let raf = 0;
         const frame = (now: number): void => {
@@ -373,6 +389,7 @@ function usePreview3D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
           }
           turn.rotation.y += dt * 0.55;
           rig.update(dt, { moving: false, emote: emoteRef.current });
+          pet?.update(dt, false);
           renderer.render(scene, cam);
           raf = requestAnimationFrame(frame);
         };
@@ -396,6 +413,7 @@ function usePreview3D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
   }, [canvas, enabled, onFail]);
   useEffect(() => {
     rigRef.current?.setCosmetics(value);
+    rigRef.current?.setPet(value.pet);
   }, [value]);
 }
 
@@ -433,7 +451,7 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
   const thumbItems = (list: readonly CatalogItem[], field: keyof Cosmetics, kind: ThumbKind, tweak?: (c: Cosmetics) => Cosmetics): GridItem[] =>
     list.map((it) => {
       let c: Cosmetics = { ...base, [field]: it.id } as Cosmetics;
-      if (kind === 'face') c = { ...c, hat: 'none', hair: base.hair, face: field === 'face' ? it.id : 'none' };
+      if (kind === 'face') c = { ...c, hat: 'none', hair: 'none', back: 'none', outfit: 'none', face: field === 'face' ? it.id : 'none' };
       if (tweak) c = tweak(c);
       const key = `${kind}|${String(field)}|${it.id}|${c.berry}|${c.color}|${c.pattern}|${c.eyes}|${c.brows}|${c.mouth}|${c.hair}|${c.hairColor}|${c.hat}|${c.face}|${c.outfit}|${c.back}`;
       return { id: it.id, label: it.name, thumb: renderThumb(key, kind, c, it.id, name) };

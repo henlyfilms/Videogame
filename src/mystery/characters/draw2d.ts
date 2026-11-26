@@ -139,7 +139,7 @@ function inFace(g: Geo, x: number, y: number, pad = 0): boolean {
   return dx * dx + dy * dy < 1;
 }
 
-function paintSurface(ctx: Ctx, c: Cosmetics, g: Geo, t: Tones): void {
+function paintSurface(ctx: Ctx, g: Geo, t: Tones): void {
   const d = g.def;
   const rnd = srand(hash32(d.id) ^ 0x9e3779b9);
   switch (d.surface) {
@@ -304,7 +304,6 @@ function paintSurface(ctx: Ctx, c: Cosmetics, g: Geo, t: Tones): void {
       break;
     }
   }
-  void c;
 }
 
 function patternInk(c: Cosmetics, t: Tones): string {
@@ -587,7 +586,7 @@ function paintBodyLayer(ctx: Ctx, c: Cosmetics, g: Geo): void {
   ctx.save();
   traceBody(ctx, g);
   ctx.clip();
-  paintSurface(ctx, c, g, t);
+  paintSurface(ctx, g, t);
   paintPattern(ctx, c, g, t);
   // Core shadow low on the back side.
   const sh = ctx.createRadialGradient(-g.w * 0.3, g.bottom + 2, 1, -g.w * 0.3, g.bottom + 2, g.h * 0.75);
@@ -697,8 +696,8 @@ function computeAnim(pose: BerryPose, seed: number): Anim {
   };
   const ph = t * 11;
   if (pose.moving && !pose.ghost) {
-    a.legF = [Math.sin(ph) * 3.2, Math.max(0, -Math.cos(ph)) * 2.4];
-    a.legB = [-Math.sin(ph) * 3.2, Math.max(0, Math.cos(ph)) * 2.4];
+    a.legF = [Math.sin(ph) * 3.8, Math.max(0, -Math.cos(ph)) * 3];
+    a.legB = [-Math.sin(ph) * 3.8, Math.max(0, Math.cos(ph)) * 3];
     a.bob = Math.abs(Math.sin(ph)) * 1.7;
     a.squash = Math.cos(ph * 2) * 0.045;
     a.tilt = 0.08;
@@ -947,7 +946,7 @@ function drawLeg(ctx: Ctx, hx: number, off: [number, number], shoe: string, leg:
   ctx.lineWidth = 2.8;
   ctx.stroke();
   ctx.beginPath();
-  ctx.ellipse(fx + 1.4, fy - 1.5, 3.9, 2.3, 0, 0, TAU);
+  ctx.ellipse(fx + 1.5, fy - 1.6, 4.3, 2.5, 0, 0, TAU);
   const gr = ctx.createLinearGradient(fx, fy - 4, fx, fy);
   gr.addColorStop(0, mix(shoe, '#ffffff', 0.25));
   gr.addColorStop(1, shoe);
@@ -1068,6 +1067,18 @@ export function drawBerry(ctx: CanvasRenderingContext2D, c: Cosmetics, x: number
 
   ctx.scale(pose.dir * an.spinX, 1);
   if (an.spinX < 0) ctx.scale(-1, 1);
+
+  // Footstep dust puffs.
+  if (pose.moving && !ghost) {
+    const ph = (time * 11) / TAU;
+    for (let k = 0; k < 2; k++) {
+      const age = (ph * 2 + k * 0.5) % 1;
+      const r = 1.2 + age * 2.6;
+      circ(ctx, -6 - age * 9, -1 - age * 2.5, r);
+      ctx.fillStyle = `rgba(235,238,248,${0.22 * (1 - age) * (1 - age)})`;
+      ctx.fill();
+    }
+  }
 
   // Legs (not squashed).
   if (!ghost) {

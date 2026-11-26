@@ -160,15 +160,15 @@ export function geoFor(c: Cosmetics): Geo {
   const pal = paletteColor(c.color);
   const w = 33 * def.width;
   const h = 30.5 * def.aspect;
-  const bottom = -4.5;
+  const bottom = -5.2;
   const top = bottom - h;
   const fl = faceLine(def.id);
   const halfAt = (y: number): number => {
     const t = (bottom - y) / h;
     return berryProfile(def.id, t) * (w / 2);
   };
-  const neck = bottom - h * 0.3;
-  const sy = bottom - h * 0.31;
+  const neck = bottom - h * 0.27;
+  const sy = bottom - h * 0.3;
   const g: Geo = {
     def,
     pal,

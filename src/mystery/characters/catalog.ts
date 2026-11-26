@@ -52,7 +52,7 @@ export const BERRIES: readonly BerryDef[] = [
   { id: 'gooseberry', name: 'Gooseberry', aspect: 1.0, width: 1.0, surface: 'stripes', top: 'tuft', gloss: 0.7, bumps: 0, bumpSize: 0, natural: 6, blurb: 'Striped, translucent, slightly sour.' },
   { id: 'cherry', name: 'Cherry', aspect: 0.96, width: 1.03, surface: 'smooth', top: 'stem', gloss: 1, bumps: 0, bumpSize: 0, natural: 0, blurb: 'Shiny with a stem to twirl.' },
   { id: 'grape', name: 'Grape', aspect: 1.15, width: 0.92, surface: 'bloom', top: 'nub', gloss: 0.4, bumps: 0, bumpSize: 0, natural: 12, blurb: 'Smooth operator. Mild bloom.' },
-  { id: 'elderberry', name: 'Elderberry', aspect: 1.0, width: 1.04, surface: 'cluster', top: 'twig', gloss: 0.8, bumps: 9, bumpSize: 0.3, natural: 16, blurb: 'A whole cluster of opinions.' },
+  { id: 'elderberry', name: 'Elderberry', aspect: 1.0, width: 1.04, surface: 'cluster', top: 'twig', gloss: 0.8, bumps: 9, bumpSize: 0.3, natural: 13, blurb: 'A whole cluster of opinions.' },
   { id: 'boysenberry', name: 'Boysenberry', aspect: 1.06, width: 1.02, surface: 'drupelets', top: 'calyx', gloss: 0.55, bumps: 11, bumpSize: 0.2, natural: 13, blurb: 'Plump drupelets, plumper hugs.' },
   { id: 'goldberry', name: 'Goldberry', aspect: 1.0, width: 1.0, surface: 'shimmer', top: 'husk', gloss: 1, bumps: 0, bumpSize: 0, natural: 5, blurb: 'Rare, radiant, wrapped in a lantern husk.' },
 ];
@@ -697,7 +697,7 @@ const look = (c: Partial<Cosmetics>): Cosmetics => sanitizeCosmetics({ ...defaul
 
 export const MARION_BOT_LOOKS: Record<MarionBotId, Cosmetics> = {
   // Chief Executor — white, funky, groovy afro and shades.
-  daniel: look({ berry: 'gooseberry', color: 18, pattern: 'groovy', eyes: 'cool', brows: 'soft', mouth: 'grin', hair: 'afro', hairColor: '#1b1b24', hat: 'none', face: 'shades', outfit: 'suit', back: 'none', pet: 'drone', nameplate: 'gold', victory: 'moonwalk' }),
+  daniel: look({ berry: 'gooseberry', color: 18, pattern: 'groovy', eyes: 'cool', brows: 'soft', mouth: 'grin', hair: 'afro', hairColor: '#8f6bff', hat: 'none', face: 'shades', outfit: 'suit', back: 'none', pet: 'drone', nameplate: 'gold', victory: 'moonwalk' }),
   // Co-Pilot — the signature marionberry in violet, aviator cap & scarf.
   moose: look({ berry: 'marionberry', color: 12, pattern: 'plain', eyes: 'determined', brows: 'bushy', mouth: 'smile', hair: 'sideswept', hairColor: '#7a4524', hat: 'aviator', face: 'none', outfit: 'scarf', back: 'jetpack', pet: 'duckling', nameplate: 'cobalt', victory: 'jump' }),
   // Marion Agent — red strawberry with a heart pin and heart glasses.

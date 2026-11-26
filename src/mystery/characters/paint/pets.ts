@@ -1,5 +1,5 @@
 /** Pet painters (2D). Origin = pet's ground point, facing +x, ~14 units tall. */
-import { circ, ell, fs, INK, line, poly, rr, TAU, twinkle, type Ctx } from './util';
+import { circ, ell, fs, INK, line, poly, rr, twinkle, type Ctx } from './util';
 
 function eyes(ctx: Ctx, x: number, y: number, gap: number, r: number, blink: boolean): void {
   for (const dx of [0, gap]) {
@@ -335,6 +335,5 @@ export function paintPet(ctx: Ctx, id: string, time: number): void {
     }
     default:
       if (id) twinkle(ctx, 0, -6, 3, '#ffffff');
-      void TAU;
   }
 }

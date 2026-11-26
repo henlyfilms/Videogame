@@ -5,7 +5,7 @@
  */
 import { OUTFIT_BY_ID } from '../catalog';
 import { mix } from '../shape';
-import { circ, ell, fs, GOLD, heart, INK, line, poly, rr, star, traceBody, type Ctx, type Geo } from './util';
+import { circ, fs, GOLD, heart, INK, line, poly, rr, star, traceBody, type Ctx, type Geo } from './util';
 
 /** Outfits whose sleeves colour the arms (value = sleeve colour). */
 export function sleeveColor(id: string): string | null {
@@ -365,7 +365,6 @@ export function paintOutfit(ctx: Ctx, id: string, g: Geo): void {
     ctx.lineWidth = id === 'spacesuit' ? 2.2 : 1.4;
     ctx.stroke();
   }
-  void ell;
 }
 
 function bowtie(ctx: Ctx, x: number, y: number, color: string): void {

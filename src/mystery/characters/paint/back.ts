@@ -246,19 +246,20 @@ export function paintBackStraps(ctx: Ctx, id: string, g: Geo): void {
   const hw = g.w / 2;
   const strap = id === 'backpack' ? '#8a3f10' : id === 'jetpack' || id === 'scuba' ? '#3a4256' : id === 'quiver' ? '#5a3d22' : id === 'guitar' ? '#2b1d14' : id === 'teddy' ? '#1a43a6' : null;
   if (!strap) return;
+  // In the 3/4 view only the strap over the front shoulder shows.
   ctx.beginPath();
   if (id === 'guitar' || id === 'quiver') {
-    ctx.moveTo(-hw * 0.6, g.neck - 3);
-    ctx.quadraticCurveTo(g.fx, g.neck + 2, hw * 0.85, g.bottom - 1);
+    ctx.moveTo(-hw * 0.55, g.neck + 0.5);
+    ctx.quadraticCurveTo(hw * 0.1, g.neck + 2.5, hw * 0.6, g.bottom - 1.5);
   } else {
-    ctx.moveTo(-hw * 0.3, g.sy - 2.5);
-    ctx.quadraticCurveTo(hw * 0.5, g.sy - 1.5, hw * 0.55, g.bottom - 1.5);
+    ctx.moveTo(g.sxFront - 5, g.neck + 0.6);
+    ctx.quadraticCurveTo(g.sxFront - 1.5, g.neck + 2, g.sxFront - 1.2, g.sy + 6);
   }
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 3.2;
+  ctx.lineWidth = 2.8;
   ctx.lineCap = 'round';
   ctx.stroke();
   ctx.strokeStyle = mix(strap, '#ffffff', 0.08);
-  ctx.lineWidth = 1.7;
+  ctx.lineWidth = 1.4;
   ctx.stroke();
 }
