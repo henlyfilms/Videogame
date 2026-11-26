@@ -390,6 +390,15 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     return r.team === 'murderers' ? `${ejected.name} was ${r.name === 'Murderer' ? 'a Murderer' : `the ${r.name}`}.` : `${ejected.name} was not a Murderer.`;
   }, [ejected, e, settings.confirmEjects]);
   const remaining = settings.confirmEjects ? snap.stats.murderers?.murderersAlive ?? null : null;
+  const use3d = useStage();
+  const ejectActors = useMemo<StageActor[]>(
+    () =>
+      ejected
+        ? [{ cosmetics: ejected.cosmetics, pose: 'scared' as StagePose, x: style === 'trapdoor' ? 0 : style === 'caboose' ? -2.8 : 2.8, fromX: style === 'trapdoor' ? 0 : style === 'caboose' ? 2.8 : -2.8, enter: 5, flight: style === 'trapdoor' ? ('fall' as const) : style === 'caboose' ? ('arc' as const) : ('across' as const) }]
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ejected?.id, style],
+  );
   useEffect(() => {
     let i = 0;
     const t = setInterval(() => {
@@ -399,6 +408,7 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     }, prefs.reducedMotion ? 1 : 45);
     return () => clearInterval(t);
   }, [msg, prefs.reducedMotion]);
+  const skipBerry = use3d;
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -438,7 +448,7 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
         g.fillStyle = '#475569';
         for (let i = 0; i < 20; i++) g.fillRect(((i * 80 - t * 400) % (w + 80)) + w, h * 0.86, 40, 6);
       }
-      if (ejected) {
+      if (ejected && !skipBerry) {
         const k = Math.min(1, t / 4.5);
         let x = w * 0.5;
         let y = h * 0.45;
@@ -474,10 +484,17 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [ejected, scene, style]);
+  }, [ejected, scene, style, skipBerry]);
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 46 }}>
       <canvas ref={ref} style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden />
+      {use3d && ejected && (
+        <div style={{ position: 'absolute', left: 0, right: 0, top: '12%', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+          <Suspense fallback={null}>
+            <Stage3D actors={ejectActors} width={Math.min(900, innerWidth)} height={Math.min(420, innerHeight * 0.5)} light="#cfe0ff" reducedMotion={prefs.reducedMotion} />
+          </Suspense>
+        </div>
+      )}
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: '18%', textAlign: 'center', padding: 16 }}>
         <div style={{ fontSize: 'clamp(22px, 4.5vw, 40px)', fontWeight: 850, textShadow: '0 4px 20px rgba(0,0,0,0.6)' }} aria-live="polite">
           {typed}

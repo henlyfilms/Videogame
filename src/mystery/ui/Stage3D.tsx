@@ -20,6 +20,8 @@ export interface StageActor {
   fromX?: number;
   enter?: number;
   ghost?: boolean;
+  /** Ejection flight: tumble across/down the stage over `enter` seconds. */
+  flight?: 'across' | 'fall' | 'arc';
 }
 
 export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', reducedMotion = false }: { actors: StageActor[]; height?: number; width?: number; light?: string; reducedMotion?: boolean }) {
@@ -49,7 +51,8 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
     const camera = new THREE.PerspectiveCamera(28, width / height, 0.1, 50);
     const vfov = (camera.fov * Math.PI) / 180;
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
-    const dist = Math.max(half / Math.tan(hfov / 2), 0.8 / Math.tan(vfov / 2)) * 1.08;
+    const flying = actors.some((a) => a.flight);
+    const dist = Math.max(half / Math.tan(hfov / 2), (flying ? 1.4 : 0.8) / Math.tan(vfov / 2)) * 1.08;
     camera.position.set(0, 0.75, dist);
     camera.lookAt(0, 0.58, 0);
     const rigs: { rig: BerryRig; a: StageActor; next: number }[] = actors.map((a) => {
@@ -72,9 +75,18 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
         const enter = reducedMotion ? 0 : r.a.enter ?? 0;
         const k = enter ? Math.min(1, t / enter) : 1;
         const e = 1 - Math.pow(1 - k, 3);
-        r.rig.group.position.x = (r.a.fromX ?? r.a.x) + (r.a.x - (r.a.fromX ?? r.a.x)) * e;
-        r.rig.group.rotation.y = Math.sin(t * 0.7 + r.a.x) * 0.25;
-        if (r.a.pose && t >= r.next && k >= 1) {
+        const fl = r.a.flight;
+        if (fl) {
+          const lin = enter ? Math.min(1, t / enter) : 1;
+          r.rig.group.position.x = (r.a.fromX ?? -4) + (r.a.x - (r.a.fromX ?? -4)) * lin;
+          r.rig.group.position.y = fl === 'fall' ? 1.5 - lin * 2.6 : fl === 'arc' ? -0.2 + Math.sin(lin * Math.PI) * 1.1 : 0.2 + Math.sin(t * 3) * 0.2;
+          r.rig.group.rotation.z = t * (fl === 'fall' ? 1.5 : 4);
+          r.rig.group.rotation.y = t * 1.3;
+        } else {
+          r.rig.group.position.x = (r.a.fromX ?? r.a.x) + (r.a.x - (r.a.fromX ?? r.a.x)) * e;
+          r.rig.group.rotation.y = Math.sin(t * 0.7 + r.a.x) * 0.25;
+        }
+        if (r.a.pose && t >= r.next && (k >= 1 || r.a.flight)) {
           r.rig.play(r.a.pose);
           r.next = t + (r.a.pose === 'squish' ? 99 : 2.6);
         }

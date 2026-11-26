@@ -52,6 +52,6 @@ How the captures were made: Playwright with headless Chromium. 3D was drawn by *
 | Does it feel alive? | Bots mill about, pets follow, props blink, ambient music plays, and Lights Out has creaks and a heartbeat. |
 
 **Known rough edges:**
-- The ejection is a 2D canvas cinematic in both views.
+- The ejection backdrop is shared; the ejected berry is a real 3D rig for 3D players (added after these captures).
 - Some 3D hair caps (bob, side-swept) read slightly helmet-like.
 - Real-device frame rates are unmeasured.

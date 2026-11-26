@@ -36,5 +36,5 @@ Fixes that got there: critical-sabotage fixer coordination, ghosts dropping fix 
 
 ## Open items / ideas
 
-- 3D ejection is the shared 2D canvas cinematic (both views); role reveal, death and victory have true 3D stages.
+- 3D players get true 3D stages for the role reveal, death, ejection (per-map flight) and victory; 2D players get the 2D versions.
 - Proximity *voice* chat, accounts/ranked play, a disguise role and a Guardian ghost role are deliberately out of scope (see RESEARCH.md).
