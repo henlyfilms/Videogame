@@ -186,7 +186,7 @@ export class Renderer2D {
       g.fillStyle = `rgba(255,255,255,${0.15 + hash2(i, cx + cy) * 0.35})`;
       g.fillRect(sx, sy, s * 0.05, s * 0.05);
     }
-    const hallBase = night ? mix(theme.hall, '#0b1022', 0.55) : theme.hall;
+    const hallBase = night ? mix(theme.hall, '#0b1022', 0.6) : mix(theme.hall, '#475569', 0.22);
     for (let ty = Math.max(0, y0); ty < y1; ty++)
       for (let tx = Math.max(0, x0); tx < x1; tx++) {
         const i = ty * map.w + tx;
@@ -368,10 +368,11 @@ export class Renderer2D {
         const pl = f.players.find((p) => p.id === id);
         for (const fp of trail) {
           const age = now - fp.t;
-          if (age > 6) continue;
-          ctx.fillStyle = rgba(pl ? '#94a3b8' : '#64748b', 0.45 * (1 - age / 6));
+          if (age > 4 || !pl || pl.local) continue;
+          ctx.fillStyle = rgba('#2dd4bf', 0.35 * (1 - age / 4));
           ctx.beginPath();
-          ctx.ellipse(fp.x * s, fp.y * s, s * 0.08, s * 0.12, 0, 0, Math.PI * 2);
+          ctx.ellipse(fp.x * s - s * 0.07, fp.y * s, s * 0.05, s * 0.08, 0, 0, Math.PI * 2);
+          ctx.ellipse(fp.x * s + s * 0.07, fp.y * s + s * 0.05, s * 0.05, s * 0.08, 0, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -535,6 +536,13 @@ export class Renderer2D {
     // Lighting / fog of war.
     if (f.vision && !f.vision.all) this.drawFog(f, s, cx, cy);
     else if (f.night && f.mode === 'match') this.drawNightTint(0.25);
+    {
+      const v = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.72);
+      v.addColorStop(0, 'rgba(5,8,22,0)');
+      v.addColorStop(1, 'rgba(5,8,22,0.38)');
+      ctx.fillStyle = v;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
     if (f.critical && !f.reducedMotion) {
       const a = 0.12 + 0.1 * Math.sin(f.t * 6);
       const g = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.3, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
@@ -584,10 +592,10 @@ export class Renderer2D {
     const toFog = (p: Vec2) => ({ x: (this.w / 2 + (p.x - cx) * s) * fs, y: (this.h / 2 + (p.y - cy) * s) * fs });
     fg.globalCompositeOperation = 'source-over';
     const flick = this.flicker > 0 ? 0.2 * Math.abs(Math.sin(this.flicker * 30)) : 0;
-    let base = f.night ? 0.95 : f.lightsSabotaged ? 0.9 : 0.72;
+    let base = f.night ? 0.95 : f.lightsSabotaged ? 0.92 : 0.8;
     if (f.highVisibility) base -= 0.18;
     fg.clearRect(0, 0, W, H);
-    fg.fillStyle = f.night ? `rgba(3,5,16,${Math.min(1, base + flick)})` : `rgba(8,12,28,${Math.min(1, base + flick)})`;
+    fg.fillStyle = f.night ? `rgba(3,5,16,${Math.min(1, base + flick)})` : `rgba(10,14,38,${Math.min(1, base + flick)})`;
     fg.fillRect(0, 0, W, H);
     fg.globalCompositeOperation = 'destination-out';
     const origin = f.focus;

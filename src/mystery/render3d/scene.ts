@@ -70,7 +70,7 @@ function planeForRect(r: Rect, y: number, color: THREE.Color): THREE.BufferGeome
 
 function tint(accent: string, style: FloorStyle): THREE.Color {
   // Vertex colour multiplies the neutral texture toward the room accent.
-  const t = style === 'grass' || style === 'snow' || style === 'wood' || style === 'stone' ? 0.12 : 0.22;
+  const t = style === 'grass' || style === 'snow' || style === 'wood' || style === 'stone' ? 0.16 : 0.32;
   return new THREE.Color(mix('#ffffff', accent, t));
 }
 
@@ -291,7 +291,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
   const walls = map.walls;
   const wallGeo = track(new THREE.BoxGeometry(1, wallH, 1));
   wallGeo.translate(0, wallH / 2, 0);
-  const wallMat = track(toon(night ? mix(theme.wall, '#0b1022', 0.55) : theme.wall));
+  const wallMat = track(toon('#ffffff'));
   const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, walls.length);
   const capGeo = track(new THREE.BoxGeometry(1.02, 0.12, 1.02));
   capGeo.translate(0, wallH + 0.06, 0);
@@ -299,14 +299,36 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
   const capMesh = new THREE.InstancedMesh(capGeo, capMat, walls.length);
   const trimGeo = track(new THREE.BoxGeometry(1.01, 0.12, 1.01));
   trimGeo.translate(0, 0.06, 0);
-  const trimMesh = new THREE.InstancedMesh(trimGeo, track(toon(theme.trim, { emissive: night ? new THREE.Color(theme.trim).multiplyScalar(0.35) : new THREE.Color(0) })), walls.length);
+  const trimMesh = new THREE.InstancedMesh(trimGeo, track(toon('#ffffff', { emissive: new THREE.Color(night ? '#334155' : '#000000') })), walls.length);
   const m4 = new THREE.Matrix4();
+  const baseWall = new THREE.Color(night ? mix(theme.wall, '#0b1022', 0.55) : theme.wall);
+  const tmp = new THREE.Color();
   walls.forEach((wi, i) => {
-    m4.makeTranslation((wi % map.w) + 0.5, 0, Math.floor(wi / map.w) + 0.5);
+    const wx = wi % map.w;
+    const wz = Math.floor(wi / map.w);
+    m4.makeTranslation(wx + 0.5, 0, wz + 0.5);
     wallMesh.setMatrixAt(i, m4);
     capMesh.setMatrixAt(i, m4);
     trimMesh.setMatrixAt(i, m4);
+    // Tint each wall toward the room it faces so every room has its own colour.
+    let room = -1;
+    for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const) {
+      const nx = wx + dx;
+      const nz = wz + dz;
+      if (nx < 0 || nz < 0 || nx >= map.w || nz >= map.h) continue;
+      const ri = map.roomIdx[nz * map.w + nx]!;
+      if (ri >= 0) {
+        room = ri;
+        break;
+      }
+    }
+    tmp.copy(baseWall);
+    if (room >= 0) tmp.lerp(new THREE.Color(map.def.rooms[room]!.color), night ? 0.18 : 0.3);
+    wallMesh.setColorAt(i, tmp);
+    trimMesh.setColorAt(i, room >= 0 ? new THREE.Color(map.def.rooms[room]!.color) : new THREE.Color(theme.trim));
   });
+  if (wallMesh.instanceColor) wallMesh.instanceColor.needsUpdate = true;
+  if (trimMesh.instanceColor) trimMesh.instanceColor.needsUpdate = true;
   wallMesh.castShadow = quality === 'high';
   wallMesh.receiveShadow = quality === 'high';
   group.add(wallMesh, capMesh, trimMesh);

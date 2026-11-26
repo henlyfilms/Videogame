@@ -50,7 +50,7 @@ export function floorBase(style: FloorStyle, accent: string, night: boolean): st
     checker: '#eef0f6',
     rug: '#e8d9e9',
   };
-  const tint = style === 'grass' || style === 'snow' || style === 'wood' ? 0.1 : 0.16;
+  const tint = style === 'grass' || style === 'snow' || style === 'wood' ? 0.14 : 0.26;
   const c = mix(base[style], accent, tint);
   return night ? mix(c, '#0b1022', 0.55) : c;
 }
