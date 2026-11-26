@@ -9,9 +9,8 @@ import type { Camera } from '../engine/camera';
 import type { Simulation, SimBot } from '../engine/sim';
 import {
   doorTilesLocal,
-  MAP_H,
-  MAP_W,
   propCenter,
+  propRect,
   roomRect,
   ROOMS,
   ROOM_BY_ID,
@@ -23,6 +22,9 @@ import {
   type Point,
 } from '../engine/world';
 import { THEMES, type ThemeTokens } from '../theme/tokens';
+import { createNightMaskCanvas, drawDaylight, drawLightFixtures, NIGHT_MASK_SCALE, nightFactor } from './daylight';
+import { arcadeFloor, drawArcadeCarpet, drawTerrace, traceBuildingOutline } from './ground';
+import { accentSpill, floorKeyLight, propShadow, propShadowShape, roomOcclusion, softShadow, wallBevel } from './lighting';
 import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props';
 import { drawBotSprite, drawGlow, hexA, roundRect } from './sprites';
 import { MODEL_COLORS, type RenderView } from './view';
@@ -36,6 +38,8 @@ export interface RenderOptions {
   hoverRoom: RoomId | null;
   hoverHotspot: { roomId: RoomId; propId: string } | null;
   showNames: boolean;
+  /** Local hour (0–24, fractional) for the day/night cycle; omitted = noon. */
+  hour?: number;
 }
 
 /** World-px size of one static-layer chunk. */
@@ -122,8 +126,10 @@ export class Renderer {
   private baseKey = '';
   private chunks = new Map<string, Chunk>();
   private chunkPixels = 0;
+  /** Screen-sized offscreen for the night light mask (created on first dusk). */
+  private nightMask: CanvasRenderingContext2D | null = null;
   /** Counters for perf overlays/tests. */
-  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0 };
+  stats = { staticBuilds: 0, chunkBuilds: 0, frames: 0, botsDrawn: 0, lights: 0 };
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -303,6 +309,25 @@ export class Renderer {
       ctx.fillRect(vis.x, vis.y, vis.w, vis.h);
     }
 
+    // Time of day: dusk warmth, night tint, lamp pools and lit windows.
+    if (opts.hour !== undefined) {
+      if (nightFactor(opts.hour) > 0.004 && !this.nightMask) this.nightMask = createNightMaskCanvas();
+      // The light mask is all soft gradients, so it renders at 1/4 resolution and is upscaled.
+      const q = NIGHT_MASK_SCALE;
+      const mask = this.nightMask
+        ? {
+            ctx: this.nightMask,
+            width: Math.ceil(this.canvas.width * q),
+            height: Math.ceil(this.canvas.height * q),
+            transform: [z * q, (this.cssW / 2 - cam.x * cam.zoom) * this.dpr * q, (this.cssH / 2 - cam.y * cam.zoom) * this.dpr * q] as [number, number, number],
+            destW: this.canvas.width,
+            destH: this.canvas.height,
+          }
+        : null;
+      const ds = drawDaylight(ctx, vis, theme, opts.hour, t, mask);
+      this.stats.lights = ds.lamps + ds.windows;
+    }
+
     // Tube packets.
     for (const pk of sim.packets) {
       const p = sim.packetPos(pk);
@@ -342,30 +367,27 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Bots (y-sorted), glow first for a soft neon bloom.
+    // Bots (y-sorted), glow first for a soft neon bloom. At overview zoom the
+    // sprites keep a minimum on-screen size so the crew stays readable.
     const bots = [...sim.bots.values()].sort((a, b) => a.y - b.y);
+    const botScale = Math.min(1.8, Math.max(1, 0.62 / cam.zoom));
+    const radius = 11 * botScale;
     const prevComp = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = theme.name === 'light' ? 'source-over' : 'lighter';
     for (const bot of bots) {
       const p = lerpPos(bot, alpha);
       if (!inView(p.x, p.y)) continue;
-      drawGlow(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts));
+      drawGlow(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts, radius));
     }
     ctx.globalCompositeOperation = prevComp;
     this.stats.botsDrawn = 0;
+    const namesOn = cam.zoom >= 0.55;
     for (const bot of bots) {
       const p = lerpPos(bot, alpha);
       if (!inView(p.x, p.y)) continue;
-      drawBotSprite(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts));
+      drawBotSprite(ctx, p.x, p.y, spriteOpts(bot, theme, t, opts, radius));
       this.stats.botsDrawn++;
-      if (opts.showNames || bot.def.id === opts.selectedBot) {
-        ctx.save();
-        ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = theme.world.label;
-        ctx.fillText(bot.def.name, p.x, p.y + 24);
-        ctx.restore();
-      }
+      if ((opts.showNames && namesOn) || bot.def.id === opts.selectedBot) drawNameTag(ctx, bot.def.name, p.x, p.y + radius + 12, theme, bot.def.id === opts.selectedBot);
     }
 
     // Particles.
@@ -394,8 +416,48 @@ export class Renderer {
       ctx.restore();
     }
 
+    // Room name chips (screen space) once baked labels get too small to read.
+    this.drawRoomChips(cam, theme, opts);
+
     // Speech bubbles in screen space (crisp text at any zoom).
     this.drawBubbles(sim, cam, theme, alpha);
+  }
+
+  private drawRoomChips(cam: Camera, theme: ThemeTokens, opts: RenderOptions): void {
+    const fade = Math.max(0, Math.min(1, (0.8 - cam.zoom) / 0.2));
+    if (fade <= 0) return;
+    const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.font = '650 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    for (const room of ROOMS) {
+      const r = roomRect(room);
+      // Sits exactly over the baked legend label (top-left, in the corridor) so the two never double up.
+      const s = cam.worldToScreen(r.x, r.y - 12);
+      if (s.x < -200 || s.x > this.cssW + 20 || s.y < -20 || s.y > this.cssH + 20) continue;
+      const label = room.short;
+      const tw = ctx.measureText(label).width;
+      const w = tw + 24;
+      const x = Math.round(s.x - 4);
+      const y = Math.round(s.y - 9);
+      const accent = ROOM_ACCENT[room.id];
+      const sel = room.id === opts.selectedRoom;
+      ctx.globalAlpha = fade;
+      roundRect(ctx, x, y, w, 18, 9);
+      ctx.fillStyle = hexA(theme.world.bubbleBg, 0.94);
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = sel ? theme.accent : hexA(accent, 0.55);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(x + 9, y + 9, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.world.bubbleInk;
+      ctx.fillText(label, x + 16, y + 9.5);
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawWaves(ctx: Ctx, sim: Simulation, view: RenderView, theme: ThemeTokens, t: number): void {
@@ -493,8 +555,29 @@ export function lerpPos(bot: SimBot, alpha: number): Point {
   return { x: bot.prevX + (bot.x - bot.prevX) * alpha, y: bot.prevY + (bot.y - bot.prevY) * alpha };
 }
 
-function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOptions) {
+/** Name tag under a bot: a small pill so it reads on any floor (dark Arcade carpet included). */
+function drawNameTag(ctx: Ctx, name: string, x: number, y: number, theme: ThemeTokens, selected: boolean): void {
+  ctx.save();
+  ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+  const w = ctx.measureText(name).width + 8;
+  roundRect(ctx, x - w / 2, y - 6.5, w, 12, 6);
+  ctx.fillStyle = hexA(theme.world.bubbleBg, theme.name === 'dark' ? 0.82 : 0.88);
+  ctx.fill();
+  if (selected) {
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = selected ? theme.accent : theme.world.bubbleInk;
+  ctx.fillText(name, x, y + 0.5);
+  ctx.restore();
+}
+
+function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOptions, radius = 11) {
   return {
+    radius,
     shape: bot.def.shape,
     color: bot.def.color,
     glowColor: bot.def.glowColor,
@@ -504,6 +587,7 @@ function spriteOpts(bot: SimBot, theme: ThemeTokens, t: number, opts: RenderOpti
     phase: bot.phase,
     facing: bot.facing,
     selected: bot.def.id === opts.selectedBot,
+    mood: bot.mood?.kind ?? null,
     carry: bot.carry,
     buffed: bot.buffUntil > t,
     theme,
@@ -564,26 +648,42 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // Corridor slab.
-  roundRect(ctx, TILE * 0.5, TILE * 0.5, (MAP_W - 1) * TILE, (MAP_H - 1) * TILE, 18);
+  // Outdoor terrace garden on the annex Void cells.
+  drawTerrace(ctx, theme, region);
+
+  // Corridor slab (core block + the corridor ring around the Arcade), lifted off
+  // the ground by a soft drop shadow.
+  softShadow(ctx, () => traceBuildingOutline(ctx), theme, 20, 3, 9, 0.035);
+  traceBuildingOutline(ctx);
   ctx.fillStyle = w.corridor;
   ctx.fill();
   ctx.strokeStyle = w.corridorLine;
   ctx.stroke();
+  // Window glass on the facade + corridor lamp fixtures (lit at night per frame).
+  drawLightFixtures(ctx, theme, region);
 
   // Rooms.
   for (const room of ROOMS) {
     const r = roomRect(room);
-    if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 8)) continue;
+    if (!hits(region, r.x, r.y - 24, r.w, r.h + 24, 24)) continue;
     const accent = ROOM_ACCENT[room.id];
+    // Drop shadow: rooms sit a step above the corridor.
+    softShadow(ctx, () => roundRect(ctx, r.x, r.y, r.w, r.h, 10), theme, 10, 1.5, 5, 0.04);
     // Floor.
     let floor = w.floor;
+    const darkFloor = room.id === 'cutting' || room.id === 'arcade';
     if (room.id === 'cutting') floor = theme.name === 'light' ? '#20242f' : theme.name === 'soft' ? '#262a33' : '#0c0f16';
-    ctx.fillStyle = floor;
-    roundRect(ctx, r.x, r.y, r.w, r.h, 10);
-    ctx.fill();
-    ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.035);
-    ctx.fill();
+    if (room.id === 'arcade') {
+      drawArcadeCarpet(ctx, room, theme);
+      floorKeyLight(ctx, r, theme, '#ff8fe6', true);
+    } else {
+      ctx.fillStyle = floor;
+      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+      ctx.fill();
+      ctx.fillStyle = hexA(accent, room.id === 'media' ? 0.07 : 0.045);
+      ctx.fill();
+      floorKeyLight(ctx, r, theme, '#ffffff', darkFloor);
+    }
     // Floor tile grid.
     ctx.save();
     roundRect(ctx, r.x, r.y, r.w, r.h, 10);
@@ -600,10 +700,13 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     }
     ctx.stroke();
     ctx.restore();
+    // Ambient occlusion where floor meets wall.
+    roomOcclusion(ctx, r, theme, darkFloor);
 
-    // Walls (with door gaps).
-    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, w.door);
-    // Accent strip along the top wall.
+    // Walls (with door gaps; thresholds match this room's floor).
+    drawWalls(ctx, room.x, room.y, room.w, room.h, w.wall, room.id === 'arcade' ? arcadeFloor(theme) : room.id === 'cutting' ? floor : w.door, theme);
+    // Accent strip along the top wall, spilling a little coloured light onto the floor.
+    accentSpill(ctx, r, accent, theme);
     ctx.fillStyle = hexA(accent, 0.75);
     roundRect(ctx, r.x + TILE * 0.6, r.y + 4, TILE * 2.2, 3, 1.5);
     ctx.fill();
@@ -632,8 +735,8 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.strokeStyle = hexA('#6ea1ff', theme.name === 'dark' ? 0.16 : 0.18);
-    ctx.lineWidth = 9;
+    ctx.strokeStyle = hexA('#6ea1ff', theme.name === 'dark' ? 0.16 : 0.15);
+    ctx.lineWidth = 8;
     ctx.beginPath();
     route.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
@@ -673,12 +776,16 @@ export function drawStaticWorld(ctx: Ctx, theme: ThemeTokens, region?: Region): 
   for (const room of ROOMS) {
     const r = roomRect(room);
     if (!hits(region, r.x, r.y, r.w, r.h, 16)) continue;
-    for (const prop of room.props) drawPropStatic(ctx, room, prop, theme);
+    for (const prop of room.props) {
+      const shape = prop.blocking ? propShadowShape(prop.kind, propRect(room, prop)) : null;
+      if (shape) propShadow(ctx, propRect(room, prop), theme, shape.inset, shape.radius);
+      drawPropStatic(ctx, room, prop, theme);
+    }
   }
   if (region) ctx.restore();
 }
 
-function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string): void {
+function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wall: string, door: string, theme?: ThemeTokens): void {
   const x = tx * TILE;
   const y = ty * TILE;
   const w = tw * TILE;
@@ -688,6 +795,7 @@ function drawWalls(ctx: Ctx, tx: number, ty: number, tw: number, th: number, wal
   ctx.lineWidth = 6;
   roundRect(ctx, x + 3, y + 3, w - 6, h - 6, 9);
   ctx.stroke();
+  if (theme) wallBevel(ctx, { x, y, w, h }, theme);
   // Punch doors.
   ctx.strokeStyle = door;
   ctx.lineWidth = 8;

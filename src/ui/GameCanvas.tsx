@@ -26,6 +26,9 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       const rect = canvas.parentElement?.getBoundingClientRect() ?? { width: window.innerWidth, height: window.innerHeight };
       renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
       hq.camera.setViewport(rect.width, rect.height);
+      // Keep the overview clear of the top bar and (on wide screens) the activity feed.
+      const phone = rect.width < 640;
+      hq.camera.insets = phone ? { top: 112, right: 0, bottom: 56, left: 0 } : { top: 56, right: 0, bottom: 0, left: rect.width >= 1100 ? 330 : 0 };
     };
     fit();
     if (hq.camera.vw < 640) hq.frameRoom('command');

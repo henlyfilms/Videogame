@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ArcadeOverlay } from '../arcade/ArcadeOverlay';
 import type { RoomId } from '../data/bots';
 import type { HotspotAction } from '../engine/world';
 import { actions } from '../game/actions';
@@ -152,6 +153,7 @@ export function App() {
 
       <CommandPalette toast={showToast} />
       <HelpOverlay />
+      <ArcadeOverlay />
     </main>
   );
 }

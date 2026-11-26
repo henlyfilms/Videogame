@@ -8,6 +8,7 @@ import { MODEL_LABELS, SKILL_COLORS, SKILL_LABELS } from '../../render/view';
 import { botName, useGame } from '../../store/gameStore';
 import { THEME_ORDER, THEMES } from '../../theme/tokens';
 import { Bar, BotPreview, Empty, Kbd, Section, Stat, useNow } from '../common';
+import { ArcadePanel } from './ArcadePanel';
 
 const MODELS: RelayModel[] = ['claude-opus-auto', 'codex', 'gemini'];
 
@@ -31,6 +32,8 @@ export function RoomPanelBody({ room }: { room: RoomId }) {
       return <MailPanel />;
     case 'foundry':
       return <FoundryPanel />;
+    case 'arcade':
+      return <ArcadePanel />;
   }
 }
 
@@ -44,6 +47,7 @@ export const ROOM_BLURB: Record<RoomId, string> = {
   cutting: 'Sort incoming footage into keepers vs. outtakes to drive the render bar.',
   mail: 'Sort mail, then stamp drafts to send. Nothing leaves without your stamp.',
   foundry: 'Spawn custom specialists and slot Universal Skill cartridges.',
+  arcade: 'Neon cabinets, a leaderboard and Marion Mystery. Play with (or against) the bots.',
 };
 
 // ---------------------------------------------------------------------------

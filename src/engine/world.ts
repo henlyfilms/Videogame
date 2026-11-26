@@ -1,7 +1,9 @@
 /**
  * HQ floorplan: a 3×3 block of rooms (7 wings + Moose's bridge + the Huddle room)
- * separated by walkable corridors. Everything is defined in tiles; the renderer
- * and the simulation convert to world pixels with TILE.
+ * separated by walkable corridors, plus a 4th "annex" row that holds the Arcade
+ * wing. Annex cells without a room are outdoor terrace (Void) — only the
+ * corridor ring around the Arcade stays walkable. Everything is defined in
+ * tiles; the renderer and the simulation convert to world pixels with TILE.
  */
 import type { RoomId } from '../data/bots';
 
@@ -10,9 +12,13 @@ export const ROOM_W = 18;
 export const ROOM_H = 12;
 export const CORRIDOR = 3;
 export const COLS = 3;
-export const ROWS = 3;
+export const ROWS = 4;
+/** Rows below this index are the annex (Arcade + terrace). */
+export const CORE_ROWS = 3;
 export const MAP_W = COLS * ROOM_W + (COLS + 1) * CORRIDOR; // 66
-export const MAP_H = ROWS * ROOM_H + (ROWS + 1) * CORRIDOR; // 48
+export const MAP_H = ROWS * ROOM_H + (ROWS + 1) * CORRIDOR; // 63
+/** First tile row of the annex (top wall of the Arcade). */
+export const ANNEX_Y = CORRIDOR + CORE_ROWS * (ROOM_H + CORRIDOR); // 48
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
 
@@ -57,7 +63,9 @@ export type HotspotAction =
   | 'bench'
   | 'skills'
   | 'pod'
-  | 'retired';
+  | 'retired'
+  | 'arcade'
+  | 'leaderboard';
 
 export type PropKind =
   | 'command-desk'
@@ -99,7 +107,10 @@ export type PropKind =
   | 'aura-bench'
   | 'skill-wall'
   | 'spawn-pod'
-  | 'retired-shelf';
+  | 'retired-shelf'
+  | 'arcade-cabinet'
+  | 'leaderboard'
+  | 'neon-sign';
 
 export interface PropDef {
   id: string;
@@ -324,7 +335,44 @@ const BLUEPRINTS: RoomBlueprint[] = [
       sp('center', 9, 3),
     ],
   },
+  {
+    id: 'arcade',
+    name: 'The Arcade',
+    short: 'Arcade',
+    owner: null,
+    col: 1,
+    row: 3,
+    props: [
+      p('cab1', 'arcade-cabinet', 2, 1, 2, 2, undefined, true, 'Berry Blaster'),
+      p('cab2', 'arcade-cabinet', 4, 1, 2, 2, undefined, true, 'Neon Drift'),
+      p('neon', 'neon-sign', 11, 1, 4, 1, undefined, true, 'ARCADE'),
+      p('cab3', 'arcade-cabinet', 15, 1, 2, 2, undefined, true, 'Glow Hockey'),
+      p('mystery', 'arcade-cabinet', 7, 4, 4, 2, 'arcade', true, 'Marion Mystery'),
+      p('cab4', 'arcade-cabinet', 15, 8, 2, 2, undefined, true, 'Quill Quest'),
+      p('board', 'leaderboard', 10, 9, 4, 2, 'leaderboard', true, 'Leaderboard'),
+      p('sofa', 'couch', 2, 9, 4, 1, undefined, true),
+      p('plant1', 'plant', 1, 10, 1, 1, undefined, true),
+      p('plant2', 'plant', 16, 10, 1, 1, undefined, true),
+    ],
+    spots: [
+      // Player spots in front of each cabinet (bots "play" = working here).
+      sp('p0', 7, 6),
+      sp('p1', 8, 6),
+      sp('p2', 9, 6),
+      sp('p3', 10, 6),
+      sp('p4', 3, 3),
+      sp('p5', 5, 3),
+      sp('p6', 14, 2),
+      sp('p7', 14, 9),
+      sp('board', 12, 8),
+      sp('couch', 4, 8),
+      sp('center', 9, 8),
+    ],
+  },
 ];
+
+/** Cabinet player spots in the Arcade, best (Marion Mystery) first. */
+export const ARCADE_SEATS: readonly string[] = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
 
 export const ROOMS: readonly RoomDef[] = BLUEPRINTS.map((b) => ({
   id: b.id,
@@ -373,13 +421,26 @@ export interface Grid {
   roomIndex: Int8Array;
 }
 
+/** Tile x-ranges [x0, x1) of the corridor rings kept around annex rooms. */
+const ANNEX_SPANS: readonly [number, number][] = ROOMS.filter((r) => r.y >= ANNEX_Y).map((r) => [r.x - CORRIDOR, r.x + r.w + CORRIDOR]);
+
+/**
+ * Outdoor terrace: annex tiles that belong to no room and no corridor ring.
+ * They are Void (not walkable) and painted as a garden by the renderer.
+ */
+export function isTerrace(x: number, y: number): boolean {
+  if (y < ANNEX_Y || y >= MAP_H || x < 0 || x >= MAP_W) return false;
+  for (const [x0, x1] of ANNEX_SPANS) if (x >= x0 && x < x1) return false;
+  return true;
+}
+
 export function buildGrid(): Grid {
   const tiles = new Uint8Array(MAP_W * MAP_H);
   const roomIndex = new Int8Array(MAP_W * MAP_H).fill(-1);
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const edge = x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1;
-      tiles[y * MAP_W + x] = edge ? Tile.Void : Tile.Corridor;
+      tiles[y * MAP_W + x] = edge || isTerrace(x, y) ? Tile.Void : Tile.Corridor;
     }
   }
   const doors = doorTilesLocal();
@@ -538,7 +599,7 @@ export const TUBE_ROUTES: readonly { from: RoomId | 'outside'; to: RoomId; point
   const routes: { from: RoomId | 'outside'; to: RoomId; points: Point[] }[] = [];
   for (const r of ROOMS) {
     if (r.id !== 'command') routes.push({ from: r.id, to: 'command', points: tubeRoute(r.id, 'command') });
-    if (r.id !== 'life' && r.id !== 'command') routes.push({ from: r.id, to: 'life', points: tubeRoute(r.id, 'life') });
+    if (r.id !== 'life' && r.id !== 'command' && r.id !== 'arcade') routes.push({ from: r.id, to: 'life', points: tubeRoute(r.id, 'life') });
   }
   routes.push({ from: 'command', to: 'life', points: tubeRoute('command', 'life') });
   routes.push({ from: 'outside', to: 'mail', points: intakeRoute('mail') });
