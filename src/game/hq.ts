@@ -103,28 +103,40 @@ export class HQ {
 
   // ---------------------------------------------------------------- camera helpers
 
+  /** Horizontal world offset so a target centers in the area left of a side panel. */
+  private panelOffset(zoom: number, panelWidth?: number): number {
+    const w = panelWidth ?? (this.camera.vw > 720 ? 370 : 0);
+    return w / 2 / zoom;
+  }
+
   focusBot(id: string, follow = true): void {
     const bot = this.sim.getBot(id);
     if (!bot) return;
     this.ui.selectedBot = id;
-    this.camera.focus({ x: bot.x, y: bot.y }, Math.max(this.camera.targetZoom, 1.4));
+    const zoom = Math.max(this.camera.targetZoom, 1.4);
+    const off = () => this.panelOffset(this.camera.targetZoom);
+    this.camera.focus({ x: bot.x + this.panelOffset(zoom), y: bot.y }, zoom);
     this.camera.follow = follow
       ? () => {
           const b = this.sim.getBot(id);
-          return b ? { x: b.x, y: b.y } : null;
+          return b ? { x: b.x + off(), y: b.y } : null;
         }
       : null;
   }
 
-  focusRoom(id: RoomId, panelWidth = this.camera.vw > 720 ? 390 : 0): void {
+  /** Move the camera to frame a room without selecting it. */
+  frameRoom(id: RoomId, panelWidth = 0): void {
     const r = roomRect(ROOM_BY_ID[id]);
     this.camera.follow = null;
-    this.ui.selectedRoom = id;
     const availW = this.camera.vw - panelWidth;
     const fit = Math.min(availW / (r.w + 120), this.camera.vh / (r.h + 200));
-    const zoom = Math.max(0.5, Math.min(1.6, fit));
-    // Shift so the room centers in the area left of the panel.
+    const zoom = Math.max(0.35, Math.min(1.6, fit));
     this.camera.focus({ x: r.x + r.w / 2 + panelWidth / 2 / zoom, y: r.y + r.h / 2 }, zoom);
+  }
+
+  focusRoom(id: RoomId, panelWidth = this.camera.vw > 720 ? 390 : 0): void {
+    this.ui.selectedRoom = id;
+    this.frameRoom(id, panelWidth);
   }
 
   overview(): void {

@@ -146,7 +146,7 @@ function hydrateMechanics(p: Partial<Persisted>): MechanicsState {
   return m;
 }
 
-const nameCache = new Map<string, string>(CORE_BOTS.map((b) => [b.id, b.name]));
+const nameCache = new Map<string, string>([...CORE_BOTS.map((b) => [b.id, b.name] as [string, string]), ['you', 'You']]);
 export function botName(id: string): string {
   return nameCache.get(id) ?? id;
 }
@@ -170,7 +170,7 @@ function makeStore() {
     selectedBot: null,
     selectedRoom: null,
     paletteOpen: false,
-    feedOpen: true,
+    feedOpen: typeof window === 'undefined' || !window.matchMedia ? true : !window.matchMedia('(max-width: 639px)').matches,
     helpOpen: false,
     turntable: p.turntable ?? true,
     bridgeDictating: false,

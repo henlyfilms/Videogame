@@ -28,7 +28,8 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       hq.camera.setViewport(rect.width, rect.height);
     };
     fit();
-    hq.camera.overview();
+    if (hq.camera.vw < 640) hq.frameRoom('command');
+    else hq.camera.overview();
     hq.camera.snap();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
     ro?.observe(canvas.parentElement ?? canvas);
