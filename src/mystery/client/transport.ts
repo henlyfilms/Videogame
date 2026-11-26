@@ -108,7 +108,7 @@ export class WsTransport implements Transport {
 /** Runs the full game server inside the page (solo / offline / tests). */
 export class LocalTransport implements Transport {
   readonly kind = 'local' as const;
-  private srv: import('../server/room').GameServer | null = null;
+  srv: import('../server/room').GameServer | null = null;
   private interval: ReturnType<typeof setInterval> | null = null;
   private pending: ClientMsg[] = [];
 

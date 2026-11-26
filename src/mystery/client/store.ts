@@ -263,6 +263,8 @@ export const useMystery = create<MysteryState>((set, get) => {
       ensure('local');
       pendingAfterHello = [];
       sendOrQueue({ t: 'create', settings: { bots: 7, privacy: 'code' } });
+      // Marion agents join the waiting room straight away in solo play.
+      for (const look of ['daniel', 'moose', 'kanye', 'barry', 'greek', 'quill', 'sift']) sendOrQueue({ t: 'host.addBot', look });
     },
     createRoom: (settings) => {
       ensure('ws');
@@ -303,6 +305,22 @@ export const useMystery = create<MysteryState>((set, get) => {
     toggleStats: (v) => set({ showStats: v ?? !get().showStats }),
   };
 });
+
+/** Test/screenshot hook (only installed with ?debug=1). */
+export function installDebugHook(): void {
+  try {
+    if (!new URLSearchParams(location.search).has('debug')) return;
+    (window as unknown as { __mm: unknown }).__mm = {
+      store: useMystery,
+      runtime,
+      get server() {
+        return transport && transport.kind === 'local' ? (transport as LocalTransport).srv : null;
+      },
+    };
+  } catch {
+    /* ignore */
+  }
+}
 
 export function isFixStation(id: string | null): boolean {
   return !!id && (id.startsWith('lightsPanel') || id.startsWith('commsPanel'));

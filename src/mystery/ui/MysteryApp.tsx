@@ -8,7 +8,7 @@ import { MODES } from '../core/modes';
 import type { MatchEvent } from '../core/types';
 import { wireInput } from '../client/controls';
 import { runtime } from '../client/runtime';
-import { useMystery } from '../client/store';
+import { installDebugHook, useMystery } from '../client/store';
 import { normalizeCode, isValidCode } from '../net/protocol';
 import { sfx } from '../audio/sfx';
 import { BerryAvatar, MIcon } from './common';
@@ -155,6 +155,7 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
   const setScreen = useMystery((s) => s.setScreen);
 
   useEffect(() => wireInput(), []);
+  useEffect(() => installDebugHook(), []);
   // Invite links: ?room=CODE jumps straight into the room.
   useEffect(() => {
     try {
