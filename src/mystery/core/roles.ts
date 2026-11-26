@@ -311,6 +311,8 @@ export function validateRoles(table: RoleTable, players: number, mode: ModeId): 
   if (special > players) errors.push(`More special roles (${special}) than players (${players}).`);
   if (table.sheriff.count > 0 && table.sheriff.count >= killers + 1)
     warnings.push('More sheriffs than murderers makes the crew very strong.');
+  if (players >= 13 && killers <= 2) warnings.push(`Big lobby: ${players} players usually need 3 murderers to stay balanced.`);
+  if (players <= 6 && killers >= 2) warnings.push('Small lobby: one murderer is usually enough.');
   if (table.jester.count + table.survivor.count > Math.floor(players / 4))
     warnings.push('Lots of neutral roles can make games chaotic.');
   return { ok: errors.length === 0, errors, warnings };

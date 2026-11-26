@@ -30,6 +30,10 @@ Branch mapping: the build prompt names `feature/marion-mystery` and `feature/mar
 
 Fixes that got there: critical-sabotage fixer coordination, ghosts dropping fix goals, evidence from "last seen with the victim" and meeting chat, Lights Out "dread" flicker, Hide & Seek final-countdown pings.
 
+## Soak test (20 simulated hours)
+
+`npx tsx scripts/soak.ts 20`: **126** back-to-back **20-player** bot matches across every mode × map × bot difficulty (15-minute clocks), 20.04 sim-hours in 899 s real time. No exceptions, no stuck matches, heap flat (41 MB early → 38 MB late). Outcome spread showed 20-player Classic with the default 2 murderers is crew-heavy (34/42 crew wins), so the lobby now warns big lobbies to use 3 murderers.
+
 ## Open items / ideas
 
 - 3D ejection is the shared 2D canvas cinematic (both views); role reveal, death and victory have true 3D stages.
