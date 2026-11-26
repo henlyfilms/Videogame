@@ -8,6 +8,7 @@ import { Cell, type CompiledMap } from '../core/map';
 import type { StationKind, Vec2 } from '../core/types';
 import { useMystery } from '../client/store';
 import type { Keybinds } from '../client/prefs';
+import { drawRoomIcon, roomAnchors } from '../render2d/roomIcons';
 
 // ---------------------------------------------------------------------------
 // Presence: keep things mounted while they animate out.
@@ -301,9 +302,14 @@ export interface SchematicMarker {
   facing?: number;
 }
 
+/** Room name as shown on maps (owner prefix dropped, upper case). */
+const mapRoomName = (name: string): string => name.replace(/^.*?'s /, '').toUpperCase();
+
 /**
  * Canvas map. `live` follows the local player every frame (minimap);
  * otherwise it redraws only when inputs change (plus pulsing markers).
+ * Every room shows an icon for its type; names show where they fit (with
+ * `labels`), and any room's name shows on hover or tap.
  */
 export function SchematicMap({
   map,
@@ -338,6 +344,7 @@ export function SchematicMap({
   const ref = useRef<HTMLCanvasElement>(null);
   const youRef = useRef(you);
   youRef.current = you;
+  const [hover, setHover] = useState<string | null>(null);
   const pulse = markers.some((m) => m.kind === 'alert' || m.kind === 'task') || !!you;
   useEffect(() => {
     const c = ref.current;
@@ -374,39 +381,83 @@ export function SchematicMap({
           for (const rr of [r.rect, ...(r.extra ?? [])]) g.fillRect(ox + rr[0] * s, oy + rr[1] * s, rr[2] * s, rr[3] * s);
           g.globalAlpha = 1;
         }
-      if (labels || counts) {
+      // Room icons (+ names where they fit, + admin counts), stacked on each room's anchor.
+      {
         const fs = Math.max(8, Math.min(13, s * 2.6));
+        const maxIcon = labels || counts ? 24 : 16;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        for (const r of map.def.rooms) {
-          const [x, y, rw, rh] = r.rect;
-          const cx = ox + (x + rw / 2) * s;
-          const cy = oy + (y + rh / 2) * s;
+        for (const an of roomAnchors(map)) {
+          const r = an.room;
+          const availW = an.spanX * s;
+          const availH = an.spanY * s;
+          if (Math.max(availW, availH) < 7) continue;
           const extra = counts?.[r.id];
-          const name = r.name.replace(/^.*?'s /, '').toUpperCase();
-          let lfs = fs;
-          if (labels) {
-            g.font = `600 ${lfs}px Oswald, 'Arial Narrow', sans-serif`;
+          const name = mapRoomName(r.name);
+          let lfs = 0;
+          if (labels && r.id !== hover) {
+            g.font = `600 ${fs}px Oswald, 'Arial Narrow', sans-serif`;
             const tw = g.measureText(name).width;
-            if (tw > rw * s - 6) lfs = Math.floor((fs * (rw * s - 6)) / tw);
+            lfs = tw > availW - 4 ? Math.floor((fs * (availW - 4)) / tw) : fs;
+            if (lfs < 7) lfs = 0;
           }
-          if (labels && lfs >= 7) {
+          const cfs = extra ? fs * 1.5 : 0;
+          const textH = (lfs ? lfs + 2 : 0) + (extra ? cfs : 0);
+          let icon = Math.min(maxIcon, Math.min(availW, availH - textH) * 0.82);
+          if (icon < 9) {
+            // Not enough room for the stack: the icon wins, the name moves to hover/tap.
+            lfs = 0;
+            icon = Math.min(maxIcon, Math.max(9, Math.min(availW, availH - (extra ? cfs : 0)) * 0.82));
+          }
+          const stackH = icon + (lfs ? lfs + 2 : 0) + (extra ? cfs : 0);
+          const cx = ox + an.x * s;
+          let cy = oy + an.y * s - stackH / 2;
+          drawRoomIcon(g, an.icon, cx, cy + icon / 2, icon, T.label, T.edge, dpr);
+          cy += icon;
+          if (lfs) {
             g.font = `600 ${lfs}px Oswald, 'Arial Narrow', sans-serif`;
             g.lineWidth = 3;
             g.strokeStyle = 'rgba(0,0,0,0.55)';
-            g.strokeText(name, cx, cy - (extra ? fs * 0.7 : 0));
+            g.strokeText(name, cx, cy + 1 + lfs / 2);
             g.fillStyle = T.label;
-            g.fillText(name, cx, cy - (extra ? fs * 0.7 : 0));
+            g.fillText(name, cx, cy + 1 + lfs / 2);
+            cy += lfs + 2;
           }
           if (extra) {
-            g.font = `700 ${fs * 1.5}px Oswald, 'Arial Narrow', sans-serif`;
+            g.font = `700 ${cfs}px Oswald, 'Arial Narrow', sans-serif`;
             g.fillStyle = '#ffd426';
             g.strokeStyle = '#000';
             g.lineWidth = 3;
-            g.strokeText(extra, cx, cy + fs * 0.6);
-            g.fillText(extra, cx, cy + fs * 0.6);
+            g.strokeText(extra, cx, cy + cfs / 2);
+            g.fillText(extra, cx, cy + cfs / 2);
           }
         }
+      }
+      // Hovered / tapped room: soft highlight + a name pill over its icon.
+      const hov = hover ? roomAnchors(map).find((a) => a.room.id === hover) : undefined;
+      if (hov) {
+        g.fillStyle = 'rgba(255,255,255,0.16)';
+        const hri = map.def.rooms.indexOf(hov.room);
+        g.beginPath();
+        for (let ty = 0; ty < map.h; ty++) for (let tx = 0; tx < map.w; tx++) if (map.roomIdx[ty * map.w + tx] === hri) g.rect(ox + tx * s, oy + ty * s, s + 0.3, s + 0.3);
+        g.fill();
+        const name = mapRoomName(hov.room.name);
+        const pfs = Math.max(11, Math.min(14, s * 3));
+        g.font = `600 ${pfs}px Oswald, 'Arial Narrow', sans-serif`;
+        const tw = g.measureText(name).width;
+        const pw = tw + 14;
+        const ph = pfs + 8;
+        const px = Math.max(2, Math.min(width - pw - 2, ox + hov.x * s - pw / 2));
+        const py = Math.max(2, Math.min(height - ph - 2, oy + hov.y * s - ph - Math.min(14, hov.spanY * s * 0.3)));
+        g.fillStyle = 'rgba(10,14,24,0.92)';
+        g.strokeStyle = T.outline;
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.roundRect(px, py, pw, ph, ph / 2);
+        g.fill();
+        g.stroke();
+        g.fillStyle = '#ffffff';
+        g.fillText(name, px + pw / 2, py + ph / 2 + 0.5);
       }
       const t = now / 1000;
       const R = Math.max(5, Math.min(11, s * 1.6));
@@ -493,26 +544,39 @@ export function SchematicMap({
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [map, width, height, theme, markers, labels, counts, highlight, reducedMotion, pulse]);
+  }, [map, width, height, theme, markers, labels, counts, highlight, reducedMotion, pulse, hover]);
+  const roomAt = (e: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }): string | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pad = 8;
+    const s = Math.min((rect.width - pad * 2) / map.w, (rect.height - pad * 2) / map.h);
+    const ox = (rect.width - map.w * s) / 2;
+    const oy = (rect.height - map.h * s) / 2;
+    const tx = Math.floor((e.clientX - rect.left - ox) / s);
+    const ty = Math.floor((e.clientY - rect.top - oy) / s);
+    const ri = tx >= 0 && ty >= 0 && tx < map.w && ty < map.h ? map.roomIdx[ty * map.w + tx]! : -1;
+    return ri >= 0 ? map.def.rooms[ri]?.id ?? null : null;
+  };
   return (
     <canvas
       ref={ref}
       className={`mm-schem ${className}`}
       style={{ width, height, cursor: onRoom ? 'pointer' : undefined }}
+      onPointerMove={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        const id = roomAt(e);
+        if (id !== hover) setHover(id);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'mouse') setHover(null);
+      }}
       onClick={(e) => {
-        if (!onRoom) return;
-        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-        const pad = 8;
-        const s = Math.min((rect.width - pad * 2) / map.w, (rect.height - pad * 2) / map.h);
-        const ox = (rect.width - map.w * s) / 2;
-        const oy = (rect.height - map.h * s) / 2;
-        const x = (e.clientX - rect.left - ox) / s;
-        const y = (e.clientY - rect.top - oy) / s;
-        const tx = Math.floor(x);
-        const ty = Math.floor(y);
-        const ri = tx >= 0 && ty >= 0 && tx < map.w && ty < map.h ? map.roomIdx[ty * map.w + tx]! : -1;
-        const r = ri >= 0 ? map.def.rooms[ri] : null;
-        if (r) onRoom(r.id);
+        const id = roomAt(e);
+        if (onRoom) {
+          if (id) onRoom(id);
+          return;
+        }
+        // Tap (touch) shows a room's name; tap again or elsewhere hides it.
+        setHover(id === hover ? null : id);
       }}
       role="img"
       aria-label={ariaLabel ?? `${map.def.name} map`}

@@ -650,6 +650,10 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
   };
 
   let built: Built = null as unknown as Built;
+  /** Bumped whenever meshes are added or replaced (outline hulls re-attach on change). */
+  const bumpRev = (): void => {
+    group.userData.rev = ((group.userData.rev as number | undefined) ?? 0) + 1;
+  };
 
   function addParts(set: PartSet, parent: THREE.Object3D, prefix: string, keyBase: string, out: THREE.Object3D[], anims: Built['anims'], skipSolid = false): void {
     if (!skipSolid) {
@@ -871,6 +875,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
 
     built = { dims: d, pal, meshes, anims, hairTail, hairStiff: tailInfo?.stiffness ?? 20, armL, armR, hand, legL, legR, ghostTail, shoulderY };
     applyMaterials();
+    bumpRev();
     paintFaceNow(1, 1, 0, 'normal', 0, true);
   }
 
@@ -1205,7 +1210,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
     if (propMesh) built.hand.remove(propMesh);
     propMesh = null;
     curProp = id;
-    if (!id) return;
+    if (!id) return bumpRev();
     const key = `prop|${id}|${quality}`;
     const set = partsCached(key, () => buildProp(id));
     const holder = new THREE.Group();
@@ -1215,6 +1220,7 @@ export function createBerry(cIn: Cosmetics, opts?: { quality?: Quality }): Berry
     built.hand.add(holder);
     propMesh = holder;
     applyMaterials();
+    bumpRev();
   }
 
   const rig: BerryRig = {
@@ -1345,6 +1351,7 @@ export function createBody(cIn: Cosmetics): THREE.Group {
   const g = new THREE.Group();
   g.name = 'berry-body';
   const body = new THREE.Mesh(bodyGeo(d, 'medium', 1), bodyMat(c, d, 'low', false));
+  body.userData.matKind = 'body';
   body.scale.set(1.35, 0.3, 1.35);
   body.position.y = -d.y0 * 0.3 + 0.01;
   g.add(body);
@@ -1385,7 +1392,11 @@ export function createBody(cIn: Cosmetics): THREE.Group {
     list.push(P.sphere(0.045, '#ff6f91', [0.04, top - 0.03, zf + 0.12], [1, 0.4, 1.3]));
     return merge(list);
   });
-  if (deco) g.add(new THREE.Mesh(deco, kindMat('vc', false)));
+  if (deco) {
+    const dm = new THREE.Mesh(deco, kindMat('vc', false));
+    dm.userData.matKind = 'vc';
+    g.add(dm);
+  }
   // Ghost wisp.
   const wispGeo = cachedGeo('wisp', () => merge([P.sphere(0.07, '#f4f1ff', [0, 0.05, 0]), P.cone(0.07, 0.12, '#f4f1ff', [0, -0.04, 0], [Math.PI, 0, 0]), P.sphere(0.012, '#211a2e', [-0.025, 0.06, 0.062]), P.sphere(0.012, '#211a2e', [0.025, 0.06, 0.062])]));
   if (wispGeo) {
@@ -1424,12 +1435,17 @@ export function createPet(petId: string): { group: THREE.Group; update(dt: numbe
       parts.body.forEach((x) => x.dispose());
       parts.anim?.forEach((a) => a.geos.forEach((x) => x.dispose()));
     }
-    if (g) inner.add(new THREE.Mesh(g, kindMat('vc', false)));
+    const vcMesh = (geo: Geo): THREE.Mesh => {
+      const m = new THREE.Mesh(geo, kindMat('vc', false));
+      m.userData.matKind = 'vc';
+      return m;
+    };
+    if (g) inner.add(vcMesh(g));
     parts.anim?.forEach((a, i) => {
       const pivot = new THREE.Group();
       pivot.position.set(a.pivot[0], a.pivot[1], a.pivot[2]);
       const ag = cachedGeo(`pet|${petId}|a${i}`, () => merge(a.geos));
-      if (ag) pivot.add(new THREE.Mesh(ag, kindMat('vc', false)));
+      if (ag) pivot.add(vcMesh(ag));
       inner.add(pivot);
       anims.push({ obj: pivot, part: a });
     });

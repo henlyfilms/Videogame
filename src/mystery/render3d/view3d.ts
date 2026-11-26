@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import { runtime } from '../client/runtime';
+import { attachInkHulls, setHullMats, type HullMats } from '../characters/outline3d';
 import { createBerry, createBody, createPet, type BerryRig } from '../characters/rig3d';
 import { castRay, type CompiledMap } from '../core/map';
 import type { MatchEvent, Vec2 } from '../core/types';
@@ -28,8 +29,11 @@ interface Actor {
   labelKey: string;
   seen: number;
   heading: number;
-  /** Ink outline hulls on the body meshes (re-found after cosmetic rebuilds). */
+  /** Ink outline hulls on every solid part (re-attached when the rig's mesh set changes). */
   hulls: THREE.Mesh[];
+  hullRev: number;
+  /** Kill-target outline currently applied (red silhouette). */
+  killOn: boolean;
 }
 
 /** Canvas → sprite with a fixed world height. */
@@ -114,6 +118,8 @@ export class ThreeDView implements ViewRenderer {
   private fader = new PromptFader();
   private inkHull = hullMaterial(WORLD.ink, 0.032, false);
   private killHull = hullMaterial(WORLD.kill, 0.06, false);
+  private inkMats: HullMats = { main: this.inkHull, thin: hullMaterial(WORLD.ink, 0.022, false) };
+  private killMats: HullMats = { main: this.killHull, thin: hullMaterial(WORLD.kill, 0.045, false) };
   private promptObjs = new Map<string, THREE.Object3D>();
   private promptTex = new Map<string, { tex: THREE.CanvasTexture; aspect: number }>();
   private ringTex = dottedRingTexture();
@@ -131,6 +137,9 @@ export class ThreeDView implements ViewRenderer {
     private prefs: Prefs,
   ) {
     this.quality = pickQuality(prefs.quality);
+    // Kill hulls skip the depth write and draw before the target's own parts,
+    // so the red only survives around the silhouette (no lines across the face).
+    for (const m of [this.killMats.main, this.killMats.thin]) m.depthWrite = false;
     if (mode === 'fp') this.pitch = -0.06;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality !== 'low', powerPreference: 'high-performance', alpha: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -313,7 +322,6 @@ export class ThreeDView implements ViewRenderer {
     if (a && a.cosKey !== key) {
       a.rig.setCosmetics(cos);
       a.cosKey = key;
-      a.hulls = this.attachHulls(a.rig);
       if (a.pet) {
         this.scene.remove(a.pet.group);
         a.pet = null;
@@ -328,7 +336,7 @@ export class ThreeDView implements ViewRenderer {
       this.scene.add(rig.group);
       const label = tagSprite(p);
       this.scene.add(label);
-      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: this.attachHulls(rig) };
+      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false };
       this.actors.set(p.id, a);
     }
     if (a.labelKey !== labelKey) {
@@ -340,31 +348,29 @@ export class ThreeDView implements ViewRenderer {
     }
     if (!a.pet && cos.pet && cos.pet !== 'none') {
       a.pet = createPet(cos.pet);
+      if (this.quality !== 'low') attachInkHulls(a.pet.group, this.inkMats, [], 'thin');
       this.scene.add(a.pet.group);
     }
     return a;
   }
 
-  /** Ink outline (inverted hull) on a rig's body meshes; skipped on low quality. */
-  private attachHulls(rig: BerryRig): THREE.Mesh[] {
-    if (this.quality === 'low') return [];
-    const out: THREE.Mesh[] = [];
-    rig.group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || m.userData.matKind !== 'body') return;
-      if (m.userData.hasHull) {
-        const existing = m.children.find((c) => c.userData.hull) as THREE.Mesh | undefined;
-        if (existing) out.push(existing);
-        return;
-      }
-      m.userData.hasHull = true;
-      const h = new THREE.Mesh(m.geometry, this.inkHull);
-      h.userData.hull = true;
-      h.castShadow = false;
-      m.add(h);
-      out.push(h);
-    });
-    return out;
+  /** Ink outline (inverted hulls) on every part of a rig; skipped on low quality. */
+  private syncHulls(a: Actor): void {
+    if (this.quality === 'low') return;
+    const rev = (a.rig.group.userData.rev as number | undefined) ?? 0;
+    if (rev === a.hullRev) return;
+    a.hullRev = rev;
+    attachInkHulls(a.rig.group, this.inkMats, a.hulls);
+    if (a.killOn) this.setKillOrder(a, true);
+  }
+
+  /** Draw order for the kill outline: world → red hulls → the target's parts. */
+  private setKillOrder(a: Actor, on: boolean): void {
+    a.killOn = on;
+    for (const h of a.hulls) {
+      h.renderOrder = on ? 1 : 0;
+      if (h.parent) h.parent.renderOrder = on ? 2 : 0;
+    }
   }
 
   render(f: FrameData, dt: number): void {
@@ -416,12 +422,13 @@ export class ThreeDView implements ViewRenderer {
       a.label.position.set(p.pos.x, (a.rig.height ?? 1.05) + 0.42 + g.position.y, p.pos.y);
       const lb = a.label.userData.baseScale as THREE.Vector3 | undefined;
       if (lb) a.label.scale.copy(lb).multiplyScalar(this.distScale(a.label.position));
-      // Ink outline; the kill target gets a pulsing red one.
+      // Ink outline on the whole character; the kill target gets a pulsing red one.
+      this.syncHulls(a);
       const killK = this.fader.get(`kill:${p.id}`);
-      for (const h of a.hulls) {
-        h.visible = !p.ghost;
-        h.material = killK > 0.05 ? this.killHull : this.inkHull;
-      }
+      for (const h of a.hulls) h.visible = !p.ghost;
+      const kill = killK > 0.05;
+      if (kill !== a.killOn) this.setKillOrder(a, kill);
+      setHullMats(a.hulls, kill ? this.killMats : this.inkMats);
       if (a.pet) {
         const want = new THREE.Vector3(p.pos.x - Math.cos(p.facing) * 0.9, 0, p.pos.y - Math.sin(p.facing) * 0.9);
         a.petPos.lerp(want, Math.min(1, dt * 3));
@@ -449,6 +456,7 @@ export class ThreeDView implements ViewRenderer {
       let g = this.bodies.get(b.id);
       if (!g) {
         g = createBody(b.cosmetics);
+        if (this.quality !== 'low') attachInkHulls(g, this.inkMats, []);
         this.scene.add(g);
         this.bodies.set(b.id, g);
       }
@@ -542,6 +550,7 @@ export class ThreeDView implements ViewRenderer {
       }
     }
     this.killHull.uniforms.uThick!.value = 0.055 + (rm ? 0 : 0.015 * Math.sin(now / 120));
+    (this.killMats.thin as THREE.ShaderMaterial).uniforms.uThick!.value = 0.042 + (rm ? 0 : 0.011 * Math.sin(now / 120));
     this.updatePrompts(f, now, pop);
     this.trackRing.visible = !!f.trackPos;
     if (f.trackPos) this.trackRing.position.set(f.trackPos.x, 0.05, f.trackPos.y);
@@ -869,7 +878,7 @@ export class ThreeDView implements ViewRenderer {
     this.ringGeo.dispose();
     this.arrowGeo?.dispose();
     this.arrowMat.dispose();
-    for (const m of [this.inkHull, this.killHull, this.arrowInk]) m.dispose();
+    for (const m of [this.inkHull, this.killHull, this.inkMats.thin, this.killMats.thin, this.arrowInk]) m.dispose();
     this.renderer.dispose();
   }
 }

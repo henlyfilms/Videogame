@@ -28,6 +28,7 @@ import {
   VICTORY,
 } from '../../src/mystery/characters/catalog';
 import { drawBerry, drawBody, drawEmoteBubble, drawNameplate, drawPet, type BerryPose } from '../../src/mystery/characters/draw2d';
+import { attachInkHulls, hullGeometry, setHullMats, type HullMats } from '../../src/mystery/characters/outline3d';
 import { createBerry, createBody, createPet, type OneShot } from '../../src/mystery/characters/rig3d';
 import { CustomizeEditor } from '../../src/mystery/ui/CustomizeEditor';
 
@@ -347,6 +348,63 @@ describe('rig3d (no WebGL)', () => {
       pet.update(0.05, false);
       expect(pet.group).toBeInstanceOf(THREE.Group);
     }
+  });
+});
+
+describe('ink outlines (outline3d)', () => {
+  const mats = (): HullMats => ({ main: new THREE.MeshBasicMaterial(), thin: new THREE.MeshBasicMaterial() });
+  const owner = (h: THREE.Mesh): THREE.Mesh => h.parent as THREE.Mesh;
+
+  it('outlines every solid part of the whole character, once, as children of the part', () => {
+    const ink = mats();
+    const rig = createBerry({ ...defaultCosmetics(), berry: 'raspberry', hat: 'wizard', hair: 'ponytail', face: 'roundglasses', outfit: 'scarf', back: 'backpack' }, { quality: 'high' });
+    const hulls: THREE.Mesh[] = [];
+    attachInkHulls(rig.group, ink, hulls);
+    const names = new Set(hulls.map((h) => owner(h).name));
+    for (const n of ['body', 'drupelets', 'armL', 'armR', 'legL', 'legR', 'headwear', 'accessories', 'face-solid', 'back-solid', 'hair-tail']) expect(names, n).toContain(n);
+    for (const h of hulls) {
+      expect(h.userData.hull).toBe(true);
+      expect(String(owner(h).userData.matKind)).toMatch(/^(body|vc|vcd|detailInst)$/);
+      // Shares the part's vertex buffer, carries its own smoothed normals.
+      expect(h.geometry.getAttribute('position')).toBe(owner(h).geometry.getAttribute('position'));
+    }
+    expect(hulls.find((h) => owner(h).name === 'face-solid')!.material).toBe(ink.thin);
+    expect(hulls.find((h) => owner(h).name === 'body')!.material).toBe(ink.main);
+    // Idempotent: a second pass finds the same hulls and adds none.
+    expect(attachInkHulls(rig.group, ink, []).length).toBe(hulls.length);
+    // Held props bump the rig revision and get outlined on the next pass.
+    const rev = rig.group.userData.rev as number;
+    rig.update(0.02, { moving: false, hold: 'knife' });
+    expect(rig.group.userData.rev).toBeGreaterThan(rev);
+    expect(attachInkHulls(rig.group, ink, hulls).some((h) => owner(h).parent?.name.startsWith('prop-') || owner(h).name.startsWith('prop-'))).toBe(true);
+    // Kill-target swap keeps line weights.
+    const kill = mats();
+    setHullMats(hulls, kill);
+    expect(hulls.every((h) => h.material === kill[h.userData.weight as 'main' | 'thin'])).toBe(true);
+    rig.dispose();
+  });
+
+  it('outlines pets and squished bodies', () => {
+    const ink = mats();
+    const pet = createPet('robodog');
+    expect(attachInkHulls(pet.group, ink, [], 'thin').every((h) => h.material === ink.thin)).toBe(true);
+    expect(attachInkHulls(pet.group, ink, []).length).toBeGreaterThan(0);
+    expect(attachInkHulls(createBody(defaultCosmetics()), ink, []).length).toBeGreaterThan(0);
+  });
+
+  it('mitres hard corners: smoothed normals push every face out by the full width', () => {
+    const box = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+    const h = hullGeometry(box);
+    expect(hullGeometry(box)).toBe(h);
+    const n = h.getAttribute('normal');
+    const f = box.getAttribute('normal');
+    for (let i = 0; i < n.count; i++) {
+      const v = new THREE.Vector3(n.getX(i), n.getY(i), n.getZ(i));
+      const face = new THREE.Vector3(f.getX(i), f.getY(i), f.getZ(i));
+      expect(v.dot(face)).toBeCloseTo(1, 3);
+      expect(v.length()).toBeCloseTo(Math.sqrt(3), 3);
+    }
+    box.dispose();
   });
 });
 

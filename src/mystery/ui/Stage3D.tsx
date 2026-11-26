@@ -5,7 +5,10 @@
  */
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { attachInkHulls, type HullMats } from '../characters/outline3d';
 import { createBerry, type BerryRig } from '../characters/rig3d';
+import { WORLD } from '../render2d/paint';
+import { hullMaterial } from '../render3d/worldkit';
 import type { Cosmetics } from '../core/types';
 
 export type StagePose = 'wave' | 'celebrate' | 'sulk' | 'scared' | 'knife-twirl' | 'gun-spin' | 'magnify' | 'shrug' | 'kill-lunge' | 'squish';
@@ -55,12 +58,14 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
     const dist = Math.max(half / Math.tan(hfov / 2), (flying ? 1.4 : 0.8) / Math.tan(vfov / 2)) * 1.08;
     camera.position.set(0, 0.75, dist);
     camera.lookAt(0, 0.58, 0);
-    const rigs: { rig: BerryRig; a: StageActor; next: number }[] = actors.map((a) => {
+    // Same ink outline as the in-match 3D view (whole character, every part).
+    const ink: HullMats = { main: hullMaterial(WORLD.ink, 0.032, false), thin: hullMaterial(WORLD.ink, 0.022, false) };
+    const rigs: { rig: BerryRig; a: StageActor; next: number; hulls: THREE.Mesh[]; rev: number }[] = actors.map((a) => {
       const rig = createBerry(a.cosmetics, { quality: 'high' });
       rig.group.scale.setScalar(a.scale ?? 1);
       rig.group.position.x = a.fromX ?? a.x;
       scene.add(rig.group);
-      return { rig, a, next: 0 };
+      return { rig, a, next: 0, hulls: [], rev: -1 };
     });
     let raf = 0;
     const t0 = performance.now();
@@ -91,6 +96,11 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
           r.next = t + (r.a.pose === 'squish' ? 99 : 2.6);
         }
         r.rig.update(dt, { moving: k < 1, speed: 1.4, ghost: r.a.ghost, scared: r.a.pose === 'scared' });
+        const rev = (r.rig.group.userData.rev as number | undefined) ?? 0;
+        if (rev !== r.rev && !r.a.ghost) {
+          r.rev = rev;
+          attachInkHulls(r.rig.group, ink, r.hulls);
+        }
       }
       renderer.render(scene, camera);
     };
@@ -98,6 +108,8 @@ export function Stage3D({ actors, height = 260, width = 520, light = '#ffffff', 
     return () => {
       cancelAnimationFrame(raf);
       for (const r of rigs) r.rig.dispose();
+      ink.main.dispose();
+      ink.thin.dispose();
       renderer.dispose();
     };
   }, [actors, height, width, light, reducedMotion]);
