@@ -67,10 +67,13 @@ npm run start:server       # production server: static dist + WebSocket rooms on
 Debug hooks:
 - HQ: `window.__hq = { hq, manager, store }`. Persisted state is in localStorage key
   `marion-hq:v1` (`hqView`, `season`, `timeMode`, `onboarded`, …).
-- Mystery: open `/?mystery&debug=1` to get `window.__mm = { store, runtime, server }`.
+- Mystery: open `/?mystery&debug=1` to get `window.__mm = { store, runtime, server, view }`
+  (`view` is the active 2D/3D renderer once a match view mounts).
   `__mm.store.getState().startFreeplay({ map, mode, role })` and `startSolo()` jump straight
-  into a match. Prefs are in localStorage `marion-mystery:v1` (`view: '2d'|'3d-tp'|'3d-fp'`,
-  `quality`, `name`).
+  into a match. `role` is a role id such as `'crewmate'` or `'murderer'` (not `'crew'`: an
+  unknown id silently starts a normal lobby that fails validation and never begins). Prefs are
+  in localStorage `marion-mystery:v1` (`view: '2d'|'3d-tp'|'3d-fp'`, `quality`, `name`,
+  `onboarded: true` to skip the first-run guide).
 
 ## Code map
 
@@ -114,6 +117,13 @@ Other: `server/index.ts` (Node HTTP + WS), `server/llm.ts` and `server/agent-sdk
 
 ## What was just done (most recent first)
 
+0. **Pings** (commit `4510f20`): a `ping` match action (Z, middle-click in 2D, or the HUD Ping
+   button) drops a short-lived "!" marker with a pointer line. Rules and constants
+   (`PING_TTL`, `PING_COOLDOWN`, `PING_RANGE`, `pingSpot`) are in `core/match.ts`, projection
+   in `core/project.ts`, painters in `render2d/prompts.ts` (`drawPing`, `drawPingPin`) and
+   `render3d/view3d.ts` (`updatePings`), tests in `tests/mystery/ping.test.ts`. Bots don't
+   ping yet. Also: distinct solar/navigation/reactor map icons, clean sole outlines (character
+   hulls are clamped to the floor), and the KILL label sits above its burst.
 1. **Mystery UI/UX redo** (`src/mystery/ui/*`, commit `a8febe5`). Reference-style dark panels
    with thin outlines, condensed caps and pill buttons. HUD: role badge + task bar + checklist
    top-left, minimap bottom-left (drawn from the map grid), round buttons top-right, one big
