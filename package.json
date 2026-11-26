@@ -2,7 +2,7 @@
   "name": "marion-hq",
   "private": true,
   "version": "1.0.0",
-  "description": "Marion HQ — a living 2D office & operations game for the Marion bot ecosystem.",
+  "description": "Marion HQ \u2014 a living office game for the Marion bot ecosystem, with the Marion Mystery multiplayer arcade game.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,15 +10,20 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "server": "tsx server/index.ts",
+    "start:server": "NODE_ENV=production tsx server/index.ts",
+    "start": "npm run build && npm run start:server"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "three": "^0.170.0",
     "ws": "^8.18.0",
-    "zustand": "4.5.7"
+    "zustand": "4.5.7",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -32,7 +37,6 @@
     "jsdom": "25.0.1",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.17",
-    "tsx": "^4.19.2",
     "typescript": "5.6.3",
     "vite": "5.4.21",
     "vitest": "2.1.9"
