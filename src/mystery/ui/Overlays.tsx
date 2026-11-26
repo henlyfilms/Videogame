@@ -1,6 +1,6 @@
 /**
- * Cinematic overlays: role reveal, meeting splash + voting table, ejection
- * sequences (per-map style) and the results screen. All have reduced-motion
+ * Cinematic overlays: role reveal, meeting banner + voting board, ejection
+ * sequences (per-map style) and the end-of-round board. All have reduced-motion
  * fallbacks; 3D players get the same moments framed for their view.
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,8 +24,10 @@ import type { Settings } from '../core/settings';
 import type { Cosmetics, RoleId } from '../core/types';
 import { filterProfanity } from '../client/prefs';
 import { useMystery } from '../client/store';
-import { BerryAvatar, Bar, colorHex, fmtTime, MIcon, teamColors } from './common';
-import { MapThumb } from './MapThumb';
+import { BerryAvatar, Bar, colorHex, fmtTime, MIcon, readable, teamColors } from './common';
+import { Hazard, Presence, SchematicMap, starfield, STREAKS, Tick, useViewport } from './kit';
+
+const STARS = starfield(11, 90);
 
 const ROLE_POSE: Partial<Record<RoleId, string>> = {
   murderer: 'knife-twirl',
@@ -58,6 +60,7 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
   const seekers = snap.players.filter((p) => p.role === 'seeker' && p.id !== you.id);
   const teamCol = tc[role.team];
   const use3d = useStage();
+  const vp = useViewport();
   const revealActors = useMemo<StageActor[]>(
     () => [
       ...mates.map((m, i) => ({ cosmetics: m.cosmetics, pose: 'knife-twirl' as StagePose, x: (i % 2 ? 1 : -1) * (1.1 + Math.floor(i / 2) * 0.9), scale: 0.85, fromX: (i % 2 ? 1 : -1) * 6, enter: 1.2 })),
@@ -76,60 +79,52 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
     };
   }, [prefs.reducedMotion]);
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `radial-gradient(circle at 50% 55%, ${teamCol}${stage ? '44' : '00'}, #03050e 70%)`, transition: 'background 0.8s', overflow: 'hidden' }}>
-      {stage === 0 && (
-        <div className="mm-anim-fade" style={{ fontSize: 'clamp(28px, 6vw, 54px)', fontWeight: 900, letterSpacing: '0.3em', color: '#c7d2fe' }}>
-          SHHH…
-        </div>
-      )}
+    <div className="mmv" data-team={role.team} style={{ ['--team' as string]: teamCol, ['--role' as string]: role.color, backgroundImage: STARS }}>
+      {stage === 0 && <div className="mmv-shh mm-in-fade">SHHH…</div>}
       {stage >= 1 && (
         <>
-          {!prefs.reducedMotion && (
-            <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, width: '30%', background: `linear-gradient(90deg, transparent, ${teamCol}55, transparent)`, animation: 'mm-sweep 1.2s ease-out both' }} />
-          )}
-          <div style={{ textAlign: 'center', zIndex: 1, padding: 16 }}>
-            <div className="mm-anim-rise" style={{ fontWeight: 800, letterSpacing: '0.25em', color: teamCol, fontSize: '0.9em' }}>
-              YOU ARE {role.team === 'murderers' ? 'ON THE MURDERER TEAM' : role.team === 'neutral' ? 'NEUTRAL' : 'CREW'}
-            </div>
-            <div className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(48px, 12vw, 110px)', lineHeight: 1, margin: '6px 0', background: `linear-gradient(180deg, #fff 10%, ${role.color})`, WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
-              {role.name}
-            </div>
+          <div className="mmv-band" aria-hidden />
+          <div className="mmv-card">
+            <div className="mmv-youare mm-in-down">YOU ARE {role.team === 'murderers' ? 'ON THE MURDERER TEAM' : role.team === 'neutral' ? 'NEUTRAL' : 'CREW'}</div>
+            <div className="mmv-role mm-in-pop">{role.name}</div>
             {use3d ? (
-              <div className="mm-anim-pop">
+              <div className="mm-in-pop">
                 <Suspense fallback={<BerryAvatar cosmetics={me.cosmetics} size={170} />}>
-                  <Stage3D actors={revealActors} width={Math.min(560, innerWidth - 24)} height={240} light={role.color} reducedMotion={prefs.reducedMotion} />
+                  <Stage3D actors={revealActors} width={Math.min(560, vp.w - 24)} height={240} light={role.color} reducedMotion={prefs.reducedMotion} />
                 </Suspense>
-                <div style={{ fontWeight: 800 }}>
+                <div className="mmv-name mm-nocase">
                   {me.name}
                   {mates.length > 0 && <span style={{ color: tc.murderers }}> · with {mates.map((m) => m.name).join(', ')}</span>}
                 </div>
               </div>
             ) : (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 12, margin: '10px 0' }}>
-              {mates.map((m) => (
-                <div key={m.id} className="mm-anim-rise" style={{ textAlign: 'center', animationDelay: '300ms' }}>
-                  <BerryAvatar cosmetics={m.cosmetics} size={90} dir={1} emote="knife-twirl" />
-                  <div style={{ color: tc.murderers, fontWeight: 700 }}>{m.name}</div>
+              <div className="mmv-cast">
+                {mates.map((m, i) => (
+                  <div key={m.id} className="mm-in-up" style={{ animationDelay: `${300 + i * 120}ms` }}>
+                    <BerryAvatar cosmetics={m.cosmetics} size={90} dir={1} emote="knife-twirl" />
+                    <div className="mmv-name mm-nocase" style={{ color: tc.murderers }}>
+                      {m.name}
+                    </div>
+                  </div>
+                ))}
+                <div className="mm-in-pop">
+                  <BerryAvatar cosmetics={me.cosmetics} size={170} emote={ROLE_POSE[you.role] ?? 'wave'} />
+                  <div className="mmv-name mm-nocase">{me.name}</div>
                 </div>
-              ))}
-              <div className="mm-anim-pop" style={{ textAlign: 'center' }}>
-                <BerryAvatar cosmetics={me.cosmetics} size={170} emote={ROLE_POSE[you.role] ?? 'wave'} />
-                <div style={{ fontWeight: 800 }}>{me.name}</div>
               </div>
-            </div>
             )}
             {stage >= 2 && (
-              <div className="mm-anim-rise">
-                <div style={{ fontSize: '1.15em', fontWeight: 700, maxWidth: 520, margin: '0 auto 10px' }}>{role.blurb}</div>
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {role.abilities.map((a) => (
-                    <span key={a} className="mm-chip" style={{ borderColor: role.color + '88', color: '#fff' }}>
+              <div className="mm-in-up">
+                <div className="mmv-blurb">{role.blurb}</div>
+                <div className="mmv-abil">
+                  {role.abilities.map((a, i) => (
+                    <span key={a} className="mm-chip" style={{ ['--i' as string]: i }}>
                       {a}
                     </span>
                   ))}
                 </div>
                 {seekers.length > 0 && <div style={{ marginTop: 10, color: tc.murderers }}>Seeker: {seekers.map((s) => s.name).join(', ')} — hide!</div>}
-                <div className="mm-muted" style={{ marginTop: 14 }}>
+                <div className="mmv-mode">
                   {MODES[snap.mode].name} · {MODES[snap.mode].tagline}
                 </div>
               </div>
@@ -144,6 +139,53 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
 // ---------------------------------------------------------------------------
 // Meeting
 
+function MeetingBanner({ snap, onDone }: { snap: Snapshot; onDone(): void }) {
+  const m = snap.meeting!;
+  const reduced = useMystery((s) => s.prefs.reducedMotion);
+  const caller = snap.players.find((p) => p.id === m.callerId);
+  const victim = m.victimId ? snap.players.find((p) => p.id === m.victimId) : null;
+  const [out, setOut] = useState(false);
+  useEffect(() => {
+    const a = setTimeout(() => setOut(true), reduced ? 500 : 2350);
+    const b = setTimeout(onDone, reduced ? 600 : 2650);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
+  }, [reduced, onDone]);
+  return (
+    <div className="mmm-splash" data-kind={m.victimId ? 'report' : 'emergency'} data-state={out ? 'out' : 'in'} role="alert" style={{ backgroundImage: STARS }}>
+      <div className="mmm-streaks" aria-hidden>
+        <i style={{ backgroundImage: STREAKS }} />
+      </div>
+      <div className="mmm-strip">
+        <span>{m.victimId ? 'Body Reported' : 'Emergency Meeting'}</span>
+      </div>
+      <Hazard className="mmm-haz" />
+      <div className="mmm-figure">
+        {victim ? (
+          <div className="mmm-corpse">
+            <BodyPortrait cosmetics={victim.cosmetics} size={230} />
+          </div>
+        ) : (
+          caller && <BerryAvatar cosmetics={caller.cosmetics} size={190} emote="point" />
+        )}
+      </div>
+      <div className="mmm-caption mm-nocase">
+        {victim ? (
+          <>
+            <b style={{ color: colorHex(victim.cosmetics.color) }}>{victim.name}</b> was found · reported by <b>{caller?.name}</b>
+          </>
+        ) : (
+          <>
+            Called by <b style={{ color: caller ? colorHex(caller.cosmetics.color) : undefined }}>{caller?.name}</b>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function MeetingOverlay({ snap, settings }: { snap: Snapshot; settings: Settings }) {
   const m = snap.meeting!;
   const prefs = useMystery((s) => s.prefs);
@@ -156,142 +198,145 @@ export function MeetingOverlay({ snap, settings }: { snap: Snapshot; settings: S
   const [selected, setSelected] = useState<string | null>(null);
   const [, tick] = useState(0);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const endSplash = useMemo(() => () => setSplash(false), []);
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), prefs.reducedMotion ? 600 : 2600);
     const i = setInterval(() => tick((x) => x + 1), 250);
-    return () => {
-      clearTimeout(t);
-      clearInterval(i);
-    };
-  }, [prefs.reducedMotion]);
+    return () => clearInterval(i);
+  }, []);
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ block: "end" });
+    chatEnd.current?.scrollIntoView({ block: 'end' });
   }, [chat.length]);
-  const caller = snap.players.find((p) => p.id === m.callerId);
   const victim = m.victimId ? snap.players.find((p) => p.id === m.victimId) : null;
   const you = snap.you;
   const left = Math.max(0, m.stageEnds - snap.t);
+  const stageLen = m.stage === 'discuss' ? settings.discussionTime : m.stage === 'vote' ? settings.votingTime : 5;
   const canVote = you.alive && m.stage === 'vote' && !m.myVote;
-  if (splash)
-    return (
-      <div style={{ position: 'absolute', inset: 0, zIndex: 45, display: 'flex', alignItems: 'center', justifyContent: 'center', background: m.victimId ? 'radial-gradient(circle, #7f1d1d, #120306 70%)' : 'radial-gradient(circle, #1e3a8a, #030615 70%)', overflow: 'hidden', animation: prefs.reducedMotion ? undefined : 'mm-shake 0.45s 2' }}>
-        {!prefs.reducedMotion &&
-          [0, 1, 2].map((i) => (
-            <div key={i} aria-hidden style={{ position: 'absolute', width: '160vmax', height: 40, background: m.victimId ? 'rgba(255,77,94,0.18)' : 'rgba(110,161,255,0.18)', transform: `rotate(${-12 + i * 12}deg)`, animation: `mm-sweep ${0.9 + i * 0.2}s linear infinite` }} />
-          ))}
-        <div className="mm-anim-pop" style={{ textAlign: 'center', zIndex: 1 }}>
-          <div className="mm-title" style={{ fontSize: 'clamp(40px, 10vw, 96px)', background: m.victimId ? 'linear-gradient(180deg,#fff,#ff4d5e)' : 'linear-gradient(180deg,#fff,#6ea1ff)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
-            {m.victimId ? 'BODY REPORTED' : 'EMERGENCY MEETING'}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 24, marginTop: 12 }}>
-            {caller && (
-              <div>
-                <BerryAvatar cosmetics={caller.cosmetics} size={150} emote="point" />
-                <div style={{ fontWeight: 800 }}>{caller.name}</div>
-              </div>
-            )}
-            {victim && <BodyPortrait cosmetics={victim.cosmetics} size={150} />}
-          </div>
-        </div>
-      </div>
-    );
+  if (splash) return <MeetingBanner snap={snap} onDone={endSplash} />;
+  const selName = selected === 'skip' ? 'Skip' : snap.players.find((p) => p.id === selected)?.name;
   return (
-    <div className="mm-safe mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 45, background: 'radial-gradient(circle at 50% 0%, #1b2a5c, #050813 75%)', display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontWeight: 900, flex: 1 }}>{m.victimId ? `Who did this to ${victim?.name ?? 'them'}?` : 'Emergency meeting'}</h2>
-        <span className="mm-chip" style={{ fontSize: '1em', color: '#fff' }}>
-          {m.stage === 'discuss' ? 'Discuss' : m.stage === 'vote' ? 'Vote!' : 'Results'} · {fmtTime(left)}
-        </span>
-      </div>
-      <div style={{ display: 'flex', gap: 10, flex: 1, minHeight: 0, flexWrap: 'wrap' }}>
+    <div className="mmm-board-wrap mm-safe" style={{ backgroundImage: STARS }}>
+      <header className="mmm-head">
+        <div className="mmm-title">
+          <span className="mm-label">{m.victimId ? 'Body reported' : 'Emergency meeting'}</span>
+          <h2 className="mm-nocase">{m.victimId ? `Who got ${victim?.name ?? 'them'}?` : 'Who’s the culprit?'}</h2>
+        </div>
+        <div className="mmm-timer" data-stage={m.stage} data-low={left < 10}>
+          <span className="mmm-timer-label">{m.stage === 'discuss' ? 'Discussion' : m.stage === 'vote' ? 'Voting' : 'Results'}</span>
+          <span className="mmm-timer-num" aria-label={fmtTime(left)}>
+            <span key={Math.ceil(left)} className="mm-bump">
+              {Math.ceil(left)}
+            </span>
+          </span>
+          <span className="mmm-timer-bar" aria-hidden>
+            <i style={{ transform: `scaleX(${Math.max(0, Math.min(1, left / Math.max(1, stageLen)))})` }} />
+          </span>
+        </div>
+      </header>
+      <div className="mmm-body">
         {/* Ballot */}
-        <div className="mm-scroll" style={{ flex: '2 1 420px', minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 8, alignContent: 'start' }}>
-          {snap.players.map((p) => {
-            const voters = m.votes ? Object.entries(m.votes).filter(([, t]) => t === p.id).map(([v]) => v) : [];
-            const tally = m.tally?.[p.id] ?? 0;
-            const isSel = selected === p.id;
-            return (
-              <button
-                key={p.id}
-                className="mm-btn mm-anim-rise"
-                disabled={!canVote || !p.alive}
-                onClick={() => setSelected(isSel ? null : p.id)}
-                style={{
-                  justifyContent: 'flex-start',
-                  padding: 8,
-                  minHeight: 64,
-                  position: 'relative',
-                  opacity: p.alive ? 1 : 0.45,
-                  borderColor: isSel ? '#fde047' : m.myVote === p.id ? 'var(--mm-accent2)' : undefined,
-                  background: p.id === you.id ? 'rgba(47,111,237,0.2)' : undefined,
-                }}
-                aria-label={`Vote ${p.name}`}
-              >
-                <BerryAvatar cosmetics={p.cosmetics} size={48} animate={false} ghost={!p.alive} />
-                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-                  <span style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>{p.name}</span>
-                  <span className="mm-muted" style={{ fontSize: '0.75em', fontWeight: 600 }}>
-                    {!p.alive ? '✝ dead' : p.role ? <span style={{ color: ROLES[p.role].color }}>{ROLES[p.role].name}</span> : p.revealedMayor ? 'Mayor' : ''}
-                    {p.id === m.callerId ? ' 📣' : ''}
+        <div className="mmm-ballot-col">
+          <div className="mm-scroll mmm-ballot">
+            {snap.players.map((p, i) => {
+              const voters = m.votes ? Object.entries(m.votes).filter(([, t]) => t === p.id).map(([v]) => v) : [];
+              const tally = m.tally?.[p.id] ?? 0;
+              const isSel = selected === p.id;
+              return (
+                <button
+                  key={p.id}
+                  className="mmm-row"
+                  data-sel={isSel}
+                  data-mine={m.myVote === p.id}
+                  data-dead={!p.alive}
+                  data-you={p.id === you.id}
+                  disabled={!canVote || !p.alive}
+                  onClick={() => setSelected(isSel ? null : p.id)}
+                  style={{ ['--i' as string]: i, ['--pc' as string]: colorHex(p.cosmetics.color) }}
+                  aria-label={`Vote ${p.name}`}
+                  aria-pressed={isSel}
+                >
+                  <span className="mmm-av">
+                    <BerryAvatar cosmetics={p.cosmetics} size={46} animate={false} ghost={!p.alive} />
+                    {!p.alive && <span className="mmm-x" aria-hidden />}
                   </span>
-                </span>
-                {p.voted && m.stage !== 'reveal' && (
-                  <span className="mm-anim-pop" style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, fontWeight: 900, color: '#fde047', transform: 'rotate(8deg)', border: '2px solid #fde047', borderRadius: 6, padding: '0 4px' }}>
-                    VOTED
+                  <span className="mmm-who">
+                    <b className="mm-nocase">{p.name}</b>
+                    <small>
+                      {!p.alive ? 'Eliminated' : p.role ? <span style={{ color: ROLES[p.role].color }}>{ROLES[p.role].name}</span> : p.revealedMayor ? 'Mayor' : p.id === you.id ? 'You' : ''}
+                      {p.id === m.callerId && (
+                        <span className="mmm-caller" title="Called the meeting">
+                          <MIcon name="megaphone" size={13} />
+                        </span>
+                      )}
+                    </small>
                   </span>
-                )}
-                {m.stage === 'reveal' && (
-                  <span style={{ position: 'absolute', bottom: 4, right: 6, display: 'flex', gap: 2, flexWrap: 'wrap', maxWidth: 80, justifyContent: 'flex-end' }}>
-                    {(voters.length ? voters : Array.from({ length: tally }, (_, i) => `?${i}`)).map((v, i) => {
-                      const vp = snap.players.find((x) => x.id === v);
-                      return (
-                        <span key={v} className="mm-anim-pop" title={vp?.name} style={{ width: 14, height: 14, borderRadius: '50%', background: vp ? colorHex(vp.cosmetics.color) : '#cbd5e1', border: '2px solid #fff', animationDelay: `${i * 160}ms` }} />
-                      );
-                    })}
+                  {p.voted && m.stage !== 'reveal' && <span className="mmm-voted">Voted</span>}
+                  {m.stage === 'reveal' && (
+                    <span className="mmm-pips">
+                      {(voters.length ? voters : Array.from({ length: tally }, (_, j) => `?${j}`)).map((v, j) => {
+                        const vp = snap.players.find((x) => x.id === v);
+                        return <span key={v} className="mmm-pip" title={vp?.name} style={{ background: vp ? colorHex(vp.cosmetics.color) : '#cbd5e1', animationDelay: `${j * 160}ms` }} />;
+                      })}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mmm-foot">
+            {settings.allowSkip && (
+              <button className="mmm-skip" data-sel={selected === 'skip'} disabled={!canVote} onClick={() => setSelected(selected === 'skip' ? null : 'skip')}>
+                <MIcon name="skip" size={18} /> Skip vote
+                {m.stage === 'reveal' && m.tally?.skip ? (
+                  <span className="mmm-pips inline">
+                    {Array.from({ length: m.tally.skip }, (_, j) => (
+                      <span key={j} className="mmm-pip" style={{ background: '#cbd5e1', animationDelay: `${j * 160}ms` }} />
+                    ))}
                   </span>
-                )}
+                ) : null}
               </button>
-            );
-          })}
-          {/* Skip */}
-          {settings.allowSkip && (
-            <button className="mm-btn" disabled={!canVote} onClick={() => setSelected(selected === 'skip' ? null : 'skip')} style={{ minHeight: 64, borderColor: selected === 'skip' ? '#fde047' : undefined }}>
-              <MIcon name="skip" /> Skip vote
-              {m.stage === 'reveal' && m.tally?.skip ? <b> · {m.tally.skip}</b> : null}
+            )}
+            <span className="mmm-status">{you.alive ? (m.myVote ? '✓ You voted' : m.stage === 'vote' ? 'Pick someone, then stamp your vote' : m.stage === 'discuss' ? `Voting opens in ${fmtTime(left)} — talk it out!` : '') : 'Ghosts can’t vote'}</span>
+          </div>
+          <Presence show={canVote && !!selected} anim="rise" className="mmm-confirm">
+            <button
+              className="mm-btn mm-btn-gold mm-pill"
+              onClick={() => {
+                if (!selected) return;
+                act({ a: 'vote', target: selected });
+                setSelected(null);
+              }}
+            >
+              <MIcon name="ballot" /> Stamp vote: <span className="mm-nocase">{selName}</span>
             </button>
-          )}
-          {canVote && selected && (
-            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-              <button
-                className="mm-btn mm-btn-gold mm-anim-pop"
-                style={{ flex: 1, minHeight: 54, fontSize: '1.05em' }}
-                onClick={() => {
-                  act({ a: 'vote', target: selected });
-                  setSelected(null);
-                }}
-              >
-                🔨 Stamp vote: {selected === 'skip' ? 'Skip' : snap.players.find((p) => p.id === selected)?.name}
-              </button>
-            </div>
-          )}
+            <button className="mm-round" onClick={() => setSelected(null)} aria-label="Cancel vote">
+              <MIcon name="close" />
+            </button>
+          </Presence>
           {you.role === 'mayor' && settings.mayorReveal && !you.mayorRevealed && you.alive && (
-            <button className="mm-btn" style={{ gridColumn: '1 / -1' }} onClick={() => act({ a: 'mayor.reveal' })}>
+            <button className="mm-btn" onClick={() => act({ a: 'mayor.reveal' })}>
               <MIcon name="crown" /> Reveal yourself as Mayor (+1 vote)
             </button>
           )}
-          {m.stage === 'discuss' && <div className="mm-muted" style={{ gridColumn: '1 / -1' }}>Voting opens in {fmtTime(left)} — talk it out!</div>}
         </div>
         {/* Chat */}
-        <div className="mm-panel" style={{ flex: '1 1 280px', minHeight: 220, display: 'flex', flexDirection: 'column', padding: 10 }}>
-          <div className="mm-scroll" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 6 }} aria-live="polite">
+        <div className="mmm-chat">
+          <div className="mmm-chat-head">
+            <MIcon name="chat" size={18} /> Discussion
+          </div>
+          <div className="mm-scroll mmm-chatlog" aria-live="polite">
             {chat.map((c) => {
               const who = snap.players.find((p) => p.id === c.from);
               const sys = c.from === 'system';
               return (
-                <div key={c.id} className="mm-anim-rise" style={{ display: 'flex', gap: 6, alignItems: 'flex-start', opacity: c.ghost ? 0.7 : 1 }}>
+                <div key={c.id} className="mmm-msg" data-sys={sys} style={{ opacity: c.ghost ? 0.7 : 1 }}>
                   {who && <BerryAvatar cosmetics={who.cosmetics} size={28} animate={false} ghost={c.ghost} />}
-                  <div style={{ background: sys ? 'transparent' : 'rgba(255,255,255,0.07)', padding: sys ? 0 : '5px 9px', borderRadius: 10, fontSize: '0.9em', color: sys ? 'var(--mm-muted)' : undefined }}>
-                    {who && <b style={{ color: colorHex(who.cosmetics.color) }}>{who.name}{c.ghost ? ' 👻' : ''} </b>}
+                  <div className="mmm-bubble mm-nocase">
+                    {who && (
+                      <b style={{ color: readable(colorHex(who.cosmetics.color)) }}>
+                        {who.name}
+                        {c.ghost ? ' (ghost)' : ''}{' '}
+                      </b>
+                    )}
                     {prefs.profanityFilter ? filterProfanity(c.text) : c.text}
                   </div>
                 </div>
@@ -300,22 +345,20 @@ export function MeetingOverlay({ snap, settings }: { snap: Snapshot; settings: S
             <div ref={chatEnd} />
           </div>
           {settings.quickChat && (you.alive || settings.ghostChat) && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
-                <select className="mm-input" style={{ minHeight: 34, padding: '4px 8px', flex: '1 1 120px' }} value={quickTarget ?? ''} onChange={(e) => setQuickTarget(e.target.value || null)} aria-label="Quick chat target">
-                  <option value="">About…</option>
-                  {snap.players
-                    .filter((p) => p.id !== you.id)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <div className="mmm-quick">
+              <select className="mm-input" value={quickTarget ?? ''} onChange={(e) => setQuickTarget(e.target.value || null)} aria-label="Quick chat target">
+                <option value="">About…</option>
+                {snap.players
+                  .filter((p) => p.id !== you.id)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+              <div className="mmm-quick-row">
                 {QUICK_CHAT.filter((q) => (q.target ? !!quickTarget : true)).slice(0, 12).map((q) => (
-                  <button key={q.id} className="mm-btn" style={{ minHeight: 32, padding: '2px 8px', fontSize: '0.75em' }} onClick={() => act({ a: 'quick', id: q.id, target: quickTarget ?? undefined })}>
+                  <button key={q.id} className="mm-btn sm mm-nocase" onClick={() => act({ a: 'quick', id: q.id, target: quickTarget ?? undefined })}>
                     {q.text.replace('{p}', snap.players.find((p) => p.id === quickTarget)?.name ?? '…')}
                   </button>
                 ))}
@@ -329,16 +372,16 @@ export function MeetingOverlay({ snap, settings }: { snap: Snapshot; settings: S
                 if (text.trim()) act({ a: 'chat', text: text.trim() });
                 setText('');
               }}
-              style={{ display: 'flex', gap: 6, marginTop: 6 }}
+              className="mmm-form"
             >
-              <input className="mm-input" style={{ minHeight: 40 }} value={text} maxLength={160} onChange={(e) => setText(e.target.value)} placeholder={you.alive ? 'Make your case…' : 'Ghost chat…'} aria-label="Meeting chat" />
-              <button className="mm-btn mm-btn-primary" style={{ minHeight: 40 }} type="submit" aria-label="Send">
-                <MIcon name="chat" size={18} />
+              <input className="mm-input" value={text} maxLength={160} onChange={(e) => setText(e.target.value)} placeholder={you.alive ? 'Make your case…' : 'Ghost chat…'} aria-label="Meeting chat" />
+              <button className="mm-btn mm-btn-primary" type="submit" aria-label="Send">
+                <MIcon name="arrow" size={18} />
               </button>
             </form>
           )}
-          <div style={{ fontSize: '0.7em', color: tc.good, marginTop: 4 }} className="mm-muted">
-            {you.alive ? (m.myVote ? '✓ You voted' : m.stage === 'vote' ? 'Pick someone, then stamp your vote' : '') : 'Ghosts can’t vote'}
+          <div className="mmm-hint" style={{ color: you.alive && m.myVote ? tc.good : undefined }}>
+            {you.alive ? (m.myVote ? '✓ Vote locked in' : '') : 'You are a ghost — only ghosts can read you'}
           </div>
         </div>
       </div>
@@ -348,34 +391,36 @@ export function MeetingOverlay({ snap, settings }: { snap: Snapshot; settings: S
 
 function BodyPortrait({ cosmetics, size }: { cosmetics: Cosmetics; size: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const w = Math.round(size * 1.7);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     const dpr = Math.min(2, devicePixelRatio || 1);
-    c.width = size * dpr;
+    c.width = w * dpr;
     c.height = size * dpr;
     const g = c.getContext('2d');
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawBody(g, cosmetics, size / 2, size * 0.75, size / 50, 0);
-  }, [cosmetics, size]);
-  return <canvas ref={ref} style={{ width: size, height: size }} aria-label="Body" />;
+    drawBody(g, cosmetics, w / 2, size * 0.62, size / 46, 0);
+  }, [cosmetics, size, w]);
+  return <canvas ref={ref} style={{ width: w, height: size }} aria-label="Body" />;
 }
 
 // ---------------------------------------------------------------------------
 // Ejection
 
 const EJECT_SCENE: Record<EjectStyle, { sky: [string, string]; label: string }> = {
-  tube: { sky: ['#0b1238', '#1e3a8a'], label: 'shot out of the pneumatic tube' },
-  airlock: { sky: ['#020617', '#0f172a'], label: 'sent out the airlock' },
+  tube: { sky: ['#03040a', '#0b1238'], label: 'shot out of the pneumatic tube' },
+  airlock: { sky: ['#010205', '#0a0f1c'], label: 'sent out the airlock' },
   caboose: { sky: ['#1e293b', '#94a3b8'], label: 'tossed off the caboose' },
-  trapdoor: { sky: ['#1c0f1f', '#3b1d36'], label: 'dropped through the trapdoor' },
-  chute: { sky: ['#0b1238', '#334155'], label: 'sent down the chute' },
+  trapdoor: { sky: ['#0c060e', '#2a1328'], label: 'dropped through the trapdoor' },
+  chute: { sky: ['#03040a', '#1e2638'], label: 'sent down the chute' },
 };
 
 export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Settings }) {
   const e = snap.eject!;
   const prefs = useMystery((s) => s.prefs);
+  const vp = useViewport();
   const map = getMap(snap.map);
   const style = map.def.eject;
   const scene = EJECT_SCENE[style];
@@ -416,7 +461,7 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     if (!g) return;
     let raf = 0;
     const t0 = performance.now();
-    const stars = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 2 + 0.5, v: Math.random() * 0.3 + 0.1 }));
+    const stars = Array.from({ length: 110 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 2 + 0.5, v: Math.random() * 0.3 + 0.1 }));
     const draw = () => {
       const dpr = Math.min(2, devicePixelRatio || 1);
       const w = c.clientWidth;
@@ -434,9 +479,9 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
       g.fillRect(0, 0, w, h);
       // Moving backdrop per style.
       for (const s of stars) {
-        const speed = style === 'caboose' ? 0.6 : style === 'trapdoor' ? 0 : 0.08;
+        const speed = prefs.reducedMotion ? 0 : style === 'caboose' ? 0.6 : style === 'trapdoor' ? 0 : 0.08;
         const x = (((s.x - t * s.v * speed) % 1) + 1) % 1;
-        const y = style === 'trapdoor' ? (((s.y - t * s.v * 0.6) % 1) + 1) % 1 : s.y;
+        const y = style === 'trapdoor' && !prefs.reducedMotion ? (((s.y - t * s.v * 0.6) % 1) + 1) % 1 : s.y;
         g.fillStyle = style === 'caboose' ? 'rgba(255,255,255,0.85)' : `rgba(255,255,255,${0.3 + s.s * 0.2})`;
         g.beginPath();
         g.arc(x * w, y * h, style === 'caboose' ? s.s * 1.5 : s.s, 0, Math.PI * 2);
@@ -484,25 +529,27 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [ejected, scene, style, skipBerry]);
+  }, [ejected, scene, style, skipBerry, prefs.reducedMotion]);
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 46 }}>
+    <div className="mme">
       <canvas ref={ref} style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden />
       {use3d && ejected && (
-        <div style={{ position: 'absolute', left: 0, right: 0, top: '12%', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div className="mme-stage">
           <Suspense fallback={null}>
-            <Stage3D actors={ejectActors} width={Math.min(900, innerWidth)} height={Math.min(420, innerHeight * 0.5)} light="#cfe0ff" reducedMotion={prefs.reducedMotion} />
+            <Stage3D actors={ejectActors} width={Math.min(900, vp.w)} height={Math.min(420, vp.h * 0.5)} light="#cfe0ff" reducedMotion={prefs.reducedMotion} />
           </Suspense>
         </div>
       )}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: '18%', textAlign: 'center', padding: 16 }}>
-        <div style={{ fontSize: 'clamp(22px, 4.5vw, 40px)', fontWeight: 850, textShadow: '0 4px 20px rgba(0,0,0,0.6)' }} aria-live="polite">
+      <div className="mme-text">
+        <div className="mme-line mm-nocase" aria-live="polite">
           {typed}
-          <span style={{ opacity: typed.length < msg.length ? 1 : 0 }}>▌</span>
+          <span className="mme-caret" style={{ opacity: typed.length < msg.length ? 1 : 0 }}>
+            ▌
+          </span>
         </div>
-        {ejected && <div className="mm-muted" style={{ marginTop: 4 }}>{ejected.name} was {scene.label}.</div>}
+        {ejected && <div className="mme-sub mm-nocase">{ejected.name} was {scene.label}.</div>}
         {remaining !== null && typed.length >= msg.length && (
-          <div className="mm-anim-rise" style={{ marginTop: 8, fontWeight: 700 }}>
+          <div className="mme-left mm-in-up">
             {remaining} murderer{remaining === 1 ? '' : 's'} remain{remaining === 1 ? 's' : ''}.
           </div>
         )}
@@ -512,7 +559,7 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
 }
 
 // ---------------------------------------------------------------------------
-// Results
+// Results: end-of-round board
 
 const REASON: Record<string, string> = {
   tasks: 'The crew finished every task!',
@@ -526,6 +573,22 @@ const REASON: Record<string, string> = {
   abandoned: 'The other side left the match.',
 };
 
+/** Rubber-stamp tally (original art: jagged badge + icon + count). */
+function Stamp({ icon, label, n, tone, i }: { icon: string; label: string; n: number; tone: string; i: number }) {
+  return (
+    <div className="mmr-stamp" style={{ ['--tone' as string]: tone, ['--i' as string]: i }} data-zero={n === 0}>
+      <svg viewBox="0 0 100 100" className="mmr-stamp-bg" aria-hidden>
+        <polygon points="50,2 61,14 77,8 80,25 96,30 88,45 98,58 83,66 86,83 69,84 60,98 48,88 34,97 28,82 11,80 15,64 2,52 14,40 6,24 23,21 28,5 41,13" />
+      </svg>
+      <MIcon name={icon} size={34} stroke={2.4} />
+      <span className="mmr-stamp-label">{label}</span>
+      <span className="mmr-stamp-n">
+        ×<Tick value={n} ms={900} />
+      </span>
+    </div>
+  );
+}
+
 export function ResultsScreen({ snap }: { snap: Snapshot }) {
   const res = snap.result!;
   const prefs = useMystery((s) => s.prefs);
@@ -534,6 +597,7 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
   const send = useMystery((s) => s.send);
   const leave = useMystery((s) => s.leave);
   const tc = teamColors(prefs.colorblind !== 'none');
+  const vp = useViewport();
   const won = res.winners.includes(pid);
   const [tab, setTab] = useState<'summary' | 'timeline' | 'heatmap'>('summary');
   const [heatFor, setHeatFor] = useState<string>(pid);
@@ -559,224 +623,253 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
             : 'Murderers win!'
           : 'Jester wins!';
   const col = res.winningTeam === 'murderers' ? tc.murderers : res.winningTeam === 'crew' ? tc.crew : tc.neutral;
-  const confetti = useMemo(() => Array.from({ length: prefs.reducedMotion ? 0 : 60 }, (_, i) => ({ i, x: Math.random() * 100, d: Math.random() * 2, c: ['#fbbf24', '#2f6fed', '#2dd4bf', '#ec4899', '#a78bfa'][i % 5] })), [prefs.reducedMotion]);
   const nameOf = (id?: string) => snap.players.find((p) => p.id === id)?.name ?? '—';
   const heat = res.heat?.[heatFor] ?? [];
-  const heatMarkers = useMemo(() => heat.map((c) => ({ pos: { x: (c % 1000) * 2 + 1, y: Math.floor(c / 1000) * 2 + 1 }, color: 'rgba(255,120,60,0.35)', kind: 'dot' as const })), [heat]);
+  const heatMarkers = useMemo(() => heat.map((c) => ({ pos: { x: (c % 1000) * 2 + 1, y: Math.floor(c / 1000) * 2 + 1 }, color: 'rgba(255,150,60,0.4)', kind: 'heat' as const })), [heat]);
+  // Board numbers.
+  let done = 0;
+  let total = 0;
+  for (const [id, s] of Object.entries(res.stats)) {
+    if (ROLES[res.roles[id] ?? 'crewmate'].team !== 'crew') continue;
+    done += s.tasksDone;
+    total += s.tasksTotal;
+  }
+  const count = (t: string) => res.timeline.filter((e) => e.type === t).length;
+  const sabotages = count('sabotage') + count('blackout');
+  const kills = count('kill');
+  const meetings = count('report') + count('emergency');
+  const voteAcc = (() => {
+    let c = 0;
+    let t = 0;
+    for (const [id, s] of Object.entries(res.stats)) {
+      if (ROLES[res.roles[id] ?? 'crewmate'].team !== 'crew') continue;
+      c += s.correctVotes;
+      t += s.votesCast;
+    }
+    return t ? c / t : 0;
+  })();
+  const mine = res.stats[pid];
   return (
-    <div className="mm-safe mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 48, overflowY: 'auto', background: `radial-gradient(circle at 50% 20%, ${col}55, #040714 70%)` }}>
-      {confetti.map((c) => (
-        <span key={c.i} aria-hidden style={{ position: 'fixed', top: -20, left: `${c.x}%`, width: 8, height: 14, background: c.c, borderRadius: 2, animation: `mm-confetti 3.2s ${c.d}s linear infinite`, opacity: won ? 1 : 0.35 }} />
-      ))}
-      <style>{'@keyframes mm-confetti { to { transform: translateY(110vh) rotate(720deg); } }'}</style>
-      <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
-        <div className="mm-chip mm-anim-rise" style={{ color: won ? tc.good : tc.bad, fontWeight: 800 }}>
-          {won ? 'VICTORY' : 'DEFEAT'}
+    <div className="mmr mm-safe" style={{ backgroundImage: STARS, ['--win' as string]: col }}>
+      <div className="mmr-top">
+        <div className="mmr-head">
+          <span className="mmr-verdict" data-won={won} style={{ color: won ? tc.good : tc.bad }}>
+            {won ? 'Victory' : 'Defeat'}
+          </span>
+          <h1 className="mmr-title">{title}</h1>
+          <div className="mmr-reason">{REASON[res.reason] ?? res.reason}</div>
         </div>
-        <h1 className="mm-title mm-anim-pop" style={{ fontSize: 'clamp(44px, 10vw, 96px)', margin: '6px 0', background: `linear-gradient(180deg,#fff,${col})`, WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>
-          {title}
-        </h1>
-        <div className="mm-muted">{REASON[res.reason] ?? res.reason}</div>
-        {use3d && winners.length > 0 ? (
-          <div style={{ margin: '10px 0' }}>
-            <Suspense fallback={null}>
-              <Stage3D actors={winActors} width={Math.min(760, innerWidth - 24)} height={230} light={col} reducedMotion={prefs.reducedMotion} />
-            </Suspense>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap', fontWeight: 800 }}>
-              {winners.map((p) => (
-                <span key={p.id} style={{ color: res.mvp === p.id ? '#fbbf24' : undefined }}>
-                  {res.mvp === p.id ? '★ ' : ''}
-                  {p.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 6, flexWrap: 'wrap', margin: '14px 0' }}>
-          {winners.map((p, i) => (
-            <div key={p.id} className="mm-anim-rise" style={{ animationDelay: `${i * 90}ms` }}>
-              <BerryAvatar cosmetics={p.cosmetics} size={i === 0 ? 120 : 96} emote={p.cosmetics.victory || 'cheer'} />
-              <div style={{ fontWeight: 800, color: res.mvp === p.id ? '#fbbf24' : undefined }}>
-                {res.mvp === p.id ? '★ ' : ''}
-                {p.name}
-              </div>
-            </div>
-          ))}
-        </div>
-        )}
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 12 }}>
-          {(['summary', 'timeline', 'heatmap'] as const).map((t) => (
-            <button key={t} className={`mm-btn ${tab === t ? 'mm-btn-primary' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
-              {t}
-            </button>
-          ))}
-        </div>
-        {tab === 'summary' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, textAlign: 'left' }}>
-            <div className="mm-panel" style={{ padding: 14 }}>
-              <h3 style={{ marginTop: 0 }}>Roles</h3>
-              {snap.players.map((p) => {
-                const r = ROLES[res.roles[p.id] ?? 'crewmate'];
-                const s = res.stats[p.id];
-                return (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', opacity: s?.alive ? 1 : 0.6 }}>
-                    <BerryAvatar cosmetics={p.cosmetics} size={30} animate={false} />
-                    <span style={{ flex: 1, fontWeight: 700 }}>
-                      {p.name} {res.winners.includes(p.id) ? '🏆' : ''}
-                    </span>
-                    <span style={{ color: r.color, fontWeight: 700 }}>{r.name}</span>
-                    <span className="mm-muted" style={{ fontSize: '0.8em', width: 90, textAlign: 'right' }}>
-                      {r.team === 'crew' ? `${s?.tasksDone ?? 0}/${s?.tasksTotal ?? 0} tasks` : `${s?.kills ?? 0} kills`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mm-panel" style={{ padding: 14 }}>
-              <h3 style={{ marginTop: 0 }}>Awards</h3>
-              {res.awards.map((a) => (
-                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                  <b style={{ color: '#fbbf24' }}>{a.title}</b>
-                  <span>{nameOf(a.playerId)}</span>
-                </div>
-              ))}
-              <h3>Your match</h3>
-              {(() => {
-                const s = res.stats[pid];
-                if (!s) return null;
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.9em' }}>
-                    <span>Tasks: {s.tasksDone}</span>
-                    <span>Kills: {s.kills}</span>
-                    <span>Reports: {s.bodiesReported}</span>
-                    <span>Meetings called: {s.meetingsCalled}</span>
-                    <span>
-                      Correct votes: {s.correctVotes}/{s.votesCast}
-                    </span>
-                    <span>Fixes: {s.fixes}</span>
-                    <span>Walked: {Math.round(s.distance)} m</span>
-                    <span>Survived: {fmtTime(s.survivedTo)}</span>
-                  </div>
-                );
-              })()}
-              <div style={{ marginTop: 10 }}>
-                <div className="mm-muted" style={{ fontSize: '0.75em', fontWeight: 800 }}>
-                  VOTE ACCURACY (CREW)
-                </div>
-                <Bar
-                  value={(() => {
-                    let c = 0;
-                    let t = 0;
-                    for (const [id, s] of Object.entries(res.stats)) {
-                      if (ROLES[res.roles[id] ?? 'crewmate'].team !== 'crew') continue;
-                      c += s.correctVotes;
-                      t += s.votesCast;
-                    }
-                    return t ? c / t : 0;
-                  })()}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-        {tab === 'timeline' && (
-          <div className="mm-panel" style={{ padding: 14, textAlign: 'left', maxHeight: 360 }}>
-            <div className="mm-scroll" style={{ maxHeight: 330 }}>
-              {res.timeline.length === 0 && <div className="mm-muted">A quiet game.</div>}
-              {res.timeline.map((e, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, padding: '3px 0', fontSize: '0.92em' }}>
-                  <span className="mm-muted" style={{ width: 48, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                    {fmtTime(e.t)}
-                  </span>
-                  <span>
-                    {e.type === 'kill' && (
-                      <>
-                        🔪 <b>{nameOf(e.actor)}</b> {e.detail === 'gun' ? 'shot' : e.detail === 'poison' ? 'poisoned' : 'eliminated'} <b>{nameOf(e.target)}</b>
-                      </>
-                    )}
-                    {e.type === 'report' && (
-                      <>
-                        📣 <b>{nameOf(e.actor)}</b> reported {nameOf(e.target)}’s body
-                      </>
-                    )}
-                    {e.type === 'emergency' && (
-                      <>
-                        🚨 <b>{nameOf(e.actor)}</b> called an emergency meeting
-                      </>
-                    )}
-                    {e.type === 'eject' && <>🚀 {e.target ? `${nameOf(e.target)} was ejected` : `No one was ejected (${e.detail || 'skip'})`}</>}
-                    {e.type === 'sabotage' && (
-                      <>
-                        ⚡ <b>{nameOf(e.actor)}</b> sabotaged {e.detail}
-                      </>
-                    )}
-                    {e.type === 'fixed' && (
-                      <>
-                        🔧 <b>{nameOf(e.actor)}</b> fixed {e.detail}
-                      </>
-                    )}
-                    {e.type === 'misfire' && (
-                      <>
-                        💥 <b>{nameOf(e.actor)}</b> misfired at {nameOf(e.target)}
-                      </>
-                    )}
-                    {e.type === 'gun.pickup' && (
-                      <>
-                        🦸 <b>{nameOf(e.actor)}</b> picked up the gun
-                      </>
-                    )}
-                    {e.type === 'poison' && (
-                      <>
-                        🧪 <b>{nameOf(e.actor)}</b> poisoned {nameOf(e.target)}
-                      </>
-                    )}
-                    {e.type === 'shield.hit' && (
-                      <>
-                        🛡 {nameOf(e.target)}’s shield blocked {nameOf(e.actor)}
-                      </>
-                    )}
-                    {e.type === 'blackout' && (
-                      <>
-                        🌑 <b>{nameOf(e.actor)}</b> caused a blackout
-                      </>
-                    )}
-                    {e.type === 'final' && <>⏱ Final countdown began</>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {tab === 'heatmap' && (
-          <div className="mm-panel" style={{ padding: 14 }}>
-            <select className="mm-input" value={heatFor} onChange={(e) => setHeatFor(e.target.value)} style={{ marginBottom: 8, maxWidth: 260 }} aria-label="Heatmap player">
-              {snap.players.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <MapThumb map={map} height={Math.min(380, innerHeight * 0.5)} width={Math.min(860, innerWidth * 0.86)} markers={heatMarkers} labels />
-            </div>
-            <div className="mm-muted" style={{ fontSize: '0.8em', marginTop: 6 }}>
-              Where {nameOf(heatFor)} spent the match (one dot per second).
-            </div>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '18px 0' }}>
+        <div className="mmr-btns">
           {isHost ? (
-            <button className="mm-btn mm-btn-primary" style={{ minWidth: 200, minHeight: 52 }} onClick={() => send({ t: 'host.lobby' })}>
+            <button className="mm-btn mm-btn-primary mm-pill" onClick={() => send({ t: 'host.lobby' })}>
               <MIcon name="play" /> Back to the waiting room
             </button>
           ) : (
             <span className="mm-chip">Waiting for the host… (auto-return in a minute)</span>
           )}
-          <button className="mm-btn" onClick={leave}>
+          <button className="mm-btn mm-pill mmr-leave" onClick={leave}>
             Leave
           </button>
         </div>
       </div>
+      <div className="mms-tabs mmr-tabs" role="tablist" aria-label="Results sections">
+        {(['summary', 'timeline', 'heatmap'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} className="mms-tab" onClick={() => setTab(t)}>
+            {t === 'summary' ? 'Board' : t === 'timeline' ? 'Timeline' : 'Heatmap'}
+          </button>
+        ))}
+      </div>
+      {tab === 'summary' && (
+        <div className="mmr-grid">
+          <div className="mmr-left">
+            {total > 0 && (
+              <div className="mmr-total">
+                <span className="mm-label">Total tasks completed</span>
+                <Bar value={done / total} height={26} label="Total tasks completed" />
+                <span className="mmr-total-n">
+                  <Tick value={done} ms={1200} />/{total}
+                </span>
+              </div>
+            )}
+            <div className="mmr-mid">
+              <div className="mmr-box">
+                <span className="mm-label">Highlights</span>
+                {res.awards.length === 0 && <div className="mm-muted">No awards this round.</div>}
+                {res.awards.map((a, i) => (
+                  <div key={a.id} className="mmr-award" style={{ ['--i' as string]: i }}>
+                    <MIcon name="trophy" size={18} />
+                    <b>{a.title}</b>
+                    <span className="mm-nocase">{nameOf(a.playerId)}</span>
+                  </div>
+                ))}
+                {mine && (
+                  <div className="mmr-mine">
+                    <span className="mm-label">Your match</span>
+                    <div className="mmr-mine-grid">
+                      <span>Tasks: {mine.tasksDone}</span>
+                      <span>Kills: {mine.kills}</span>
+                      <span>Reports: {mine.bodiesReported}</span>
+                      <span>Meetings called: {mine.meetingsCalled}</span>
+                      <span>
+                        Correct votes: {mine.correctVotes}/{mine.votesCast}
+                      </span>
+                      <span>Fixes: {mine.fixes}</span>
+                      <span>Walked: {Math.round(mine.distance)} m</span>
+                      <span>Survived: {fmtTime(mine.survivedTo)}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="mmr-acc">
+                  <span className="mm-label">Vote accuracy (crew)</span>
+                  <Bar value={voteAcc} height={10} />
+                </div>
+              </div>
+              <div className="mmr-stamps">
+                <Stamp icon="bolt" label="Sabotage" n={sabotages} tone="#ff3b3b" i={0} />
+                <Stamp icon="knife" label="Elimination" n={kills} tone="#e8e8e8" i={1} />
+                <Stamp icon="megaphone" label="Meeting" n={meetings} tone="#ffd426" i={2} />
+              </div>
+            </div>
+            <span className="mm-label">Crew progression</span>
+            <div className="mmr-crew">
+              {snap.players.map((p, i) => {
+                const r = ROLES[res.roles[p.id] ?? 'crewmate'];
+                const s = res.stats[p.id];
+                const prog = s && s.tasksTotal ? s.tasksDone / s.tasksTotal : 0;
+                return (
+                  <div key={p.id} className="mmr-card" data-dead={!s?.alive} data-win={res.winners.includes(p.id)} style={{ ['--i' as string]: i }}>
+                    <span className="mmr-card-av" style={{ background: colorHex(p.cosmetics.color) + '55' }}>
+                      <BerryAvatar cosmetics={p.cosmetics} size={40} animate={false} ghost={!s?.alive} />
+                    </span>
+                    <span className="mmr-card-txt">
+                      <b className="mm-nocase">
+                        {p.name}
+                        {res.mvp === p.id ? ' ★' : ''}
+                      </b>
+                      <small style={{ color: r.color }}>{r.name}</small>
+                      {r.team === 'crew' ? <Bar value={prog} height={9} /> : <small className="mm-muted">{s?.kills ?? 0} kills</small>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mmr-right">
+            <div className="mmr-frame">
+              {use3d && winners.length > 0 ? (
+                <Suspense fallback={null}>
+                  <Stage3D actors={winActors} width={Math.min(560, vp.w - 40)} height={230} light={col} reducedMotion={prefs.reducedMotion} />
+                </Suspense>
+              ) : (
+                <div className="mmr-podium">
+                  {winners.slice(0, 5).map((p, i) => (
+                    <div key={p.id} className="mm-in-up" style={{ animationDelay: `${i * 90}ms` }}>
+                      <BerryAvatar cosmetics={p.cosmetics} size={i === 0 ? 110 : 84} emote={p.cosmetics.victory || 'cheer'} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mmr-tiles">
+                {snap.players.map((p, i) => {
+                  const r = ROLES[res.roles[p.id] ?? 'crewmate'];
+                  return (
+                    <div key={p.id} className="mmr-tile" data-win={res.winners.includes(p.id)} style={{ ['--pc' as string]: colorHex(p.cosmetics.color), ['--i' as string]: i }} title={`${p.name} — ${r.name}`}>
+                      <BerryAvatar cosmetics={p.cosmetics} size={52} animate={false} />
+                      <span className="mmr-tile-name mm-nocase">{p.name}</span>
+                      <span className="mmr-tile-role" style={{ color: r.color }}>
+                        {r.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {tab === 'timeline' && (
+        <div className="mm-panel mmr-panel">
+          <div className="mm-scroll" style={{ maxHeight: '58vh' }}>
+            {res.timeline.length === 0 && <div className="mm-muted">A quiet game.</div>}
+            {res.timeline.map((e, i) => (
+              <div key={i} className="mmr-ev" style={{ ['--i' as string]: Math.min(i, 30) }}>
+                <span className="mmr-ev-t">{fmtTime(e.t)}</span>
+                <span className="mm-nocase">
+                  {e.type === 'kill' && (
+                    <>
+                      🔪 <b>{nameOf(e.actor)}</b> {e.detail === 'gun' ? 'shot' : e.detail === 'poison' ? 'poisoned' : 'eliminated'} <b>{nameOf(e.target)}</b>
+                    </>
+                  )}
+                  {e.type === 'report' && (
+                    <>
+                      📣 <b>{nameOf(e.actor)}</b> reported {nameOf(e.target)}’s body
+                    </>
+                  )}
+                  {e.type === 'emergency' && (
+                    <>
+                      🚨 <b>{nameOf(e.actor)}</b> called an emergency meeting
+                    </>
+                  )}
+                  {e.type === 'eject' && <>🚀 {e.target ? `${nameOf(e.target)} was ejected` : `No one was ejected (${e.detail || 'skip'})`}</>}
+                  {e.type === 'sabotage' && (
+                    <>
+                      ⚡ <b>{nameOf(e.actor)}</b> sabotaged {e.detail}
+                    </>
+                  )}
+                  {e.type === 'fixed' && (
+                    <>
+                      🔧 <b>{nameOf(e.actor)}</b> fixed {e.detail}
+                    </>
+                  )}
+                  {e.type === 'misfire' && (
+                    <>
+                      💥 <b>{nameOf(e.actor)}</b> misfired at {nameOf(e.target)}
+                    </>
+                  )}
+                  {e.type === 'gun.pickup' && (
+                    <>
+                      🦸 <b>{nameOf(e.actor)}</b> picked up the gun
+                    </>
+                  )}
+                  {e.type === 'poison' && (
+                    <>
+                      🧪 <b>{nameOf(e.actor)}</b> poisoned {nameOf(e.target)}
+                    </>
+                  )}
+                  {e.type === 'shield.hit' && (
+                    <>
+                      🛡 {nameOf(e.target)}’s shield blocked {nameOf(e.actor)}
+                    </>
+                  )}
+                  {e.type === 'blackout' && (
+                    <>
+                      🌑 <b>{nameOf(e.actor)}</b> caused a blackout
+                    </>
+                  )}
+                  {e.type === 'final' && <>⏱ Final countdown began</>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {tab === 'heatmap' && (
+        <div className="mm-panel mmr-panel">
+          <select className="mm-input" value={heatFor} onChange={(e) => setHeatFor(e.target.value)} style={{ marginBottom: 8, maxWidth: 260 }} aria-label="Heatmap player">
+            {snap.players.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <SchematicMap map={map} width={Math.min(860, vp.w * 0.86)} height={Math.min(380, vp.h * 0.5)} markers={heatMarkers} labels reducedMotion={prefs.reducedMotion} />
+          </div>
+          <div className="mm-muted" style={{ fontSize: '0.8em', marginTop: 6 }}>
+            Where <span className="mm-nocase">{nameOf(heatFor)}</span> spent the match (one dot per second).
+          </div>
+        </div>
+      )}
     </div>
   );
 }

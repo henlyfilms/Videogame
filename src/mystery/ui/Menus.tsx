@@ -1,17 +1,19 @@
 /**
- * Front-end menus: title, join (big keypad + paste), room browser, settings,
- * profile/stats and how-to-play. Rendered over either the 2D or the 3D
- * backdrop depending on the player's view preference.
+ * Front-end menus: title, join (big keypad + paste), room browser, the tabbed
+ * settings menu (Audio / Gameplay / Controls / Match — also used in-match and
+ * in the waiting room), profile/stats and how-to-play. Rendered over either
+ * the 2D or the 3D backdrop depending on the player's view preference.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { MODE_LIST } from '../core/modes';
 import { ROLES } from '../core/roles';
 import { CODE_ALPHABET, CODE_LENGTH, normalizeCode } from '../net/protocol';
 import type { RoleId, ViewMode } from '../core/types';
-import { DEFAULT_KEYS, type Keybinds, type Prefs } from '../client/prefs';
+import { DEFAULT_KEYS, defaultPrefs, type Keybinds, type Prefs } from '../client/prefs';
 import { useMystery } from '../client/store';
 import { availableMaps } from '../core/maps';
 import { BerryAvatar, MIcon, Modal, teamColors } from './common';
+import { Hazard, keyLabel } from './kit';
 import { TRACKS } from '../audio/music';
 import { music } from '../audio/music';
 
@@ -22,26 +24,12 @@ export function ViewPicker({ value, onChange, compact = false }: { value: ViewMo
     { v: '2d', label: '2D Simplified', sub: 'Top-down & light', icon: 'map' },
   ];
   return (
-    <div role="radiogroup" aria-label="View mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 8 }}>
+    <div role="radiogroup" aria-label="View mode" className={`mm-seg${compact ? ' compact' : ''}`}>
       {opts.map((o) => (
-        <button
-          key={o.v}
-          role="radio"
-          aria-checked={value === o.v}
-          className="mm-btn"
-          onClick={() => onChange(o.v)}
-          style={{
-            flexDirection: 'column',
-            padding: compact ? '8px 6px' : '12px 8px',
-            gap: 4,
-            borderColor: value === o.v ? 'var(--mm-accent2)' : undefined,
-            background: value === o.v ? 'rgba(47,111,237,0.25)' : undefined,
-            boxShadow: value === o.v ? '0 0 0 1px var(--mm-accent2), 0 0 24px rgba(47,111,237,0.35)' : undefined,
-          }}
-        >
+        <button key={o.v} role="radio" aria-checked={value === o.v} className="mm-seg-opt" onClick={() => onChange(o.v)}>
           <MIcon name={o.icon} size={compact ? 18 : 22} />
-          <span style={{ fontSize: compact ? '0.78em' : '0.86em' }}>{o.label}</span>
-          {!compact && <span className="mm-muted" style={{ fontSize: '0.72em', fontWeight: 500 }}>{o.sub}</span>}
+          <span className="mm-seg-label">{o.label}</span>
+          {!compact && <span className="mm-seg-sub">{o.sub}</span>}
         </button>
       ))}
     </div>
@@ -59,43 +47,29 @@ export function TitleScreen() {
   useEffect(() => setName(prefs.name), [prefs.name]);
   const commitName = () => setPrefs({ name: name.trim().slice(0, 16) || 'Berry' });
   return (
-    <div className="mm-safe" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
-      <div style={{ width: 'min(980px, 100%)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 18, alignItems: 'center' }}>
-        <div className="mm-anim-rise" style={{ textAlign: 'center' }}>
-          <div className="mm-chip" style={{ marginBottom: 10 }}>
-            <MIcon name="berry" size={14} /> Marion HQ Arcade
+    <div className="mmx mm-safe">
+      <div className="mmx-grid">
+        <div className="mmx-hero">
+          <div className="mmx-logo mm-in-down">
+            <span className="mmx-logo-top">Marion</span>
+            <span className="mmx-logo-main">Mystery</span>
+            <Hazard className="mmx-logo-haz" />
+            <span className="mmx-logo-tag">Social deduction · 4–20 players · humans &amp; bots</span>
           </div>
-          <h1 className="mm-title" style={{ fontSize: 'clamp(44px, 9vw, 84px)', lineHeight: 0.92, margin: '6px 0 10px' }}>
-            Marion
-            <br />
-            Mystery
-          </h1>
-          <p className="mm-muted" style={{ margin: '0 auto 16px', maxWidth: 360 }}>
-            Tasks, sabotage, flashlights and one very suspicious berry. 4–20 players, humans and Marion agents.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', animation: 'mm-float 3.2s ease-in-out infinite' }}>
-            <BerryAvatar cosmetics={prefs.cosmetics} size={150} />
-          </div>
-          <button className="mm-btn" style={{ marginTop: 6 }} onClick={() => setScreen('wardrobe')}>
-            <MIcon name="shirt" /> Customize
-          </button>
-        </div>
-        <div className="mm-panel mm-anim-rise" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, animationDelay: '80ms' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span className="mm-muted" style={{ fontSize: '0.8em', fontWeight: 700, letterSpacing: '0.06em' }}>
-              YOUR NAME
-            </span>
-            <input className="mm-input" value={name} maxLength={16} placeholder="Berry" onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === 'Enter' && commitName()} aria-label="Your name" />
-          </label>
-          <div>
-            <div className="mm-muted" style={{ fontSize: '0.8em', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 6 }}>
-              VIEW (CHOOSE BEFORE THE MATCH)
+          <div className="mmx-stand mm-in-up" style={{ animationDelay: '120ms' }}>
+            <div className="mmx-avatar">
+              <BerryAvatar cosmetics={prefs.cosmetics} size={170} />
             </div>
-            <ViewPicker value={prefs.view} onChange={(v) => setPrefs({ view: v })} />
+            <div className="mmx-pedestal" aria-hidden />
+            <label className="mmx-name">
+              <span className="mm-label">Your name</span>
+              <input className="mm-input" value={name} maxLength={16} placeholder="Berry" onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === 'Enter' && commitName()} aria-label="Your name" />
+            </label>
           </div>
+        </div>
+        <div className="mmx-menu mm-panel mm-in-right" style={{ animationDelay: '80ms' }}>
           <button
-            className="mm-btn mm-btn-primary"
-            style={{ minHeight: 56, fontSize: '1.05em' }}
+            className="mm-btn mm-btn-primary mm-pill mmx-play"
             onClick={() => {
               commitName();
               startSolo();
@@ -103,7 +77,7 @@ export function TitleScreen() {
           >
             <MIcon name="play" /> Quick Play vs Marion Bots
           </button>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="mmx-row2">
             <button
               className="mm-btn"
               onClick={() => {
@@ -122,23 +96,35 @@ export function TitleScreen() {
             >
               <MIcon name="door" /> Join by Code
             </button>
-            <button className="mm-btn" onClick={() => setScreen('browse')}>
-              <MIcon name="globe" /> Browse Rooms
+          </div>
+          <button className="mm-btn" onClick={() => setScreen('browse')}>
+            <MIcon name="globe" /> Browse Rooms
+          </button>
+          <button className="mm-btn" onClick={() => setScreen('freeplay')}>
+            <MIcon name="flag" /> Freeplay &amp; Tutorial
+          </button>
+          <button className="mm-btn" onClick={() => setScreen('howto')}>
+            <MIcon name="help" /> How to Play
+          </button>
+          <div className="mmx-view">
+            <span className="mm-label">View — choose before the match</span>
+            <ViewPicker value={prefs.view} onChange={(v) => setPrefs({ view: v })} compact />
+          </div>
+          <div className="mmx-icons">
+            <button className="mmx-icon" onClick={() => setScreen('wardrobe')} aria-label="Customize">
+              <MIcon name="hanger" size={26} />
+              <span>Customize</span>
             </button>
-            <button className="mm-btn" onClick={() => setScreen('howto')}>
-              <MIcon name="help" /> How to Play
+            <button className="mmx-icon" onClick={() => setScreen('profile')} aria-label="Stats">
+              <MIcon name="stats" size={26} />
+              <span>Stats</span>
             </button>
-            <button className="mm-btn" style={{ gridColumn: '1 / -1' }} onClick={() => setScreen('freeplay')}>
-              🎓 Freeplay & Tutorial
-            </button>
-            <button className="mm-btn" onClick={() => setScreen('profile')}>
-              <MIcon name="stats" /> Stats
-            </button>
-            <button className="mm-btn" onClick={() => setScreen('settings')}>
-              <MIcon name="gear" /> Settings
+            <button className="mmx-icon" onClick={() => setScreen('settings')} aria-label="Settings">
+              <MIcon name="gear" size={26} />
+              <span>Settings</span>
             </button>
           </div>
-          {conn === 'reconnecting' && <div className="mm-chip" style={{ color: 'var(--mm-gold)' }}>Connecting to the game server…</div>}
+          {conn === 'reconnecting' && <div className="mm-chip warn">Connecting to the game server…</div>}
         </div>
       </div>
     </div>
@@ -170,33 +156,24 @@ export function JoinScreen() {
   }, [code, joinRoom, setScreen]);
   const keys = CODE_ALPHABET.split('');
   return (
-    <div className="mm-safe" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="mm-panel mm-anim-pop" style={{ padding: 18, width: 'min(520px, 100%)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <button className="mm-btn" aria-label="Back" onClick={() => setScreen('title')} style={{ padding: 8 }}>
+    <div className="mm-safe mm-center-screen">
+      <div className="mm-panel mm-card mm-in-pop" style={{ width: 'min(540px, 100%)' }}>
+        <div className="mm-card-head">
+          <button className="mm-round" aria-label="Back" onClick={() => setScreen('title')}>
             <MIcon name="back" />
           </button>
-          <h2 style={{ margin: 0, fontSize: '1.3em', fontWeight: 850 }}>Join a room</h2>
+          <h2>Join a room</h2>
         </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', margin: '8px 0 14px' }} aria-label="Room code" aria-live="polite">
+        <div className="mmj-slots" aria-label="Room code" aria-live="polite">
           {Array.from({ length: CODE_LENGTH }, (_, i) => (
-            <div
-              key={i}
-              style={{
-                width: 'clamp(40px, 12vw, 56px)',
-                height: 'clamp(52px, 15vw, 68px)',
-                borderRadius: 14,
-                border: `2px solid ${i === code.length ? 'var(--mm-accent2)' : 'var(--mm-line)'}`,
-                background: 'rgba(0,0,0,0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 'clamp(24px, 7vw, 34px)',
-                fontWeight: 900,
-                fontFamily: 'ui-monospace, Menlo, monospace',
-              }}
-            >
-              {code[i] ?? ''}
+            <div key={i} className="mmj-slot" data-cur={i === code.length} data-full={!!code[i]}>
+              {code[i] ? (
+                <span key={code[i] + i} className="mm-bump">
+                  {code[i]}
+                </span>
+              ) : (
+                ''
+              )}
             </div>
           ))}
         </div>
@@ -211,25 +188,25 @@ export function JoinScreen() {
           }}
           style={{ marginBottom: 12, textAlign: 'center' }}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0,1fr))', gap: 6 }}>
+        <div className="mmj-keys">
           {keys.map((k) => (
-            <button key={k} className="mm-btn" style={{ minHeight: 46, padding: 0, fontSize: '1.05em', fontFamily: 'ui-monospace, Menlo, monospace' }} onClick={() => press(k)}>
+            <button key={k} className="mmj-key" onClick={() => press(k)}>
               {k}
             </button>
           ))}
-          <button className="mm-btn" style={{ minHeight: 46, padding: 0, gridColumn: 'span 2' }} onClick={() => setCode((c) => c.slice(0, -1))} aria-label="Delete">
+          <button className="mmj-key wide" onClick={() => setCode((c) => c.slice(0, -1))} aria-label="Delete">
             ⌫
           </button>
-          <button className="mm-btn" style={{ minHeight: 46, padding: 0, gridColumn: 'span 2' }} onClick={() => setCode('')}>
+          <button className="mmj-key wide" onClick={() => setCode('')}>
             Clear
           </button>
         </div>
         {error && (
-          <div role="alert" style={{ color: 'var(--mm-red)', marginTop: 10, textAlign: 'center' }}>
+          <div role="alert" className="mm-error">
             {error}
           </div>
         )}
-        <button className="mm-btn mm-btn-primary" style={{ width: '100%', marginTop: 14, minHeight: 52 }} disabled={code.length !== CODE_LENGTH} onClick={() => joinRoom(code)}>
+        <button className="mm-btn mm-btn-primary mm-pill" style={{ width: '100%', marginTop: 14, minHeight: 54 }} disabled={code.length !== CODE_LENGTH} onClick={() => joinRoom(code)}>
           Join {code.length === CODE_LENGTH ? code : ''}
         </button>
       </div>
@@ -250,33 +227,29 @@ export function BrowseScreen() {
   }, [listRooms]);
   const maps = useMemo(() => Object.fromEntries(availableMaps().map((m) => [m.id, m.name])), []);
   return (
-    <div className="mm-safe" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="mm-panel mm-anim-pop" style={{ padding: 18, width: 'min(680px, 100%)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <button className="mm-btn" aria-label="Back" onClick={() => setScreen('title')} style={{ padding: 8 }}>
+    <div className="mm-safe mm-center-screen">
+      <div className="mm-panel mm-card mm-in-pop" style={{ width: 'min(700px, 100%)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="mm-card-head">
+          <button className="mm-round" aria-label="Back" onClick={() => setScreen('title')}>
             <MIcon name="back" />
           </button>
-          <h2 style={{ margin: 0, fontSize: '1.3em', fontWeight: 850, flex: 1 }}>Public & LAN rooms</h2>
+          <h2>Public &amp; LAN rooms</h2>
           <span className="mm-chip">
             <MIcon name="wifi" size={14} /> {conn}
           </span>
         </div>
-        <div className="mm-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120 }}>
-          {listing.length === 0 && (
-            <div className="mm-muted" style={{ textAlign: 'center', padding: 30 }}>
-              No open rooms yet. Create one and share the code!
-            </div>
-          )}
-          {listing.map((r) => (
-            <button key={r.code} className="mm-btn" style={{ justifyContent: 'space-between', padding: '12px 14px' }} disabled={r.stage !== 'lobby' || r.players >= r.max} onClick={() => joinRoom(r.code)}>
-              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                <b>{r.host}&rsquo;s room</b>
-                <span className="mm-muted" style={{ fontSize: '0.8em', fontWeight: 500 }}>
+        <div className="mm-scroll mmb-list">
+          {listing.length === 0 && <div className="mm-empty">No open rooms yet. Create one and share the code!</div>}
+          {listing.map((r, i) => (
+            <button key={r.code} className="mmb-row" style={{ ['--i' as string]: i }} disabled={r.stage !== 'lobby' || r.players >= r.max} onClick={() => joinRoom(r.code)}>
+              <span className="mmb-row-main">
+                <b className="mm-nocase">{r.host}&rsquo;s room</b>
+                <small>
                   {MODE_LIST.find((m) => m.id === r.mode)?.name} · {maps[r.map] ?? r.map} · {r.privacy === 'lan' ? 'LAN' : 'Public'}
-                </span>
+                </small>
               </span>
-              <span className="mm-chip">
-                {r.players}/{r.max} {r.stage !== 'lobby' ? '· playing' : ''}
+              <span className="mmb-cap">
+                <MIcon name="users" size={16} /> {r.players}/{r.max} {r.stage !== 'lobby' ? '· playing' : ''}
               </span>
             </button>
           ))}
@@ -288,28 +261,22 @@ export function BrowseScreen() {
 
 function Toggle({ label, value, onChange, hint }: { label: string; value: boolean; onChange(v: boolean): void; hint?: string }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', cursor: 'pointer' }}>
-      <span style={{ flex: 1 }}>
+    <label className="mms-row mms-toggle">
+      <span className="mms-row-label">
         {label}
-        {hint && (
-          <span className="mm-muted" style={{ display: 'block', fontSize: '0.78em' }}>
-            {hint}
-          </span>
-        )}
+        {hint && <small>{hint}</small>}
       </span>
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ width: 22, height: 22, accentColor: '#2f6fed' }} />
+      <input type="checkbox" role="switch" checked={value} onChange={(e) => onChange(e.target.checked)} className="mm-switch" />
     </label>
   );
 }
 
 function Slider({ label, value, min, max, step, onChange, fmt }: { label: string; value: number; min: number; max: number; step: number; onChange(v: number): void; fmt?: (v: number) => string }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0' }}>
-      <span style={{ flex: 1 }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ width: 150, accentColor: '#2f6fed' }} />
-      <span className="mm-muted" style={{ width: 44, textAlign: 'right' }}>
-        {fmt ? fmt(value) : value}
-      </span>
+    <label className="mms-row">
+      <span className="mms-row-label">{label}</span>
+      <input type="range" className="mm-range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ ['--k' as string]: (value - min) / (max - min) }} />
+      <span className="mms-row-val">{fmt ? fmt(value) : value}</span>
     </label>
   );
 }
@@ -322,15 +289,14 @@ function Jukebox({ value, onChange }: { value: string; onChange(v: string): void
   }, [value]);
   return (
     <div style={{ marginTop: 10 }}>
-      <div className="mm-muted" style={{ fontSize: '0.78em', fontWeight: 800, letterSpacing: '0.08em', marginBottom: 6 }}>
-        JUKEBOX — PREVIEW THE SOUNDTRACK
+      <div className="mm-label" style={{ marginBottom: 6 }}>
+        Jukebox — preview the soundtrack
       </div>
-      <div className="mm-scroll" style={{ maxHeight: 220, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div className="mm-scroll mms-juke">
         {TRACKS.map((t) => (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 10, background: playing === t.id ? 'rgba(47,111,237,0.2)' : 'rgba(255,255,255,0.03)' }}>
+          <div key={t.id} className="mms-track" data-playing={playing === t.id}>
             <button
-              className="mm-btn"
-              style={{ minHeight: 34, padding: '2px 10px' }}
+              className="mm-round sm"
               aria-label={`${playing === t.id ? 'Stop' : 'Play'} ${t.name}`}
               onClick={() => {
                 if (playing === t.id) {
@@ -348,7 +314,7 @@ function Jukebox({ value, onChange }: { value: string; onChange(v: string): void
               <b>{t.name}</b>
               <span className="mm-muted"> · {t.mood}</span>
             </span>
-            <label style={{ fontSize: '0.75em', display: 'flex', alignItems: 'center', gap: 4 }} className="mm-muted">
+            <label className="mm-muted mms-radio">
               <input type="radio" name="menu-track" checked={value === t.id} onChange={() => onChange(t.id)} /> menus
             </label>
           </div>
@@ -358,87 +324,172 @@ function Jukebox({ value, onChange }: { value: string; onChange(v: string): void
   );
 }
 
-export function SettingsScreen() {
+type SettingsTab = 'audio' | 'gameplay' | 'controls' | 'match';
+const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: 'audio', label: 'Audio', icon: 'speaker' },
+  { id: 'gameplay', label: 'Gameplay', icon: 'sliders' },
+  { id: 'controls', label: 'Controls', icon: 'pad' },
+  { id: 'match', label: 'Match', icon: 'flag' },
+];
+
+/**
+ * Tabbed settings: Audio / Gameplay / Controls / Match, a "Leave game" in the
+ * Match tab when in a room, and per-tab Defaults.
+ */
+export function SettingsMenu({ inMatch, startTab = 'audio' }: { inMatch?: { code: string; mode: string; map: string; onResume?: () => void; onLeave: () => void; extra?: React.ReactNode }; startTab?: SettingsTab }) {
   const prefs = useMystery((s) => s.prefs);
   const setPrefs = useMystery((s) => s.setPrefs);
-  const setScreen = useMystery((s) => s.setScreen);
+  const [tab, setTab] = useState<SettingsTab>(startTab);
   const [rebind, setRebind] = useState<keyof Keybinds | null>(null);
   useEffect(() => {
     if (!rebind) return;
     const k = (e: KeyboardEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       if (e.code !== 'Escape') setPrefs({ keys: { ...prefs.keys, [rebind]: e.code } });
       setRebind(null);
     };
-    window.addEventListener('keydown', k, { once: true });
-    return () => window.removeEventListener('keydown', k);
+    window.addEventListener('keydown', k, { once: true, capture: true });
+    return () => window.removeEventListener('keydown', k, { capture: true });
   }, [rebind, prefs.keys, setPrefs]);
   const set = <K extends keyof Prefs>(k: K) => (v: Prefs[K]) => setPrefs({ [k]: v } as Partial<Prefs>);
+  const defaults = () => {
+    const d = defaultPrefs();
+    if (tab === 'audio') setPrefs({ muted: d.muted, volume: d.volume, music: d.music, captions: d.captions, menuTrack: d.menuTrack });
+    else if (tab === 'gameplay') setPrefs({ view: d.view, quality: d.quality, reducedMotion: d.reducedMotion, colorblind: d.colorblind, textScale: d.textScale, highVisibility: d.highVisibility, profanityFilter: d.profanityFilter, sensitivity: d.sensitivity, invertY: d.invertY });
+    else if (tab === 'controls') setPrefs({ keys: { ...DEFAULT_KEYS } });
+    else setPrefs({ serverUrl: d.serverUrl });
+  };
+  const onTabKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const i = SETTINGS_TABS.findIndex((t) => t.id === tab);
+    const n = e.key === 'ArrowRight' ? (i + 1) % SETTINGS_TABS.length : e.key === 'ArrowLeft' ? (i + SETTINGS_TABS.length - 1) % SETTINGS_TABS.length : -1;
+    if (n < 0) return;
+    e.preventDefault();
+    setTab(SETTINGS_TABS[n]!.id);
+    (e.currentTarget.children[n] as HTMLElement | undefined)?.focus();
+  };
+  return (
+    <div className="mms">
+      <div className="mms-tabs" role="tablist" aria-label="Settings sections" onKeyDown={onTabKey}>
+        {SETTINGS_TABS.map((t) => (
+          <button key={t.id} role="tab" id={`mms-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="mms-panel" tabIndex={tab === t.id ? 0 : -1} className="mms-tab" onClick={() => setTab(t.id)}>
+            <MIcon name={t.icon} size={18} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mms-panel" id="mms-panel" role="tabpanel" aria-labelledby={`mms-tab-${tab}`}>
+        <div key={tab} className="mms-page">
+          {tab === 'audio' && (
+            <>
+              <Toggle label="Mute everything" value={prefs.muted} onChange={set('muted')} />
+              <Slider label="Effects volume" value={prefs.volume} min={0} max={1} step={0.05} onChange={set('volume')} fmt={(v) => `${Math.round(v * 100)}%`} />
+              <Slider label="Music & ambience" value={prefs.music} min={0} max={1} step={0.05} onChange={set('music')} fmt={(v) => `${Math.round(v * 100)}%`} />
+              <Toggle label="Captions for sounds" value={prefs.captions} onChange={set('captions')} />
+              <Jukebox value={prefs.menuTrack} onChange={set('menuTrack')} />
+            </>
+          )}
+          {tab === 'gameplay' && (
+            <div className="mms-cols">
+              <section>
+                <h3 className="mm-label">View &amp; graphics</h3>
+                <ViewPicker value={prefs.view} onChange={set('view')} compact />
+                <label className="mms-row">
+                  <span className="mms-row-label">Quality</span>
+                  <select className="mm-input mms-select" value={prefs.quality} onChange={(e) => set('quality')(e.target.value as Prefs['quality'])}>
+                    <option value="auto">Auto</option>
+                    <option value="low">Low (battery saver)</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <Slider label="Look sensitivity" value={prefs.sensitivity} min={0.3} max={2.5} step={0.1} onChange={set('sensitivity')} fmt={(v) => `${v.toFixed(1)}×`} />
+                <Toggle label="Invert look Y" value={prefs.invertY} onChange={set('invertY')} />
+              </section>
+              <section>
+                <h3 className="mm-label">Accessibility</h3>
+                <Toggle label="Reduced motion" hint="No camera shake, flashes, sweeps or flicker" value={prefs.reducedMotion} onChange={set('reducedMotion')} />
+                <label className="mms-row">
+                  <span className="mms-row-label">Colour-blind friendly colours</span>
+                  <select className="mm-input mms-select" value={prefs.colorblind} onChange={(e) => set('colorblind')(e.target.value as Prefs['colorblind'])}>
+                    <option value="none">Off</option>
+                    <option value="protan">Protanopia</option>
+                    <option value="deutan">Deuteranopia</option>
+                    <option value="tritan">Tritanopia</option>
+                  </select>
+                </label>
+                <Slider label="Text size" value={prefs.textScale} min={0.85} max={1.4} step={0.05} onChange={set('textScale')} fmt={(v) => `${Math.round(v * 100)}%`} />
+                <Toggle label="Lights Out high-visibility assist" hint="Lifts the darkness a little" value={prefs.highVisibility} onChange={set('highVisibility')} />
+                <Toggle label="Chat profanity filter" value={prefs.profanityFilter} onChange={set('profanityFilter')} />
+              </section>
+            </div>
+          )}
+          {tab === 'controls' && (
+            <>
+              <h3 className="mm-label">Keys (click to rebind)</h3>
+              <div className="mms-keys">
+                {(Object.keys(DEFAULT_KEYS) as (keyof Keybinds)[]).map((k) => (
+                  <button key={k} className="mms-key" data-wait={rebind === k} onClick={() => setRebind(k)}>
+                    <span>{k}</span>
+                    <kbd className="mm-kbd inline">{rebind === k ? 'press…' : keyLabel(prefs.keys[k])}</kbd>
+                  </button>
+                ))}
+              </div>
+              <div className="mms-ref">
+                <div>
+                  <b>Touch</b> — left thumb joystick · drag right side to look (3D) · big button = context action
+                </div>
+                <div>
+                  <b>Controller</b> — A use · B report · X kill · Y vent · RB sabotage · LB map · LT flashlight · RT shoot
+                </div>
+              </div>
+            </>
+          )}
+          {tab === 'match' && (
+            <div className="mms-match">
+              {inMatch ? (
+                <>
+                  <div className="mms-matchinfo">
+                    <span className="mm-label">Room</span> <b>{inMatch.code}</b> · {inMatch.mode} · {inMatch.map}
+                  </div>
+                  {inMatch.extra}
+                  {inMatch.onResume && (
+                    <button className="mm-btn mm-btn-primary mm-pill mms-big" onClick={inMatch.onResume}>
+                      <MIcon name="play" /> Resume
+                    </button>
+                  )}
+                  <button className="mm-btn mms-big mms-leave" onClick={inMatch.onLeave}>
+                    <MIcon name="door2" /> Leave game
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mm-muted">Not in a room. Match options appear here while you play.</div>
+                  <h3 className="mm-label" style={{ marginTop: 12 }}>
+                    Server
+                  </h3>
+                  <input className="mm-input" placeholder="Auto (this host)  ·  ws://192.168.1.20:8787/mystery" value={prefs.serverUrl} onChange={(e) => set('serverUrl')(e.target.value.trim())} aria-label="Server URL" />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mms-foot">
+        <span className="mms-ver">Marion Mystery · build 1.0</span>
+        <button className="mm-btn" onClick={defaults} disabled={tab === 'match' && !!inMatch}>
+          Defaults
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsScreen() {
+  const setScreen = useMystery((s) => s.setScreen);
   return (
     <Modal title="Settings" onClose={() => setScreen('title')} wide>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18 }}>
-        <section>
-          <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em' }}>
-            VIEW & GRAPHICS
-          </h3>
-          <ViewPicker value={prefs.view} onChange={set('view')} compact />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
-            <span style={{ flex: 1 }}>Quality</span>
-            <select className="mm-input" style={{ width: 150 }} value={prefs.quality} onChange={(e) => set('quality')(e.target.value as Prefs['quality'])}>
-              <option value="auto">Auto</option>
-              <option value="low">Low (battery saver)</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-          <Slider label="Mouse / touch look sensitivity" value={prefs.sensitivity} min={0.3} max={2.5} step={0.1} onChange={set('sensitivity')} fmt={(v) => `${v.toFixed(1)}×`} />
-          <Toggle label="Invert look Y" value={prefs.invertY} onChange={set('invertY')} />
-          <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em', marginTop: 14 }}>
-            AUDIO
-          </h3>
-          <Toggle label="Mute everything" value={prefs.muted} onChange={set('muted')} />
-          <Slider label="Effects volume" value={prefs.volume} min={0} max={1} step={0.05} onChange={set('volume')} fmt={(v) => `${Math.round(v * 100)}%`} />
-          <Slider label="Music & ambience" value={prefs.music} min={0} max={1} step={0.05} onChange={set('music')} fmt={(v) => `${Math.round(v * 100)}%`} />
-          <Jukebox value={prefs.menuTrack} onChange={set('menuTrack')} />
-        </section>
-        <section>
-          <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em' }}>
-            ACCESSIBILITY
-          </h3>
-          <Toggle label="Reduced motion" hint="No camera shake, flashes or flicker" value={prefs.reducedMotion} onChange={set('reducedMotion')} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
-            <span style={{ flex: 1 }}>Colour-blind friendly colours</span>
-            <select className="mm-input" style={{ width: 150 }} value={prefs.colorblind} onChange={(e) => set('colorblind')(e.target.value as Prefs['colorblind'])}>
-              <option value="none">Off</option>
-              <option value="protan">Protanopia</option>
-              <option value="deutan">Deuteranopia</option>
-              <option value="tritan">Tritanopia</option>
-            </select>
-          </label>
-          <Slider label="Text size" value={prefs.textScale} min={0.85} max={1.4} step={0.05} onChange={set('textScale')} fmt={(v) => `${Math.round(v * 100)}%`} />
-          <Toggle label="Captions for sounds" value={prefs.captions} onChange={set('captions')} />
-          <Toggle label="Lights Out high-visibility assist" hint="Lifts the darkness a little" value={prefs.highVisibility} onChange={set('highVisibility')} />
-          <Toggle label="Chat profanity filter" value={prefs.profanityFilter} onChange={set('profanityFilter')} />
-          <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em', marginTop: 14 }}>
-            KEYS (CLICK TO REBIND)
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {(Object.keys(DEFAULT_KEYS) as (keyof Keybinds)[]).map((k) => (
-              <button key={k} className="mm-btn" style={{ justifyContent: 'space-between', minHeight: 38, padding: '6px 10px', fontSize: '0.85em' }} onClick={() => setRebind(k)}>
-                <span style={{ textTransform: 'capitalize' }}>{k}</span>
-                <span className="mm-chip">{rebind === k ? 'press…' : prefs.keys[k].replace('Key', '')}</span>
-              </button>
-            ))}
-          </div>
-          <button className="mm-btn" style={{ marginTop: 8 }} onClick={() => setPrefs({ keys: { ...DEFAULT_KEYS } })}>
-            Reset keys
-          </button>
-          <h3 className="mm-muted" style={{ fontSize: '0.8em', letterSpacing: '0.08em', marginTop: 14 }}>
-            SERVER
-          </h3>
-          <input className="mm-input" placeholder="Auto (this host)  ·  ws://192.168.1.20:8787/mystery" value={prefs.serverUrl} onChange={(e) => set('serverUrl')(e.target.value.trim())} aria-label="Server URL" />
-        </section>
-      </div>
+      <SettingsMenu />
     </Modal>
   );
 }
@@ -505,9 +556,9 @@ export function HowToScreen() {
   const [tab, setTab] = useState<'modes' | 'roles' | 'controls'>('modes');
   return (
     <Modal title="How to play" onClose={() => setScreen('title')} wide>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div className="mms-tabs" role="tablist" aria-label="How to play sections" style={{ marginBottom: 14 }}>
         {(['modes', 'roles', 'controls'] as const).map((t) => (
-          <button key={t} className={`mm-btn ${tab === t ? 'mm-btn-primary' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
+          <button key={t} role="tab" aria-selected={tab === t} className="mms-tab" onClick={() => setTab(t)}>
             {t}
           </button>
         ))}
@@ -515,7 +566,7 @@ export function HowToScreen() {
       {tab === 'modes' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
           {MODE_LIST.map((m) => (
-            <div key={m.id} className="mm-panel-solid" style={{ padding: 16, background: `linear-gradient(160deg, ${m.colors[0]}55, transparent 60%), var(--mm-panel-solid)` }}>
+            <div key={m.id} className="mm-panel-solid" style={{ padding: 16, background: `linear-gradient(90deg, ${m.colors[1]} 0 5px, var(--mm-panel-solid) 5px)` }}>
               <div style={{ fontWeight: 900, fontSize: '1.2em' }}>{m.name}</div>
               <div style={{ color: m.colors[1], fontWeight: 700, marginBottom: 8 }}>{m.tagline}</div>
               <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>

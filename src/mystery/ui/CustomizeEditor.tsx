@@ -29,6 +29,7 @@ import {
   type CatalogItem,
 } from '../characters/catalog';
 import { drawBerry, drawEmoteBubble, drawNameplate, drawPet } from '../characters/draw2d';
+import { MIcon } from './common';
 
 export interface CustomizeEditorProps {
   value: Cosmetics;
@@ -37,23 +38,25 @@ export interface CustomizeEditorProps {
   onNameChange?(n: string): void;
   preview?: '2d' | '3d';
   takenColors?: number[];
+  /** Shows the big pill "Done" button. */
+  onDone?(): void;
 }
 
 type TabId = 'berry' | 'colour' | 'face' | 'hair' | 'hat' | 'faceacc' | 'outfit' | 'back' | 'pet' | 'nameplate' | 'emotes' | 'victory';
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'berry', label: 'Berry' },
-  { id: 'colour', label: 'Colour' },
-  { id: 'face', label: 'Face' },
-  { id: 'hair', label: 'Hair' },
-  { id: 'hat', label: 'Hat' },
-  { id: 'faceacc', label: 'Face Acc.' },
-  { id: 'outfit', label: 'Outfit' },
-  { id: 'back', label: 'Back' },
-  { id: 'pet', label: 'Pet' },
-  { id: 'nameplate', label: 'Nameplate' },
-  { id: 'emotes', label: 'Emotes' },
-  { id: 'victory', label: 'Victory' },
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'berry', label: 'Berry', icon: 'berry' },
+  { id: 'colour', label: 'Colour', icon: 'palette' },
+  { id: 'face', label: 'Face', icon: 'emote' },
+  { id: 'hair', label: 'Hair', icon: 'scissors' },
+  { id: 'hat', label: 'Hat', icon: 'hat' },
+  { id: 'faceacc', label: 'Face Acc.', icon: 'glasses' },
+  { id: 'outfit', label: 'Outfit', icon: 'shirt' },
+  { id: 'back', label: 'Back', icon: 'backpack' },
+  { id: 'pet', label: 'Pet', icon: 'paw' },
+  { id: 'nameplate', label: 'Nameplate', icon: 'tag' },
+  { id: 'emotes', label: 'Emotes', icon: 'sparkle' },
+  { id: 'victory', label: 'Victory', icon: 'trophy' },
 ];
 
 type ThumbKind = 'full' | 'face' | 'top' | 'pet' | 'plate' | 'emote' | 'pose';
@@ -123,57 +126,89 @@ function renderThumb(key: string, kind: ThumbKind, c: Cosmetics, extra: string, 
 // Styles
 
 const CSS = `
-.mmce{--ce-cobalt:#2f6fed;--ce-cobalt-2:#6ea1ff;--ce-teal:#14b8a6;--ce-teal-2:#2dd4bf;--ce-ink:#e8ecf6;--ce-muted:#93a0b8;
-  color:var(--ce-ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
-  background:linear-gradient(160deg,rgba(26,33,52,.92),rgba(12,15,26,.94));border:1px solid rgba(255,255,255,.08);
-  border-radius:22px;box-shadow:0 24px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);
-  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:14px;
-  width:100%;max-width:1080px;box-sizing:border-box;}
+.mmce{--ce-ink:#f3f5f8;--ce-muted:#9aa3ad;--ce-line:rgba(236,240,245,.92);--ce-sel:#ffd426;--ce-tab:#3d66e0;
+  color:var(--ce-ink);font-family:var(--mm-body,'Barlow',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif);
+  background:#07090c;border:2px solid var(--ce-line);border-radius:14px;
+  display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:12px;width:100%;max-width:1120px;box-sizing:border-box;
+  grid-template-areas:"stage" "tabs" "main";}
 .mmce *{box-sizing:border-box}
-@media(min-width:760px){.mmce{grid-template-columns:minmax(280px,360px) minmax(0,1fr);padding:18px;gap:18px}}
-.mmce-stage{position:relative;border-radius:18px;overflow:hidden;min-height:250px;
-  background:radial-gradient(120% 90% at 50% 15%,rgba(110,161,255,.22),rgba(20,184,166,.08) 45%,rgba(8,10,18,0) 70%),linear-gradient(180deg,#1c2540,#10141f);
-  border:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
-@media(min-width:760px){.mmce-stage{position:sticky;top:12px;min-height:420px}}
-.mmce-canvas{width:100%;height:270px;display:block;flex:0 0 auto}
-@media(min-width:760px){.mmce-canvas{height:380px;flex:1}}
+.mmce-stage{grid-area:stage}.mmce-tabs{grid-area:tabs}.mmce-main{grid-area:main}
+@media(min-width:760px){.mmce{grid-template-columns:minmax(0,1fr) minmax(260px,320px);grid-template-areas:"tabs tabs" "main stage";padding:16px;gap:16px}}
+@media(min-width:980px){.mmce{grid-template-columns:168px minmax(0,1fr) minmax(260px,320px);grid-template-areas:"tabs main stage"}}
+.mmce-stage{position:relative;border-radius:12px;overflow:hidden;min-height:250px;display:flex;flex-direction:column;
+  background:radial-gradient(1.2px 1.2px at 20% 30%,#fff8,transparent),radial-gradient(1.2px 1.2px at 70% 12%,#fff8,transparent),radial-gradient(1.5px 1.5px at 85% 60%,#fff9,transparent),radial-gradient(1.2px 1.2px at 35% 75%,#fff6,transparent),radial-gradient(1px 1px at 55% 45%,#fff6,transparent),#05070a;
+  border:1.5px solid rgba(255,255,255,.16)}
+@media(min-width:760px){.mmce-stage{position:sticky;top:0;min-height:440px}}
+.mmce-canvas{width:100%;height:170px;display:block;flex:0 0 auto;animation:mmce-in .5s cubic-bezier(.2,.9,.3,1.2) both}
+@media(max-width:759px){.mmce-stage{min-height:0}.mmce-stagebar{grid-template-columns:1fr auto auto;padding:8px}.mmce-stagebar .mmce-name{grid-column:auto}.mmce-done{min-height:48px;font-size:20px}.mmce-panel{max-height:46vh}}
+@media(min-width:760px){.mmce-canvas{height:320px;flex:1}}
 .mmce-stagebar{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px;align-items:center}
-.mmce-stagebar .mmce-name{grid-column:1/-1}
-.mmce-stagebar .mmce-btn.primary{justify-content:center}
-.mmce-name{width:100%;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);
-  color:var(--ce-ink);padding:0 12px;font-size:15px;font-weight:600;outline:none}
-.mmce-name:focus{border-color:var(--ce-teal);box-shadow:0 0 0 3px rgba(20,184,166,.25)}
-.mmce-btn{min-height:44px;min-width:44px;padding:0 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
-  color:var(--ce-ink);font-weight:700;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s, background .15s}
-.mmce-btn:hover{background:rgba(255,255,255,.12)}.mmce-btn:active{transform:scale(.97)}
-.mmce-btn:focus-visible{outline:2px solid var(--ce-teal-2);outline-offset:2px}
-.mmce-btn.primary{background:linear-gradient(135deg,var(--ce-cobalt),var(--ce-teal));border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(47,111,237,.35)}
-.mmce-main{min-width:0;display:flex;flex-direction:column;gap:12px}
-.mmce-tabs{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;margin:-2px;-webkit-overflow-scrolling:touch}
+.mmce-stagebar .mmce-name,.mmce-stagebar .mmce-done{grid-column:1/-1}
+.mmce-name{width:100%;min-height:44px;border-radius:8px;border:2px solid var(--ce-line);background:#0d1014;
+  color:var(--ce-ink);padding:0 12px;font-size:16px;font-weight:700;outline:none;font-family:inherit}
+.mmce-name:focus{border-color:var(--ce-sel)}
+.mmce-btn{min-height:44px;min-width:44px;padding:0 14px;border-radius:8px;border:2px solid var(--ce-line);background:#0b0d10;
+  color:var(--ce-ink);font-weight:500;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);text-transform:uppercase;letter-spacing:.05em;
+  transition:transform .16s cubic-bezier(.3,1.6,.5,1),border-color .15s,background .15s}
+.mmce-btn:hover{border-color:var(--ce-sel);background:#171a1f;transform:translateY(-1px)}.mmce-btn:active{transform:scale(.95)}
+.mmce-btn:focus-visible{outline:3px solid var(--ce-sel);outline-offset:2px}
+.mmce-done{min-height:58px;border-radius:999px;border:2px solid #b9cdff;font-size:24px;letter-spacing:.08em;color:#fff;
+  background:linear-gradient(115deg,transparent 0 56%,rgba(255,255,255,.18) 56% 64%,transparent 64% 70%,rgba(255,255,255,.12) 70% 74%,transparent 74%),#3d66e0}
+.mmce-done:hover{background:linear-gradient(115deg,transparent 0 56%,rgba(255,255,255,.24) 56% 64%,transparent 64% 70%,rgba(255,255,255,.16) 70% 74%,transparent 74%),#4b74ee;border-color:#fff}
+.mmce-main{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 36px;gap:8px;align-items:stretch}
+.mmce-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;-webkit-overflow-scrolling:touch}
 .mmce-tabs::-webkit-scrollbar{display:none}
-.mmce-tab{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);
-  color:var(--ce-muted);font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap}
-.mmce-tab[aria-selected=true]{color:#fff;background:linear-gradient(135deg,rgba(47,111,237,.9),rgba(20,184,166,.85));border-color:transparent;box-shadow:0 4px 14px rgba(47,111,237,.35)}
-.mmce-tab:focus-visible{outline:2px solid var(--ce-teal-2);outline-offset:2px}
-.mmce-panel{display:flex;flex-direction:column;gap:14px;min-width:0}
-.mmce-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ce-muted);font-weight:800;margin:0 0 -4px}
-.mmce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+@media(min-width:980px){.mmce-tabs{flex-direction:column;overflow:visible;padding:0}}
+.mmce-tab{position:relative;flex:0 0 auto;min-height:44px;padding:0 12px 0 10px;border-radius:7px;border:2px solid rgba(255,255,255,.18);
+  background:linear-gradient(110deg,transparent 0 62%,rgba(255,255,255,.14) 62% 70%,transparent 70% 76%,rgba(255,255,255,.1) 76% 80%,transparent 80%),var(--ce-tab);
+  color:#fff;font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);font-weight:500;font-size:15px;letter-spacing:.06em;text-transform:uppercase;
+  cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:8px;justify-content:space-between;
+  transition:transform .18s cubic-bezier(.3,1.5,.5,1),border-color .15s,filter .15s;opacity:.92}
+.mmce-tab svg{flex:none;opacity:.9}
+.mmce-tab:hover{transform:translateX(2px);filter:brightness(1.12);opacity:1}
+.mmce-tab[aria-selected=true]{border-color:var(--ce-sel);opacity:1;box-shadow:0 0 0 1px var(--ce-sel)}
+@media(min-width:980px){.mmce-tab[aria-selected=true]{transform:translateX(6px)}
+  .mmce-tab[aria-selected=true]::after{content:'';position:absolute;right:-12px;top:50%;margin-top:-8px;border:8px solid transparent;border-left-color:var(--ce-sel)}}
+.mmce-tab:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.mmce-panel{display:flex;flex-direction:column;gap:12px;min-width:0;overflow-y:auto;scroll-behavior:smooth;max-height:min(56vh,520px);padding:4px;scrollbar-width:none;
+  animation:mmce-page .32s cubic-bezier(.2,.8,.2,1) both}
+.mmce-panel::-webkit-scrollbar{display:none}
+.mmce-pager{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:6px;padding:4px 0}
+.mmce-arrow{width:36px;height:36px;border:0;background:none;color:#fff;cursor:pointer;display:grid;place-items:center;border-radius:8px;transition:transform .15s,opacity .15s}
+.mmce-arrow:hover:not(:disabled){transform:scale(1.15)}.mmce-arrow:disabled{opacity:.25;cursor:default}
+.mmce-arrow:focus-visible{outline:3px solid var(--ce-sel)}
+.mmce-arrow svg{width:28px;height:28px}
+.mmce-dots{display:flex;flex-direction:column;gap:10px;align-items:center}
+.mmce-dot{width:10px;height:10px;border-radius:50%;border:2px solid #fff;transition:background .2s,transform .2s}
+.mmce-dot[data-on=true]{background:var(--ce-sel);border-color:var(--ce-sel);transform:scale(1.2)}
+.mmce-h{font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ce-muted);font-weight:500;margin:4px 0 -4px}
+.mmce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:10px}
+@media(min-width:980px){.mmce-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .mmce-grid.wide{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .mmce-grid.swatches{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
-.mmce-item{position:relative;min-height:44px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);
-  color:var(--ce-ink);cursor:pointer;padding:6px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .12s, border-color .15s, background .15s}
-.mmce-item:hover{background:rgba(255,255,255,.08);transform:translateY(-1px)}
-.mmce-item:focus-visible{outline:2px solid var(--ce-cobalt-2);outline-offset:2px}
-.mmce-item[aria-checked=true],.mmce-item[aria-pressed=true]{border-color:var(--ce-teal-2);background:rgba(20,184,166,.14);box-shadow:0 0 0 1px var(--ce-teal-2),0 6px 18px rgba(20,184,166,.22)}
+@media(min-width:980px){.mmce-grid.swatches{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.mmce-item{position:relative;min-height:44px;border-radius:9px;border:2px solid rgba(236,240,245,.85);background:#2a2f38;
+  color:var(--ce-ink);cursor:pointer;padding:6px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  transition:transform .18s cubic-bezier(.3,1.6,.5,1),border-color .15s,background .15s;animation:mmce-item .36s cubic-bezier(.2,.9,.3,1.2) both;animation-delay:calc(min(var(--i,0),16) * 18ms)}
+.mmce-item:hover{background:#353b46;transform:translateY(-2px) scale(1.03)}
+.mmce-item:active{transform:scale(.95)}
+.mmce-item:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.mmce-item[aria-checked=true],.mmce-item[aria-pressed=true]{border-color:var(--ce-sel);background:#3b3a26;box-shadow:0 0 0 2px var(--ce-sel)}
 .mmce-item img{width:100%;max-width:96px;aspect-ratio:144/160;object-fit:contain;pointer-events:none;image-rendering:auto}
 .mmce-item.plate img{max-width:none;aspect-ratio:220/72}
-.mmce-ph{width:100%;max-width:96px;aspect-ratio:144/160;border-radius:10px;background:rgba(255,255,255,.04)}
-.mmce-label{font-size:11.5px;font-weight:650;line-height:1.15;text-align:center;color:#cfd7e6;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mmce-sw{width:40px;height:40px;border-radius:50%;border:2px solid rgba(0,0,0,.35);box-shadow:inset 0 -6px 10px rgba(0,0,0,.25),inset 0 4px 8px rgba(255,255,255,.35)}
+.mmce-ph{width:100%;max-width:96px;aspect-ratio:144/160;border-radius:8px;background:rgba(255,255,255,.05)}
+.mmce-label{font-size:12px;font-weight:700;line-height:1.15;text-align:center;color:#e4e8ee;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mmce-sw{width:42px;height:42px;border-radius:50%;border:2px solid #0b0d10;box-shadow:inset 0 -6px 10px rgba(0,0,0,.25),inset 0 4px 8px rgba(255,255,255,.35)}
 .mmce-item.taken{opacity:.42}
-.mmce-badge{position:absolute;top:4px;right:5px;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:rgba(0,0,0,.45);color:#fff}
-.mmce-count{font-size:12px;color:var(--ce-muted);font-weight:700}
+.mmce-badge{position:absolute;top:4px;right:5px;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:#0b0d10;border:1px solid #fff;color:#fff}
+.mmce-count{font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--ce-muted)}
 .mmce-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@keyframes mmce-item{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes mmce-page{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+@keyframes mmce-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mmce *{animation:none!important;transition:none!important}}
+.mm-reduced .mmce *{animation:none!important;transition:none!important}
 `;
 
 // ---------------------------------------------------------------------------
@@ -258,6 +293,7 @@ function Grid(props: { label: string; items: GridItem[]; selected: string[]; onS
             aria-pressed={multi ? on : undefined}
             aria-label={it.label + (it.badge ? ` (${it.badge})` : '')}
             data-item={it.id}
+            style={{ ['--i' as string]: i } as React.CSSProperties}
             tabIndex={i === focus ? 0 : -1}
             onFocus={() => setFocus(i)}
             onClick={() => onSelect(it.id)}
@@ -562,11 +598,35 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
       break;
   }
 
+  // Page arrows + dots scroll the item panel a screenful at a time.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pageInfo, setPageInfo] = useState({ page: 0, pages: 1 });
+  const measure = useCallback(() => {
+    const el = panelRef.current;
+    if (!el || !el.clientHeight) return;
+    const pages = Math.max(1, Math.ceil((el.scrollHeight - 4) / el.clientHeight));
+    const page = Math.min(pages - 1, Math.round(el.scrollTop / el.clientHeight));
+    setPageInfo((p) => (p.page === page && p.pages === pages ? p : { page, pages }));
+  }, []);
+  useEffect(() => {
+    measure();
+    const t = setTimeout(measure, 120);
+    return () => clearTimeout(t);
+  }, [tab, measure]);
+  const onPanelScroll = measure;
+  const { page, pages } = pageInfo;
+  const turn = (d: number): void => {
+    const el = panelRef.current;
+    if (!el) return;
+    if (typeof el.scrollBy === 'function') el.scrollBy({ top: d * el.clientHeight, behavior: 'smooth' });
+    else el.scrollTop += d * el.clientHeight;
+  };
+
   const onTabKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
     const i = TABS.findIndex((t) => t.id === tab);
     let n = -1;
-    if (e.key === 'ArrowRight') n = (i + 1) % TABS.length;
-    if (e.key === 'ArrowLeft') n = (i - 1 + TABS.length) % TABS.length;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = (i + 1) % TABS.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = (i - 1 + TABS.length) % TABS.length;
     if (n < 0) return;
     e.preventDefault();
     setTab(TABS[n]!.id);
@@ -583,7 +643,7 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
           {onNameChange ? (
             <input className="mmce-name" aria-label="Name" value={name} maxLength={16} placeholder="Your name" onChange={(e) => onNameChange(e.target.value.slice(0, 16))} />
           ) : null}
-          <button type="button" className="mmce-btn primary" onClick={() => onChange(sanitizeCosmetics(randomCosmetics(Math.floor(Math.random() * 1e9))))}>
+          <button type="button" className="mmce-btn" onClick={() => onChange(sanitizeCosmetics(randomCosmetics(Math.floor(Math.random() * 1e9))))}>
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
               <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
               <circle cx="8.5" cy="8.5" r="1.3" fill="currentColor" stroke="none" />
@@ -595,18 +655,37 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
           <button type="button" className="mmce-btn" onClick={() => onChange(defaultCosmetics())}>
             Reset
           </button>
+          {props.onDone ? (
+            <button type="button" className="mmce-btn mmce-done" onClick={props.onDone}>
+              Done
+            </button>
+          ) : null}
         </div>
       </section>
+      <div className="mmce-tabs" role="tablist" aria-label="Wardrobe sections" aria-orientation="vertical" onKeyDown={onTabKey}>
+        {TABS.map((t) => (
+          <button key={t.id} type="button" role="tab" id={`mmce-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="mmce-panel" tabIndex={tab === t.id ? 0 : -1} className="mmce-tab" onClick={() => setTab(t.id)}>
+            <MIcon name={t.icon} size={18} />
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="mmce-main">
-        <div className="mmce-tabs" role="tablist" aria-label="Wardrobe sections" onKeyDown={onTabKey}>
-          {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" id={`mmce-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="mmce-panel" tabIndex={tab === t.id ? 0 : -1} className="mmce-tab" onClick={() => setTab(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="mmce-panel" id="mmce-panel" role="tabpanel" aria-labelledby={`mmce-tab-${tab}`}>
+        <div className="mmce-panel" id="mmce-panel" role="tabpanel" aria-labelledby={`mmce-tab-${tab}`} key={tab} ref={panelRef} onScroll={onPanelScroll}>
           {body}
+        </div>
+        <div className="mmce-pager" data-single={pages <= 1}>
+          <button type="button" className="mmce-arrow" aria-label="Previous page" disabled={page <= 0} onClick={() => turn(-1)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 21 19H3z" fill="currentColor" /></svg>
+          </button>
+          <div className="mmce-dots">
+            {Array.from({ length: Math.min(pages, 6) }, (_, i) => (
+              <span key={i} className="mmce-dot" data-on={i === Math.min(page, 5)} />
+            ))}
+          </div>
+          <button type="button" className="mmce-arrow" aria-label="Next page" disabled={page >= pages - 1} onClick={() => turn(1)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19 3 5h18z" fill="currentColor" /></svg>
+          </button>
         </div>
       </div>
     </div>

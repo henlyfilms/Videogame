@@ -62,12 +62,12 @@ export function Joystick() {
       aria-label="Movement joystick"
     >
       {knob ? (
-        <div style={{ position: 'fixed', left: knob.ox - R, top: knob.oy - R, width: R * 2, height: R * 2, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,255,255,0.25)', pointerEvents: 'none' }}>
-          <div style={{ position: 'absolute', left: R - 26 + knob.x, top: R - 26 + knob.y, width: 52, height: 52, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #9cc0ff, #2f6fed)', boxShadow: '0 0 20px rgba(47,111,237,0.6)' }} />
+        <div className="mmjoy-base" style={{ left: knob.ox - R, top: knob.oy - R, width: R * 2, height: R * 2 }}>
+          <div className="mmjoy-knob" style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
         </div>
       ) : (
-        <div style={{ position: 'absolute', left: 'max(24px, env(safe-area-inset-left))', bottom: 'max(28px, env(safe-area-inset-bottom))', width: 110, height: 110, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.18)', pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: 700 }}>
-          MOVE
+        <div className="mmjoy-idle">
+          <span>Move</span>
         </div>
       )}
     </div>

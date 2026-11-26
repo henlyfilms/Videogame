@@ -142,11 +142,11 @@ export function TutorialCoach() {
   if (!room?.practice) return null;
   const all = steps.every((s) => done.has(s.id));
   return (
-    <div className="mm-safe" style={{ position: 'absolute', left: 0, top: 'max(250px, 32vh)', zIndex: 12, pointerEvents: 'none', maxWidth: 'min(360px, 92vw)' }}>
-      <div className="mm-panel mm-anim-rise" style={{ padding: 12, pointerEvents: 'auto', marginBottom: 'max(0px, calc(env(safe-area-inset-bottom)))' }}>
+    <div className="mm-safe mm-coach">
+      <div className="mm-panel mm-in-right" style={{ padding: 12, pointerEvents: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <b style={{ flex: 1 }}>
-            🎓 Practice: {ROLES[role].name} ({steps.filter((st) => done.has(st.id)).length}/{steps.length})
+            Practice: {ROLES[role].name} ({steps.filter((st) => done.has(st.id)).length}/{steps.length})
           </b>
           <button className="mm-btn" style={{ minHeight: 32, padding: '2px 10px' }} onClick={() => setOpen((o) => !o)}>
             {open ? 'Hide' : 'Show'}

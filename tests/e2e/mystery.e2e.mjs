@@ -60,7 +60,7 @@ try {
   check('iPhone joins the same room by invite link', true);
 
   // Host tunes settings: quick 2-minute match, fill with bots.
-  await host.getByText('Match settings').click();
+  await host.getByRole('button', { name: 'Edit match settings' }).click();
   await host.getByText('Rules').click();
   const setRange = async (label, value) => {
     const row = host.locator('label', { hasText: label }).first();

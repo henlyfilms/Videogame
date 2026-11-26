@@ -1,7 +1,7 @@
 /**
  * Shared UI bits for Marion Mystery: icons, berry avatars, modals, bars.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { PALETTE } from '../characters/catalog';
 import { drawBerry } from '../characters/draw2d';
 import type { Cosmetics } from '../core/types';
@@ -52,6 +52,61 @@ const P: Record<string, string> = {
   crosshair: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M22 12h-4 M6 12H2 M12 6V2 M12 22v-4',
   battery: 'M3 7h15v10H3z M21 10v4 M6 10h6v4H6z',
   skip: 'M5 4l10 8-10 8z M19 5v14',
+  // --- HUD / chrome (original line icons) ---
+  megaphone: 'M3 10v4h3l7 5V5L6 10H3z M16 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5 M19 6c2 1.6 3 3.6 3 6s-1 4.4-3 6',
+  claw: 'M5 20C9 15 11 9 10 3 M10 20c3-4.5 5-9.5 5-15 M15 20c2.5-3.5 4-7 4.5-11',
+  grate: 'M4 5h16v14H4z M8 5v14 M12 5v14 M16 5v14',
+  ballot: 'M4 11h16v9H4z M7 11V6l6-3 4 6 M9 15h6',
+  siren: 'M6 18V12a6 6 0 0 1 12 0v6 M4 18h16v3H4z M12 2v2 M3.5 6l1.5 1.5 M20.5 6 19 7.5 M10 11a2 2 0 0 1 2-2',
+  hanger: 'M12 7a2 2 0 1 1 2-2 M12 7v2L3 16h18l-9-7',
+  invite: 'M15 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 3 17.5V19 M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M19 8v6 M16 11h6',
+  lock: 'M6 11h12v10H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  unlock: 'M6 11h12v10H6z M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2',
+  speaker: 'M4 9v6h4l5 4V5L8 9H4z M16.5 9a4 4 0 0 1 0 6',
+  pad: 'M7 8h10a4 4 0 0 1 4 4l.5 4a2.5 2.5 0 0 1-4.3 1.8L15 16H9l-2.2 1.8A2.5 2.5 0 0 1 2.5 16L3 12a4 4 0 0 1 4-4z M7 11v3 M5.5 12.5h3 M16 12h.01 M18 13.5h.01',
+  sliders: 'M4 6h10 M18 6h2 M16 4v4 M4 12h3 M11 12h9 M9 10v4 M4 18h12 M18 16v4',
+  flag: 'M5 21V4 M5 4h12l-2 4 2 4H5',
+  check: 'M5 12.5l4.5 4.5L19 7',
+  chevron: 'M9 6l6 6-6 6',
+  chevronUp: 'M6 15l6-6 6 6',
+  chevronDown: 'M6 9l6 6 6-6',
+  tablet: 'M6 2h12v20H6z M10 18h4',
+  expand: 'M4 4h6 M4 4v6 M20 20h-6 M20 20v-6 M4 4l6 6 M20 20l-6-6',
+  dice: 'M4 4h16v16H4z M8.5 8.5h.01 M15.5 15.5h.01 M12 12h.01',
+  palette: 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.5-4-8-9-8z M7.5 11h.01 M10 7h.01 M15 7.5h.01',
+  scissors: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.1 7.9 20 18 M8.1 16.1 20 6',
+  hat: 'M3 18h18 M6 18c0-7 2-12 6-12s6 5 6 12 M7 14h10',
+  glasses: 'M2 11h2.5 M19.5 11H22 M4.5 12a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0z M12.5 12a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0z',
+  backpack: 'M7 8a5 5 0 0 1 10 0v12H7z M9 4.5V3h6v1.5 M9 13h6v4H9z',
+  paw: 'M12 20c-3 0-5-1.5-5-3.5S9 12 12 12s5 2.5 5 4.5-2 3.5-5 3.5z M6 10h.01 M9.5 6.5h.01 M14.5 6.5h.01 M18 10h.01',
+  tag: 'M3 12V4h8l10 10-8 8z M7.5 7.5h.01',
+  sparkle: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z',
+  trophy: 'M8 4h8v5a4 4 0 0 1-8 0z M8 6H4a3 3 0 0 0 4 4 M16 6h4a3 3 0 0 1-4 4 M12 13v4 M8 21h8 M9 17h6',
+  // --- task icons ---
+  mail: 'M3 6h18v12H3z M3 7l9 6 9-6',
+  clip: 'M8 12V6a4 4 0 0 1 8 0v10a2.5 2.5 0 0 1-5 0V8',
+  reel: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M12 6.5h.01 M17.5 12h.01 M12 17.5h.01 M6.5 12h.01',
+  cartridge: 'M6 3h12v12l-2 2v4H8v-4l-2-2z M9 7h6 M9 10h6',
+  pipe: 'M3 8h7a4 4 0 0 1 4 4v9 M3 13h5a1 1 0 0 1 1 1v7 M3 6v9 M12 21h5',
+  disc: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M17 7l-3 3',
+  dish: 'M5 12a8 8 0 0 0 9 7.9L5.1 11 M5 12A8 8 0 0 1 13 4 M10 14l5-5 M15 9h.01 M18 6a3 3 0 0 0-3-3 M8 18l-2 4h6',
+  can: 'M7 5h7l3 3v13H7z M7 9h10 M10 5V3h4',
+  plug: 'M9 3v5 M15 3v5 M6 8h12v4a6 6 0 0 1-12 0z M12 18v3',
+  card: 'M3 6h18v12H3z M3 10h18 M6 15h4',
+  plant: 'M12 21v-8 M12 13c0-4 3-6 7-6 0 4-3 6-7 6z M12 15c0-3-2-5-6-5 0 3 2 5 6 5z M7 21h10',
+  filter: 'M3 4h18l-7 9v6l-4 2v-8z',
+  download: 'M12 3v12 M7 10l5 5 5-5 M4 20h16',
+  upload: 'M12 21V9 M7 14l5-5 5 5 M4 4h16',
+  valve: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M12 3v6 M12 15v6 M3 12h6 M15 12h6 M5.6 5.6l3.4 3.4 M15 15l3.4 3.4',
+  grid4: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  keypad: 'M5 3h14v18H5z M8.5 7h.01 M12 7h.01 M15.5 7h.01 M8.5 11h.01 M12 11h.01 M15.5 11h.01 M8.5 15h.01 M12 15h.01 M15.5 15h.01',
+  chute: 'M4 4h16l-4 8v8H8v-8z M10 16h4',
+  scan: 'M3 8V4h4 M17 4h4v4 M21 16v4h-4 M7 20H3v-4 M7 12h10',
+  hex: 'M12 2l8.5 5v10L12 22l-8.5-5V7z',
+  compass: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M15.5 8.5l-2 5-5 2 2-5z',
+  fuse: 'M8 4h8v16H8z M4 8h4 M16 8h4 M4 16h4 M16 16h4 M12 8v8',
+  lantern: 'M9 3h6 M12 3v2 M7 7h10l-1 12H8z M5 21h14 M12 11c-1 1.5-1 3 0 4 1-1 1-2.5 0-4z',
+  press: 'M4 20h16 M7 20v-6h10v6 M12 3v8 M8 11h8 M9 6h6',
 };
 
 export function MIcon({ name, size = 20, className = '', stroke = 2 }: { name: string; size?: number; className?: string; stroke?: number }) {
@@ -64,6 +119,21 @@ export function MIcon({ name, size = 20, className = '', stroke = 2 }: { name: s
 
 export function colorHex(i: number): string {
   return PALETTE[i]?.hex ?? '#6ea1ff';
+}
+
+/** Lifts very dark player colours so names stay legible on black panels. */
+export function readable(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1]!, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  if (lum >= 0.42) return hex;
+  const k = 0.42 / Math.max(0.05, lum) > 3 ? 0.62 : 0.45;
+  const mix = (c: number) => Math.round(c + (255 - c) * k);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
 /** Animated berry portrait (canvas). */
@@ -114,47 +184,60 @@ export function BerryAvatar({
 }
 
 export function Modal({ children, onClose, wide = false, title }: { children: ReactNode; onClose?: () => void; wide?: boolean; title?: ReactNode }) {
+  // Closing plays an exit animation first; the parent unmounts us afterwards.
+  const [closing, setClosing] = useState(false);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const closingRef = useRef(false);
+  const close = useCallback(() => {
+    if (closingRef.current || !closeRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    setTimeout(() => closeRef.current?.(), 170);
+  }, []);
   useEffect(() => {
     sfx.play('ui.open');
     return () => sfx.play('ui.close');
   }, []);
+  const closable = !!onClose;
   useEffect(() => {
-    if (!onClose) return;
+    if (!closable) return;
     // Capture phase + stopPropagation: Escape closes this modal only (it must
     // not also reach the game's input layer and open the pause menu).
     const k = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      onClose();
+      close();
     };
     window.addEventListener('keydown', k, true);
     return () => window.removeEventListener('keydown', k, true);
-  }, [onClose]);
+  }, [closable, close]);
+  const st = closing ? 'out' : 'in';
   return (
-    <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(3,6,18,0.6)' }} onPointerDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className="mm-panel mm-anim-pop mm-safe" role="dialog" aria-modal style={{ width: wide ? 'min(960px, 96vw)' : 'min(560px, 94vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="mm-modal-back" data-state={st} onPointerDown={(e) => e.target === e.currentTarget && close()}>
+      <div className={`mm-modal mm-safe${wide ? ' wide' : ''}`} data-state={st} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
         {(title || onClose) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: '1.15em', flex: 1 }}>{title}</div>
+          <div className="mm-modal-head">
+            <div className="mm-modal-title">{title}</div>
             {onClose && (
-              <button className="mm-btn" style={{ minHeight: 40, padding: 8 }} onClick={onClose} aria-label="Close">
+              <button className="mm-round" onClick={close} aria-label="Close">
                 <MIcon name="close" />
               </button>
             )}
           </div>
         )}
-        <div className="mm-scroll" style={{ flex: 1, minHeight: 0 }}>
-          {children}
-        </div>
+        <div className="mm-scroll mm-modal-body">{children}</div>
       </div>
     </div>
   );
 }
 
-export function Bar({ value, color, height = 10 }: { value: number; color?: string; height?: number }) {
+/** Progress bar: the fill eases via transform (no layout work per frame). */
+export function Bar({ value, color, height = 10, label }: { value: number; color?: string; height?: number; label?: string }) {
+  const v = Math.max(0, Math.min(1, value));
   return (
-    <div className="mm-bar" style={{ height }}>
-      <i style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, ...(color ? { background: color, boxShadow: `0 0 12px ${color}` } : {}) }} />
+    <div className="mm-bar" style={{ height }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} aria-label={label}>
+      <i style={{ transform: `scaleX(${v})`, ...(color ? { background: color } : {}) }} />
     </div>
   );
 }
