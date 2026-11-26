@@ -16,3 +16,4 @@ export function sanitizeCosmetics(raw: unknown): Cosmetics {
   return { ...d, berry: (BERRIES as readonly string[]).includes(o.berry as string) ? (o.berry as Cosmetics['berry']) : d.berry, color: typeof o.color === 'number' ? Math.max(0, Math.min(19, Math.round(o.color))) : d.color };
 }
 export const MARION_BOT_LOOKS: Record<string, Cosmetics> = {};
+export const PALETTE: { id: string; name: string; hex: string; dark: string }[] = ['#ef4444', '#b91c1c', '#f97316', '#c2410c', '#facc15', '#ca8a04', '#22c55e', '#15803d', '#14b8a6', '#0f766e', '#3b82f6', '#1d4ed8', '#a855f7', '#7e22ce', '#ec4899', '#be185d', '#334155', '#0f172a', '#f1f5f9', '#cbd5e1'].map((hex, i) => ({ id: `c${i}`, name: `Colour ${i}`, hex, dark: hex }));
