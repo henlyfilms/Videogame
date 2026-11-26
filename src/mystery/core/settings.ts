@@ -245,7 +245,7 @@ export const PRESETS: { id: PresetId; name: string; blurb: string; apply: (s: Se
       gunCooldown: 12.5,
       sabotageCooldown: 15,
       knifeThrow: true,
-      roles: roleTable({ murderer: 2, poisoner: 1, accomplice: 1, sheriff: 1, detective: 1, medic: 1, engineer: 1, lookout: 1, tracker: 1, mayor: 1, jester: 1, survivor: 1 }),
+      roles: roleTable({ murderer: 2, poisoner: 1, sheriff: 1, detective: 1, medic: 1, engineer: 1, tracker: 1, jester: 1 }),
     }),
   },
   {

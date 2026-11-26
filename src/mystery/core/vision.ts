@@ -53,10 +53,15 @@ function inCone(from: Vec2, cone: NonNullable<VisionShape['cone']>, to: Vec2): b
   return diff <= cone.halfAngle;
 }
 
+/** Lit radius of a lamp in Lights Out (small pools, not whole rooms). */
+export function lampPool(r: number): number {
+  return Math.min(r * 0.25, 3);
+}
+
 /** Light sources other than flashlights that reveal a point in Lights Out. */
 function litByWorld(st: MatchState, m: CompiledMap, to: Vec2): boolean {
   for (const l of m.def.lamps) {
-    if (dist(l, to) <= l.r * 0.45) return true;
+    if (dist(l, to) <= lampPool(l.r)) return true;
   }
   for (const id of st.litLanterns) {
     const s = m.stationById.get(id);

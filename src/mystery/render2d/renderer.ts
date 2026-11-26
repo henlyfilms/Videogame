@@ -6,7 +6,7 @@
 import { drawBerry, drawBody, drawEmoteBubble, drawNameplate, drawPet } from '../characters/draw2d';
 import { castRay, Cell, type CompiledMap } from '../core/map';
 import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
-import type { VisionShape } from '../core/vision';
+import { lampPool, type VisionShape } from '../core/vision';
 import { floorBase, hash2, mix, paintFloorTile, paintProp, paintPropLive, paintStation, paintVent, rgba, stationStyle } from './paint';
 
 export interface DrawPlayer {
@@ -630,7 +630,7 @@ export class Renderer2D {
         fg.arc(c.x, c.y, r * s * fs, 0, Math.PI * 2);
         fg.fill();
       };
-      for (const l of f.map.def.lamps) pool(l, l.r * 0.45, 0.55);
+      for (const l of f.map.def.lamps) pool(l, lampPool(l.r) * 1.15, 0.6);
       for (const st of f.map.def.stations) {
         if (st.kind === 'recharge') pool(st, 2.2, 0.8);
         if (st.kind === 'lightLantern' && f.litLanterns.has(st.id)) pool(st, 3.2, 0.85);
