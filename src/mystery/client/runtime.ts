@@ -55,6 +55,8 @@ export class Runtime {
   bumpAt = 0;
   /** Yaw the 3D camera looks along (screen-up), or null in 2D. Set by the 3D view each frame. */
   cameraYaw: number | null = null;
+  /** World point under the mouse (2D view, while the mouse is in use), for pings. */
+  cursorWorld: Vec2 | null = null;
   /** Increments on every snapshot (renderers can diff). */
   version = 0;
 

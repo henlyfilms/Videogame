@@ -4459,7 +4459,8 @@
     right: auto;
     left: 0;
     bottom: calc(205px + env(safe-area-inset-bottom, 0px));
-    max-width: min(250px, 58vw);
+    /* Stop short of the action column (its widest stack is ~195px from the right edge). */
+    max-width: min(250px, calc(100vw - 200px));
     font-size: 0.78em;
   }
   .mm-coach .mm-panel {

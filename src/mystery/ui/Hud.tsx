@@ -17,7 +17,8 @@ import type { Settings } from '../core/settings';
 import type { SabotageId, StationKind, Vec2 } from '../core/types';
 import type { Keybinds } from '../client/prefs';
 import { filterProfanity } from '../client/prefs';
-import { bindUi, currentContext, doAction, doUse } from '../client/controls';
+import { bindUi, currentContext, doAction, doPing, doUse } from '../client/controls';
+import { PING_COOLDOWN } from '../core/match';
 import { runtime } from '../client/runtime';
 import { isFixStation, taskClosedAt, useMystery } from '../client/store';
 import { Bar, BerryAvatar, colorHex, fmtTime, MIcon, Modal, readable, teamColors } from './common';
@@ -239,6 +240,10 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
     if (role.canVent && (you.role !== 'hider' || you.ventUses > 0) && you.alive)
       actions.push({ id: 'vent', icon: 'grate', label: you.inVent ? 'Exit' : 'Vent', onClick: () => doAction('vent'), disabled: !ctx.vent && !you.inVent, cd: you.inVent ? 0 : you.ventCd, tone: 'orange', hotkey: 'vent', ready: !!ctx.vent || !!you.inVent, prio: 4 });
     if (role.canSabotage && mode.sabotage) actions.push({ id: 'sabotage', icon: 'bolt', label: 'Sabotage', onClick: () => setSabMap(true), cd: snap.sabotage.cooldown, cdMax: settings.sabotageCooldown, tone: 'red', hotkey: 'sabotage', prio: 1 });
+    if (!you.inVent) {
+      const mine = snap.players.find((p) => p.id === you.id)?.ping;
+      actions.push({ id: 'ping', icon: 'ping', label: 'Ping', onClick: doPing, cd: mine ? Math.max(0, PING_COOLDOWN - mine.age) : 0, cdMax: PING_COOLDOWN, tone: 'blue', hotkey: 'ping', prio: -1 });
+    }
     if (mode.flashlights && !killerTeam && you.alive) actions.push({ id: 'flash', icon: 'flashlight', label: you.flashlightOn ? 'Light off' : 'Light on', onClick: () => doAction('flashlight'), tone: 'gold', hotkey: 'flashlight', prio: 0 });
     if (you.alive) {
       if (you.role === 'medic') {

@@ -296,6 +296,13 @@ class Sfx {
         engine.noiseHit(out, t + 1.6, 1.2, 0.15, 8000, 'highpass', 0.6, 0.4);
         this.caption('Drumroll');
         break;
+      case 'ping':
+        // Bright rising two-note blip with a glassy tail: "over here!".
+        engine.tone(out, hz('E6'), t, 0.07, 0.16 * vol, 'triangle', hz('A6'), pan);
+        engine.tone(out, hz('B6'), t + 0.08, 0.16, 0.14 * vol, 'triangle', hz('E7'), pan, 0.2);
+        engine.bell(out, hz('E7'), t + 0.08, 0.08 * vol, { kind: 'glass', pan, rev: 0.4 });
+        this.caption('Ping');
+        break;
       case 'emote':
         engine.pluck(out, hz('G5'), t, 0.25 * vol, { len: 0.5, pan });
         engine.pluck(out, hz('C6'), t + 0.08, 0.25 * vol, { len: 0.5, pan });
@@ -488,6 +495,12 @@ class Sfx {
         if (!a.you.portableCam && b.you.portableCam) this.play('camera');
         if (b.phase === 'meeting' && b.chat.length) this.play('ui.chat');
         if (a.you.activeTask !== b.you.activeTask && b.you.activeTask) this.play('task.open');
+        // Someone else's new ping (our own plays on press).
+        for (const p of b.players) {
+          if (!p.ping || p.id === b.you.id || p.ping.age > 0.6) continue;
+          const old = a.players.find((q) => q.id === p.id)?.ping;
+          if (!old || old.x !== p.ping.x || old.y !== p.ping.y) this.play('ping', p.ping);
+        }
         music.intensity = Math.max(b.you.dread, crit ? 0.6 : 0, b.hns?.final ? 1 : 0, b.sabotage.active === 'lights' ? 0.4 : 0);
       } else if (!b) {
         this.stopAlarm();

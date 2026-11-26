@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FrameData } from '../render2d/renderer';
 import { Renderer2D } from '../render2d/renderer';
 import type { MatchEvent, Vec2, ViewMode } from '../core/types';
-import { input, refreshContext } from '../client/controls';
+import { doPing, input, refreshContext } from '../client/controls';
 import { buildFrame } from '../client/frame';
 import { runtime } from '../client/runtime';
 import { useMystery } from '../client/store';
@@ -42,7 +42,15 @@ class TwoDView implements ViewRenderer {
     if (this.mouse && performance.now() - this.aimAt < 2500) {
       const me = this.r.toScreen(f.focus, f.zoom);
       this.aim = Math.atan2(this.mouse.y - me.y, this.mouse.x - me.x);
-    } else this.aim = null;
+      // Screen → world (the 2D camera is a plain scale + offset).
+      const one = this.r.toScreen({ x: f.focus.x + 1, y: f.focus.y + 1 }, f.zoom);
+      const kx = one.x - me.x;
+      const ky = one.y - me.y;
+      runtime.cursorWorld = kx && ky ? { x: f.focus.x + (this.mouse.x - me.x) / kx, y: f.focus.y + (this.mouse.y - me.y) / ky } : null;
+    } else {
+      this.aim = null;
+      runtime.cursorWorld = null;
+    }
     this.r.render(f, dt);
     this.frameMs = this.r.frameMs;
   }
@@ -62,8 +70,19 @@ class TwoDView implements ViewRenderer {
       this.mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       this.aimAt = performance.now();
     };
+    // Middle click pings the spot under the mouse.
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 1) return;
+      e.preventDefault();
+      mv(e);
+      doPing();
+    };
     el.addEventListener('pointermove', mv);
-    return () => el.removeEventListener('pointermove', mv);
+    el.addEventListener('pointerdown', down);
+    return () => {
+      el.removeEventListener('pointermove', mv);
+      el.removeEventListener('pointerdown', down);
+    };
   }
   dispose() {
     this.r.dispose();
@@ -90,6 +109,9 @@ export function GameView({ view, onRenderer }: { view: ViewMode; onRenderer?: (r
         r.dispose();
         return;
       }
+      // Debug builds (?debug): expose the active view to probes as __mm.view.
+      const dbg = (window as unknown as { __mm?: Record<string, unknown> }).__mm;
+      if (dbg) dbg.view = r;
       renderer = r;
       onRenderer?.(r);
       const ro = new ResizeObserver(() => r.resize(el.clientWidth, el.clientHeight, window.devicePixelRatio || 1));

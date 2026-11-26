@@ -371,3 +371,114 @@ export function drawNameTag(g: CanvasRenderingContext2D, x: number, y: number, h
   g.fillText(name, x0 + h * 1.02, y + h * 0.03);
   g.restore();
 }
+
+/**
+ * "Look here" ping badge: an inked map-pin with a bold "!" over the spot,
+ * popping in, bobbing, and shrinking away at the end. `size` is the pin
+ * height in px, (x, y) its tip. Shared by the 2D view and the 3D sprite.
+ */
+export function drawPingPin(g: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, pop: number): void {
+  if (pop <= 0.01) return;
+  const k = size * pop;
+  const r = k * 0.34;
+  const cy = y - k + r;
+  g.save();
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(x, y);
+  g.bezierCurveTo(x - r * 0.35, y - k * 0.28, x - r, cy + r * 0.75, x - r, cy);
+  g.arc(x, cy, r, Math.PI, 0);
+  g.bezierCurveTo(x + r, cy + r * 0.75, x + r * 0.35, y - k * 0.28, x, y);
+  g.closePath();
+  g.fillStyle = color;
+  g.fill();
+  g.lineWidth = Math.max(1.5, k * 0.075);
+  g.strokeStyle = WORLD.ink;
+  g.stroke();
+  // Light rim on the upper left for the cel look.
+  g.beginPath();
+  g.arc(x, cy, r * 0.78, Math.PI * 1.05, Math.PI * 1.55);
+  g.strokeStyle = 'rgba(255,255,255,0.55)';
+  g.lineWidth = Math.max(1, k * 0.05);
+  g.lineCap = 'round';
+  g.stroke();
+  // "!" in white with an ink edge.
+  g.fillStyle = '#ffffff';
+  g.strokeStyle = WORLD.ink;
+  g.lineWidth = Math.max(1, k * 0.045);
+  g.beginPath();
+  g.roundRect(x - r * 0.17, cy - r * 0.62, r * 0.34, r * 0.82, r * 0.12);
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.arc(x, cy + r * 0.45, r * 0.17, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.restore();
+}
+
+/** Pop-in / hold / shrink-out curve for a ping of `age` seconds (ttl total). */
+export function pingPop(age: number, ttl: number, reduced: boolean): number {
+  if (age < 0 || age > ttl) return 0;
+  const inK = reduced ? 1 : easeOutBack(age / 0.28);
+  const outK = Math.min(1, (ttl - age) / 0.35);
+  return Math.max(0, Math.min(inK, outK < 1 ? easeOutCubic(outK) : 1));
+}
+
+/**
+ * The whole 2D ping: expanding floor rings at the spot, a dashed pointer
+ * line from the pinger's hand, and the "!" pin. Pixel coordinates; `s` is
+ * px per metre.
+ */
+export function drawPing(g: CanvasRenderingContext2D, from: { x: number; y: number } | null, to: { x: number; y: number }, s: number, age: number, ttl: number, color: string, reduced: boolean): void {
+  const pop = pingPop(age, ttl, reduced);
+  if (pop <= 0) return;
+  const fade = Math.min(1, (ttl - age) / 0.35);
+  g.save();
+  // Floor rings: a solid one and two ripples (one static ring when reduced).
+  g.lineWidth = s * 0.07;
+  g.strokeStyle = WORLD.ink;
+  g.beginPath();
+  g.ellipse(to.x, to.y, s * 0.42 * pop, s * 0.26 * pop, 0, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = color;
+  g.lineWidth = s * 0.04;
+  g.stroke();
+  if (!reduced)
+    for (let i = 0; i < 2; i++) {
+      const w = ((age * 1.3 + i * 0.5) % 1) as number;
+      g.globalAlpha = (1 - w) * fade * 0.8;
+      g.beginPath();
+      g.ellipse(to.x, to.y, s * (0.45 + w * 0.9), s * (0.28 + w * 0.56), 0, 0, Math.PI * 2);
+      g.stroke();
+    }
+  g.globalAlpha = fade;
+  // Pointer line from the hand (about half a metre up) to the spot.
+  if (from) {
+    const hx = from.x;
+    const hy = from.y - s * 0.55;
+    const grow = reduced ? 1 : easeOutCubic(age / 0.22);
+    const ex = hx + (to.x - hx) * grow;
+    const ey = hy + (to.y - hy) * grow;
+    g.lineCap = 'round';
+    g.strokeStyle = rgba(WORLD.ink, 0.7);
+    g.lineWidth = s * 0.09;
+    g.beginPath();
+    g.moveTo(hx, hy);
+    g.lineTo(ex, ey);
+    g.stroke();
+    g.strokeStyle = color;
+    g.lineWidth = s * 0.045;
+    g.setLineDash([s * 0.22, s * 0.14]);
+    g.lineDashOffset = reduced ? 0 : -age * s * 1.6;
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(hx, hy, s * 0.07, 0, Math.PI * 2);
+    g.fill();
+  }
+  const bob = reduced ? 0 : Math.sin(age * 5) * s * 0.06;
+  drawPingPin(g, to.x, to.y - s * 0.25 + bob, s * 0.95, color, pop);
+  g.restore();
+}

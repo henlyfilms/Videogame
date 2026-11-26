@@ -7,11 +7,13 @@ import type { CompiledMap } from '../core/map';
 import type { Snapshot } from '../core/project';
 import { ROLES } from '../core/roles';
 import { BASE_VISION, type Settings } from '../core/settings';
+import { PING_TTL } from '../core/match';
+import { PALETTE } from '../characters/catalog';
 import type { Vec2 } from '../core/types';
 import type { VisionShape } from '../core/vision';
 import type { RoomInfo } from '../net/protocol';
 import { keyLabel } from '../render2d/prompts';
-import type { DrawPlayer, FrameData } from '../render2d/renderer';
+import type { DrawPlayer, FrameData, PingDraw } from '../render2d/renderer';
 import type { Context } from './context';
 import type { Prefs } from './prefs';
 import { runtime } from './runtime';
@@ -133,6 +135,21 @@ export function buildFrame(opts: {
   const cosOf = (id: string) => s.players.find((p) => p.id === id)?.cosmetics ?? room.players.find((p) => p.id === id)?.cosmetics;
   const bodies = s.bodies.map((b) => ({ id: b.id, cosmetics: cosOf(b.playerId)!, pos: b.pos })).filter((b) => b.cosmetics);
   const crit = s.sabotage.active === 'meltdown' || s.sabotage.active === 'pressure';
+  const pings: PingDraw[] = [];
+  const liveKeys = new Set<string>();
+  for (const p of s.players) {
+    if (!p.ping) continue;
+    const key = `${p.id}|${p.ping.x}|${p.ping.y}`;
+    liveKeys.add(key);
+    // Client clock for smooth ages, re-anchored whenever the host says the ping
+    // is younger (a lagging host must not make pings vanish early).
+    let t0 = pingStart.get(key);
+    if (t0 === undefined || t - t0 > p.ping.age + 0.25) pingStart.set(key, (t0 = t - p.ping.age));
+    const age = Math.min(t - t0, PING_TTL);
+    const drawn = players.find((d) => d.id === p.id);
+    pings.push({ id: p.id, from: drawn?.pos ?? null, to: { x: p.ping.x, y: p.ping.y }, age, color: pingColor(p.cosmetics.color), local: p.id === pid });
+  }
+  for (const k of pingStart.keys()) if (!liveKeys.has(k)) pingStart.delete(k);
   return {
     mode: 'match',
     map,
@@ -156,6 +173,7 @@ export function buildFrame(opts: {
     footprints: me.role === 'detective' && me.alive,
     trackPos: me.trackPos as Vec2 | null,
     zoom: opts.zoom,
+    pings,
     prompts: {
       kill: ctx.kill,
       report: ctx.report,
@@ -164,6 +182,27 @@ export function buildFrame(opts: {
       keys: promptKeys(prefs),
     },
   };
+}
+
+/** Client clock start per live ping (key: pinger + spot), so ages advance smoothly between snapshots. */
+const pingStart = new Map<string, number>();
+
+/** The pinger's colour, lifted so dark berries still read as a bright laser. */
+function pingColor(i: number): string {
+  const hex = PALETTE[i]?.hex ?? '#ff6b9a';
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255;
+  let g = (n >> 8) & 255;
+  let b = n & 255;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (lum < 110) {
+    const k = (110 - lum) / 255;
+    r = Math.round(r + (255 - r) * k * 1.6);
+    g = Math.round(g + (255 - g) * k * 1.6);
+    b = Math.round(b + (255 - b) * k * 1.6);
+  }
+  const c = (v: number) => Math.min(255, v).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
 }
 
 function promptKeys(prefs: Prefs): { use: string; kill: string; report: string; vent: string } {

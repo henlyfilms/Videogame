@@ -606,8 +606,8 @@ export function HowToScreen() {
       {tab === 'controls' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
           {[
-            ['Keyboard & mouse', ['WASD / arrows — move', 'Mouse — look (3D, click to lock)', 'E or Space — use / task', 'Q — kill / tag', 'R — report', 'V — vent', 'X — sabotage map', 'Tab — map', 'F — flashlight', 'Enter — chat (meetings)', '1–4 — emotes']],
-            ['Touch (iPhone)', ['Left thumb — joystick', 'Right side drag — look (3D)', 'Big buttons — context actions', 'Tap the map icon for the map', 'Pinch disabled — no accidental zoom']],
+            ['Keyboard & mouse', ['WASD / arrows — move', 'Mouse — look (3D, click to lock)', 'E or Space — use / task', 'Q — kill / tag', 'R — report', 'V — vent', 'X — sabotage map', 'Tab — map', 'F — flashlight', 'Z or middle-click — ping a spot', 'Enter — chat (meetings)', '1–4 — emotes']],
+            ['Touch (iPhone)', ['Left thumb — joystick', 'Right side drag — look (3D)', 'Big buttons — context actions', 'Ping button — mark the spot ahead', 'Tap the map icon for the map', 'Pinch disabled — no accidental zoom']],
             ['Controller', ['Left stick — move', 'Right stick — look', 'A — use', 'B — report', 'X — kill', 'Y — vent', 'RB — sabotage · LB — map', 'LT — flashlight · RT — shoot']],
           ].map(([t, items]) => (
             <div key={t as string} className="mm-panel-solid" style={{ padding: 14 }}>

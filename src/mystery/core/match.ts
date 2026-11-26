@@ -76,11 +76,33 @@ export type Action =
   | { a: 'flashlight'; on: boolean }
   | { a: 'gun.pickup' }
   | { a: 'battery.pickup'; id: string }
-  | { a: 'emote'; id: string };
+  | { a: 'emote'; id: string }
+  | { a: 'ping'; x: number; y: number };
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
 
 const OK: ActionResult = { ok: true };
+
+/** Pings: how long a marker lasts, how often a player may place one, and how far away (m). */
+export const PING_TTL = 3.5;
+export const PING_COOLDOWN = 1.5;
+export const PING_RANGE = 9;
+
+/** Where a ping aimed from `from` at `to` lands: capped to PING_RANGE and pulled back in front of the first wall. */
+export function pingSpot(map: CompiledMap, from: Vec2, to: Vec2, closed?: ReadonlySet<string>): Vec2 {
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1e-3) return { x: from.x, y: from.y };
+  const len = Math.min(d, PING_RANGE);
+  dx /= d;
+  dy /= d;
+  for (let l = len; l > 0; l -= 0.2) {
+    const q = { x: from.x + dx * l, y: from.y + dy * l };
+    if (lineOfSight(map, from, q, closed)) return q;
+  }
+  return { x: from.x, y: from.y };
+}
 const no = (reason: string): ActionResult => ({ ok: false, reason });
 
 export const INTRO_SECONDS = 6;
@@ -159,6 +181,8 @@ export function makePlayer(seed: PlayerSeed, pos: Vec2): PlayerState {
     fixing: null,
     fixingAt: 0,
     emote: null,
+    ping: null,
+    pingAt: -99,
     lastRoom: null,
     diedAt: null,
     ejected: false,
@@ -387,6 +411,7 @@ function startMeeting(st: MatchState, ctx: MatchCtx, caller: PlayerState, bodyId
   // Poison resolves as the meeting begins.
   for (const p of Object.values(st.players)) {
     if (p.alive && p.poisonedAt !== null) killPlayer(st, ctx, p, 'poison', p.poisonedBy, false);
+    p.ping = null;
   }
   st.phase = 'meeting';
   st.meetingsHeld++;
@@ -1034,6 +1059,14 @@ export function applyAction(st: MatchState, ctx: MatchCtx, pid: string, act: Act
       p.emote = { id: act.id, at: st.t };
       return OK;
     }
+    case 'ping': {
+      if (st.phase !== 'play' || p.inVent) return no('cannot');
+      if (!Number.isFinite(act.x) || !Number.isFinite(act.y)) return no('bad ping');
+      if (st.t - p.pingAt < PING_COOLDOWN) return no('cooldown');
+      p.ping = pingSpot(ctx.map, p.pos, { x: act.x, y: act.y }, p.alive ? closedDoors(st) : undefined);
+      p.pingAt = st.t;
+      return OK;
+    }
   }
   return no('unknown action');
 }
@@ -1123,6 +1156,7 @@ export function tick(st: MatchState, ctx: MatchCtx, dt: number): void {
       p.vitalsUntil = 0;
     }
     if (p.emote && st.t - p.emote.at > 4) p.emote = null;
+    if (p.ping && (st.t - p.pingAt > PING_TTL || st.phase !== 'play')) p.ping = null;
     if (!p.alive) continue;
     // Poison.
     if (p.poisonedAt !== null && st.t - p.poisonedAt >= s.poisonDelay) {

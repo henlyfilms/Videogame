@@ -9,7 +9,8 @@ import { castRay, Cell, roomAt, type CompiledMap } from '../core/map';
 import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
 import { lampPool, type VisionShape } from '../core/vision';
 import { hash2, inked, paintProp, paintPropLive, paintStation, paintVent, paintVentShape, paintWorldFloor, rgba, softShadow, stationStyle, WORLD, worldFloorBase } from './paint';
-import { drawDottedRing, drawKeyHint, drawKillBadge, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, type TagStyle } from './prompts';
+import { PING_TTL } from '../core/match';
+import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, type TagStyle } from './prompts';
 
 const tagWidths = new Map<string, number>();
 function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number): number {
@@ -67,6 +68,20 @@ export interface FrameData {
   zoom: number;
   /** In-world prompts (filled in matches by client/frame; optional elsewhere). */
   prompts?: WorldPrompts;
+  /** Live "look here" pings. */
+  pings?: PingDraw[];
+}
+
+export interface PingDraw {
+  /** Pinger id (also keys the animation). */
+  id: string;
+  /** Pinger position when visible (draws the pointer line), else null. */
+  from: Vec2 | null;
+  to: Vec2;
+  /** Seconds since placed (smooth, client clock). */
+  age: number;
+  color: string;
+  local: boolean;
 }
 
 export interface WorldPrompts {
@@ -550,6 +565,8 @@ export class Renderer2D {
       });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
+    // Pings sit over the scene (they are callouts, not props).
+    if (f.pings) for (const pg of f.pings) drawPing(ctx, pg.from ? { x: pg.from.x * s, y: pg.from.y * s } : null, { x: pg.to.x * s, y: pg.to.y * s }, s, pg.age, PING_TTL, pg.color, f.reducedMotion);
     // Particles.
     this.particles = this.particles.filter((p) => (p.life -= dt) > 0);
     for (const p of this.particles) {

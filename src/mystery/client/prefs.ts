@@ -22,6 +22,7 @@ export interface Keybinds {
   chat: string;
   emote: string;
   tasks: string;
+  ping: string;
 }
 
 export const DEFAULT_KEYS: Keybinds = {
@@ -39,6 +40,7 @@ export const DEFAULT_KEYS: Keybinds = {
   chat: 'Enter',
   emote: 'KeyT',
   tasks: 'KeyG',
+  ping: 'KeyZ',
 };
 
 export interface LifetimeStats {

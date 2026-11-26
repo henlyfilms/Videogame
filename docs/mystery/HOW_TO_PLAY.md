@@ -42,7 +42,10 @@ Neutral: Jester (wants to be voted out), Survivor (just stay alive).
 | Map | Tab | map icon | LB |
 | Flashlight | F | **Light** | LT |
 | Shoot (Sheriff/Hero) | button | **Shoot** | RT |
+| Ping ("look here") | Z, or middle-click a spot (2D) | **Ping** | — |
 | Emotes | 1–4 | waiting-room buttons | — |
+
+**Pings** drop a "!" marker on the floor where you point (at the mouse in 2D, straight ahead otherwise), with a pointer line from your hand. Anyone who can see you or the spot sees it and hears a chime; a ping lasts 3.5 s, stops at walls, and you can place one every 1.5 s. Ghosts' pings are only seen by other ghosts.
 
 Every task mini-game also works with keyboard only (arrows + Enter/Space), which is how controllers drive it.
 

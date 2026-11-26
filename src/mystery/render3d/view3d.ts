@@ -14,7 +14,8 @@ import type { Prefs } from '../client/prefs';
 import { input } from '../client/controls';
 import { roomAt } from '../core/map';
 import { WORLD } from '../render2d/paint';
-import { drawKeyHint, drawKillBadge, drawNameTag, drawReportBadge, drawVentArrow, easeOutBack, measureTag, PromptFader } from '../render2d/prompts';
+import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader } from '../render2d/prompts';
+import { PING_TTL } from '../core/match';
 import { tagStyleFor, type DrawPlayer, type FrameData } from '../render2d/renderer';
 import type { ViewRenderer } from '../ui/GameView';
 import { buildMapScene, radialTexture, toon, type MapScene, type Quality } from './scene';
@@ -122,6 +123,13 @@ export class ThreeDView implements ViewRenderer {
   private inkMats: HullMats = { main: this.inkHull, thin: hullMaterial(WORLD.ink, 0.022, false, 0.004) };
   private killMats: HullMats = { main: this.killHull, thin: hullMaterial(WORLD.kill, 0.045, false, 0.004) };
   private promptObjs = new Map<string, THREE.Object3D>();
+  /** Live pings: pin sprite, floor ring + ripple, and the pointer beam. */
+  private pingObjs = new Map<string, { g: THREE.Group; pin: THREE.Sprite; ring: THREE.Mesh; edge: THREE.Mesh; ripple: THREE.Mesh; beam: THREE.Mesh; mats: THREE.Material[] }>();
+  private pingRingGeo = new THREE.RingGeometry(0.34, 0.46, 40).rotateX(-Math.PI / 2);
+  private pingEdgeGeo = new THREE.RingGeometry(0.31, 0.49, 40).rotateX(-Math.PI / 2);
+  private pingInk = new THREE.MeshBasicMaterial({ color: WORLD.ink, transparent: true, depthWrite: false, fog: false });
+  private pingBeamInk = new THREE.MeshBasicMaterial({ color: WORLD.ink, side: THREE.BackSide, transparent: true, depthWrite: false, fog: false });
+  private pingBeamGeo = new THREE.CylinderGeometry(0.022, 0.022, 1, 6, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
   private promptTex = new Map<string, { tex: THREE.CanvasTexture; aspect: number }>();
   private ringTex = dottedRingTexture();
   private ringGeo = new THREE.PlaneGeometry(1.7, 1.7).rotateX(-Math.PI / 2);
@@ -553,6 +561,7 @@ export class ThreeDView implements ViewRenderer {
     this.killHull.uniforms.uThick!.value = 0.055 + (rm ? 0 : 0.015 * Math.sin(now / 120));
     (this.killMats.thin as THREE.ShaderMaterial).uniforms.uThick!.value = 0.042 + (rm ? 0 : 0.011 * Math.sin(now / 120));
     this.updatePrompts(f, now, pop);
+    this.updatePings(f, now);
     this.trackRing.visible = !!f.trackPos;
     if (f.trackPos) this.trackRing.position.set(f.trackPos.x, 0.05, f.trackPos.y);
     // Particles.
@@ -775,6 +784,84 @@ export class ThreeDView implements ViewRenderer {
     }
   }
 
+  private makePing(color: string): { g: THREE.Group; pin: THREE.Sprite; ring: THREE.Mesh; edge: THREE.Mesh; ripple: THREE.Mesh; beam: THREE.Mesh; mats: THREE.Material[] } {
+    const g = new THREE.Group();
+    const pin = this.promptSprite(`ping:${color}`, 128, 160, 0.62, (c) => drawPingPin(c, 64, 152, 140, color, 1));
+    pin.center.set(0.5, 0.04);
+    const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const rippleMat = ringMat.clone();
+    const beamMat = new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, fog: false });
+    const ring = new THREE.Mesh(this.pingRingGeo, ringMat);
+    ring.position.y = 0.035;
+    ring.renderOrder = 3;
+    const ripple = new THREE.Mesh(this.pingRingGeo, rippleMat);
+    ripple.position.y = 0.03;
+    ripple.renderOrder = 3;
+    const edge = new THREE.Mesh(this.pingEdgeGeo, this.pingInk);
+    edge.position.y = 0.032;
+    edge.renderOrder = 2;
+    const beam = new THREE.Mesh(this.pingBeamGeo, beamMat);
+    beam.renderOrder = 21;
+    // Ink edge for the beam: the same tube a little fatter, back faces only.
+    const beamEdge = new THREE.Mesh(this.pingBeamGeo, this.pingBeamInk);
+    beamEdge.scale.set(1.9, 1.9, 1);
+    beamEdge.renderOrder = 20;
+    beam.add(beamEdge);
+    g.add(edge, ring, ripple, pin);
+    this.scene.add(g, beam);
+    return { g, pin, ring, edge, ripple, beam, mats: [ringMat, rippleMat, beamMat, pin.material] };
+  }
+
+  /** Pings: pop the pin in, ripple the floor ring, stretch the beam from the pinger's hand. */
+  private updatePings(f: FrameData, now: number): void {
+    const rm = f.reducedMotion;
+    const t = now / 1000;
+    const live = new Set<string>();
+    for (const pg of f.pings ?? []) {
+      const key = `${pg.id}|${pg.color}`;
+      live.add(key);
+      let o = this.pingObjs.get(key);
+      if (!o) {
+        o = this.makePing(pg.color);
+        this.pingObjs.set(key, o);
+      }
+      const k = pingPop(pg.age, PING_TTL, rm);
+      const fade = Math.min(1, (PING_TTL - pg.age) / 0.35);
+      o.g.position.set(pg.to.x, 0, pg.to.y);
+      const base = o.pin.userData.base as THREE.Vector2;
+      const ds = Math.max(0.8, this.distScale(o.g.position));
+      o.pin.scale.set(base.x * k * ds, base.y * k * ds, 1);
+      o.pin.position.y = 0.2 + (rm ? 0 : Math.sin(pg.age * 5) * 0.05);
+      o.pin.material.opacity = fade;
+      o.ring.scale.setScalar(Math.max(0.001, k));
+      o.edge.scale.setScalar(Math.max(0.001, k));
+      (o.ring.material as THREE.MeshBasicMaterial).opacity = fade * 0.95;
+      const w = rm ? 0 : (pg.age * 1.3) % 1;
+      o.ripple.visible = !rm;
+      o.ripple.scale.setScalar(1 + w * 2.2);
+      (o.ripple.material as THREE.MeshBasicMaterial).opacity = (1 - w) * fade * 0.7;
+      if (pg.from) {
+        const a = this.actors.get(pg.id);
+        const hand = this.tmpV.set(pg.from.x, (a?.rig.height ?? 1.05) * 0.62, pg.from.y);
+        const tip = new THREE.Vector3(pg.to.x, 0.06, pg.to.y);
+        const grow = rm ? 1 : Math.min(1, pg.age / 0.22);
+        const len = hand.distanceTo(tip) * grow;
+        o.beam.visible = len > 0.05;
+        o.beam.position.copy(hand);
+        o.beam.lookAt(tip);
+        o.beam.scale.set(1, 1, len);
+        this.pingBeamInk.opacity = 0.8;
+        (o.beam.material as THREE.MeshBasicMaterial).opacity = fade * (rm ? 0.9 : 0.75 + Math.sin(t * 14) * 0.15);
+      } else o.beam.visible = false;
+    }
+    for (const [key, o] of this.pingObjs) {
+      if (live.has(key)) continue;
+      this.scene.remove(o.g, o.beam);
+      for (const m of o.mats) m.dispose();
+      this.pingObjs.delete(key);
+    }
+  }
+
   /** Position / ease every live prompt; create and dispose as the fader says. */
   private updatePrompts(f: FrameData, now: number, pop: (k: number) => number): void {
     const rm = f.reducedMotion;
@@ -873,6 +960,13 @@ export class ThreeDView implements ViewRenderer {
     this.glowTex.dispose();
     for (const o of this.promptObjs.values()) this.scene.remove(o);
     this.promptObjs.clear();
+    for (const o of this.pingObjs.values()) for (const m of o.mats) m.dispose();
+    this.pingObjs.clear();
+    this.pingRingGeo.dispose();
+    this.pingEdgeGeo.dispose();
+    this.pingInk.dispose();
+    this.pingBeamInk.dispose();
+    this.pingBeamGeo.dispose();
     for (const t of this.promptTex.values()) t.tex.dispose();
     this.promptTex.clear();
     this.ringTex.dispose();

@@ -271,6 +271,9 @@ export interface PlayerState {
   fixing: string | null; // station id being held for a sabotage fix
   fixingAt: number;
   emote: { id: string; at: number } | null;
+  /** "Look here" marker (world point) and when it was placed (also the rate-limit clock). */
+  ping: Vec2 | null;
+  pingAt: number;
   lastRoom: string | null;
   diedAt: number | null;
   ejected: boolean;

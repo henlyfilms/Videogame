@@ -43,6 +43,8 @@ export interface PublicPlayer {
   facing?: number;
   moving?: boolean;
   emote?: string | null;
+  /** Live "look here" marker: world point and seconds since it was placed. */
+  ping?: { x: number; y: number; age: number };
   flashlight?: boolean;
   ghost?: boolean;
   hasGun?: boolean;
@@ -273,6 +275,11 @@ export function project(st: MatchState, ctx: MatchCtx, viewerId: string, opts: P
       if (mode.flashlights) pub.flashlight = p.alive && p.flashlightOn && p.battery > 0 && st.t >= p.blackoutUntil && p.team !== 'murderers';
       if (!p.alive) pub.ghost = true;
       if (p.hasGun && (p.id === viewer.id || st.t > 0)) pub.hasGun = p.hasGun && (role === 'sheriff' || p.isHero || p.id === viewer.id);
+    }
+    // Pings: seen with the pinger or at the spot itself; ghost pings stay among ghosts.
+    if (p.ping && st.phase === 'play' && (p.alive || !viewer.alive) && (visible || p.id === viewer.id || sees(p.ping))) {
+      const at = rv(p.ping);
+      pub.ping = { x: at.x, y: at.y, age: r2(st.t - p.pingAt) };
     }
     return pub;
   });

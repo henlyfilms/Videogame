@@ -3,6 +3,7 @@
  * current interaction context.
  */
 import { getMap } from '../core/maps';
+import { PING_COOLDOWN, pingSpot } from '../core/match';
 import { DEFAULT_KEYS } from './prefs';
 import { computeContext, type Context } from './context';
 import { Input, type InputAction } from './input';
@@ -82,6 +83,21 @@ export function doUse(): void {
   }
 }
 
+/** "Look here": at the mouse in 2D, else straight ahead of the camera / player. */
+export function doPing(): void {
+  const st = useMystery.getState();
+  const snap = st.snap;
+  if (!snap || snap.phase !== 'play' || snap.you.inVent) return;
+  const me = snap.players.find((p) => p.id === snap.you.id);
+  if (me?.ping && me.ping.age < PING_COOLDOWN) return;
+  const from = runtime.local.pos;
+  const yaw = runtime.cameraYaw ?? runtime.local.facing;
+  const aim = runtime.cursorWorld ?? { x: from.x + Math.cos(yaw) * 5, y: from.y + Math.sin(yaw) * 5 };
+  const spot = pingSpot(runtime.map(), from, aim, snap.you.alive ? new Set(snap.sabotage.closedDoors) : undefined);
+  sfx.play('ping', spot);
+  st.act({ a: 'ping', x: spot.x, y: spot.y });
+}
+
 export function doAction(a: InputAction): void {
   const st = useMystery.getState();
   const snap = st.snap;
@@ -124,6 +140,8 @@ export function doAction(a: InputAction): void {
       return;
     case 'chat':
       return ui.openChat();
+    case 'ping':
+      return doPing();
     case 'emote':
     case 'emote1':
     case 'emote2':
