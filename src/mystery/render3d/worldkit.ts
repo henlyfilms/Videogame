@@ -215,11 +215,14 @@ export function roomNameTexture(text: string, color: string, aspect: number): TH
   const H = Math.max(64, Math.min(512, Math.round(W / aspect)));
   const { c, g } = canvas(W, H);
   let fs = H * 0.8;
-  g.font = `900 ${fs}px ui-sans-serif, system-ui, "Arial Black", sans-serif`;
-  const tw = g.measureText(text).width * 1.08;
-  if (tw > W * 0.96) fs *= (W * 0.96) / tw;
-  g.font = `900 ${fs}px ui-sans-serif, system-ui, "Arial Black", sans-serif`;
-  (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${fs * 0.08}px`;
+  // Measure with the tracking applied, then shrink to fit (a few passes).
+  for (let k = 0; k < 3; k++) {
+    g.font = `900 ${fs}px ui-sans-serif, system-ui, "Arial Black", sans-serif`;
+    (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${fs * 0.08}px`;
+    const tw = g.measureText(text).width * 1.04;
+    if (tw <= W * 0.94 || tw <= 0) break;
+    fs *= (W * 0.94) / tw;
+  }
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillStyle = color;

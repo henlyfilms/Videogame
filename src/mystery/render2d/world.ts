@@ -524,8 +524,16 @@ export function paintRoomNames(g: CanvasRenderingContext2D, map: CompiledMap, x0
     const L = roomLabel(room);
     if (L.x + L.width / 2 < x0 || L.x - L.width / 2 > x1 || L.y + L.size < y0 || L.y - L.size > y1) continue;
     g.save();
-    g.font = `900 ${L.size * s}px ui-sans-serif, system-ui, "Arial Black", sans-serif`;
-    (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${L.size * s * 0.08}px`;
+    // Measure the real (tracked) width and shrink to fit the room.
+    let fs = L.size * s;
+    const fit = room.rect[2] * s * 0.88;
+    for (let k = 0; k < 3; k++) {
+      g.font = `900 ${fs}px ui-sans-serif, system-ui, "Arial Black", sans-serif`;
+      (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${fs * 0.08}px`;
+      const tw = g.measureText(L.text).width;
+      if (tw <= fit || tw <= 0) break;
+      fs *= fit / tw;
+    }
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     const ext = roomIsExterior(room);
