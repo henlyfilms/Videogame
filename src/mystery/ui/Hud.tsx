@@ -317,7 +317,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       </div>
 
       {/* Center banners */}
-      <div style={{ position: 'absolute', top: 'max(70px, 10vh)', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 10 }}>
+      <div style={{ position: 'absolute', top: typeof innerWidth === 'number' && innerWidth < 700 ? 'max(170px, 22vh)' : 'max(70px, 10vh)', left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 10, pointerEvents: 'none' }}>
         {sabActive && sabActive !== 'doors' && (
           <div className="mm-panel mm-anim-pop" role="alert" style={{ padding: '8px 16px', borderColor: '#ff4d5e', background: critical ? 'rgba(127,29,29,0.85)' : 'rgba(60,20,20,0.8)', textAlign: 'center', animation: critical && !prefs.reducedMotion ? 'mm-pulse 1s infinite' : undefined }}>
             <b>

@@ -115,9 +115,15 @@ export function BerryAvatar({
 export function Modal({ children, onClose, wide = false, title }: { children: ReactNode; onClose?: () => void; wide?: boolean; title?: ReactNode }) {
   useEffect(() => {
     if (!onClose) return;
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
+    // Capture phase + stopPropagation: Escape closes this modal only (it must
+    // not also reach the game's input layer and open the pause menu).
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
   }, [onClose]);
   return (
     <div className="mm-anim-fade" style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(3,6,18,0.6)' }} onPointerDown={(e) => e.target === e.currentTarget && onClose?.()}>
