@@ -24,7 +24,7 @@ import { isFixStation, taskClosedAt, useMystery } from '../client/store';
 import { Bar, BerryAvatar, colorHex, fmtTime, MIcon, Modal, readable, teamColors } from './common';
 import { Kbd, Presence, SchematicMap, Siren, STATION_ICON, Tick, useBox, useSticky, useViewport, type SchematicMarker } from './kit';
 import { SettingsMenu } from './Menus';
-import { TaskModal } from './tasks/TaskModal';
+import { TaskModalPresence } from './tasks/TaskModal';
 import { sfx } from '../audio/sfx';
 import type { MiniGameKind } from './tasks/types';
 import { Joystick, TouchLook, useCoarsePointer } from './TouchControls';
@@ -690,24 +690,24 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       )}
 
       {/* ---------------- Task mini-game ---------------- */}
-      {taskStation && station && snap.phase === 'play' && (
-        <div style={{ pointerEvents: 'auto' }} onPointerDownCapture={() => sfx.play('task.tick')} onKeyDownCapture={(e) => e.key !== 'Escape' && sfx.play('task.tick')}>
-          <TaskModal
-            kind={station.kind as MiniGameKind}
-            seed={hashStr(station.id + you.id)}
-            title={isFixStation(taskStation) ? (station.kind === 'lightsPanel' ? 'Fix the lights' : 'Fix comms') : openTask?.def?.name ?? 'Task'}
-            step={openTask && openTask.t.stations.length > 1 ? `${openTask.t.step + 1}/${openTask.t.stations.length}` : undefined}
-            fake={openTask?.t.fake}
-            reducedMotion={prefs.reducedMotion}
-            onComplete={() => {
-              if (isFixStation(taskStation)) act({ a: 'fix.done', station: taskStation });
-              else act({ a: 'task.done', station: taskStation });
-              useMystery.setState({ taskStation: null });
-            }}
-            onClose={() => setTask(null)}
-          />
-        </div>
-      )}
+      <div style={{ pointerEvents: 'auto' }}>
+        <TaskModalPresence
+          open={!!(taskStation && station && snap.phase === 'play')}
+          kind={(station?.kind ?? 'download') as MiniGameKind}
+          seed={station ? hashStr(station.id + you.id) : 0}
+          title={station && isFixStation(taskStation) ? (station.kind === 'lightsPanel' ? 'Fix the lights' : 'Fix comms') : openTask?.def?.name ?? 'Task'}
+          step={openTask && openTask.t.stations.length > 1 ? `${openTask.t.step + 1}/${openTask.t.stations.length}` : undefined}
+          fake={openTask?.t.fake}
+          reducedMotion={prefs.reducedMotion}
+          onComplete={() => {
+            if (!taskStation) return;
+            if (isFixStation(taskStation)) act({ a: 'fix.done', station: taskStation });
+            else act({ a: 'task.done', station: taskStation });
+            useMystery.setState({ taskStation: null });
+          }}
+          onClose={() => setTask(null)}
+        />
+      </div>
 
       {/* ---------------- Tablet (full map) ---------------- */}
       <Tablet
@@ -831,8 +831,7 @@ function Tablet({ show, snap, theme, markers, you, onClose, onStats, onSabotage,
   const [screenRef, box] = useBox<HTMLDivElement>();
   const map = getMap(snap.map);
   useEffect(() => {
-    if (!show) return;
-    sfx.play('ui.open');
+    if (!show) return; // (open/close sounds come from sfx, which watches showMap)
     const k = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();

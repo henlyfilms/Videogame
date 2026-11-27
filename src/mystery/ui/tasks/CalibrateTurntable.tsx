@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Berry, C, Caption, FocusRing, GameShell, Stage, capture, clamp, svgPoint, useFinish, useIds, useRaf, type KeyInput } from './kit';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Berry, C, Caption, FocusRing, GameShell, Stage, capture, clamp, svgPoint, tsfx, useFinish, useIds, useRaf, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -56,12 +56,18 @@ export default function CalibrateTurntable({ kind, seed, onComplete, reducedMoti
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
     const step = k.shift ? 0.5 : 1;
-    if (k.dir === 'up' || k.dir === 'right') setBpm(bpmRef.current + step);
-    else if (k.dir === 'down' || k.dir === 'left') setBpm(bpmRef.current - step);
+    if (k.dir === 'up' || k.dir === 'right') (setBpm(bpmRef.current + step), tsfx('move'));
+    else if (k.dir === 'down' || k.dir === 'left') (setBpm(bpmRef.current - step), tsfx('move'));
   };
 
   const diff = bpm - TARGET_BPM;
   const close = Math.abs(diff) <= TOL;
+  // A soft confirm when the pitch lands in the window.
+  const wasClose = useRef(close);
+  useEffect(() => {
+    if (close && !wasClose.current && !done) tsfx('good', 0.8);
+    wasClose.current = close;
+  }, [close, done]);
   const ky = bpmToY(bpm);
 
   return (
@@ -72,7 +78,10 @@ export default function CalibrateTurntable({ kind, seed, onComplete, reducedMoti
         tone={C.marion}
         tone2={C.teal}
         onPointerMove={(e) => {
-          if (dragging && !done) setBpm(yToBpm(svgPoint(svg.current, e).y));
+          if (!dragging || done) return;
+          const before = Math.round(bpmRef.current);
+          setBpm(yToBpm(svgPoint(svg.current, e).y));
+          if (Math.round(bpmRef.current) !== before) tsfx('move'); // a detent tick per bpm
         }}
         onPointerUp={() => setDragging(false)}
         defs={
@@ -163,6 +172,7 @@ export default function CalibrateTurntable({ kind, seed, onComplete, reducedMoti
             onPointerDown={(e) => {
               if (done) return;
               capture(e);
+              tsfx('grab');
               setDragging(true);
             }}
           >

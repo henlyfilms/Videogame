@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { C, Caption, FocusCircle, GameShell, Stage, SvgButton, capture, clamp, svgPoint, useFinish, useIds, useRaf, useTimers, type KeyInput } from './kit';
+import { C, Caption, FocusCircle, GameShell, Stage, SvgButton, capture, clamp, svgPoint, tsfx, useFinish, useIds, useRaf, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -52,7 +52,9 @@ export default function CommsPanel({ kind, seed, onComplete, reducedMotion }: Mi
 
   const nudge = (d: number) => {
     if (done) return;
+    const before = vRef.current;
     setV(vRef.current + d);
+    if (vRef.current !== before) tsfx(vRef.current === g.target ? 'good' : 'move', 1);
   };
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
@@ -95,7 +97,9 @@ export default function CommsPanel({ kind, seed, onComplete, reducedMotion }: Mi
           const steps = Math.trunc(d.acc / DEG_PER_STEP);
           if (steps) {
             d.acc -= steps * DEG_PER_STEP;
+            const before = vRef.current;
             setV(vRef.current + steps);
+            if (vRef.current !== before) tsfx(vRef.current === g.target ? 'good' : 'move', 1);
           }
         }}
         onPointerUp={() => {

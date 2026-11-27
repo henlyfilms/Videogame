@@ -16,6 +16,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { sfx, type HoldSound, type TaskSound } from '../../audio/sfx';
 import { ensureMiniGameStyles } from './styles';
 import { minTimeMs } from './timing';
 import type { MiniGameKind } from './types';
@@ -52,6 +53,26 @@ export const C = {
 } as const;
 
 export const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+/* ------------------------------------------------------------------ sound */
+
+/**
+ * Step feedback for mini-games: `good` (a correct step; pass progress 0..1 and
+ * the note climbs), `bad` (a wrong move), `grab` / `drop` (pick up / place),
+ * `move` (cursor hop). Every key press and tap already ticks (TaskModal); the
+ * solve sparkle and the credited chime are played for you.
+ */
+export function tsfx(kind: TaskSound, progress?: number): void {
+  sfx.task(kind, progress);
+}
+
+/** Loop `sound` while `on` is true (pouring, cranking, scanning…). */
+export function useHoldSound(on: boolean, sound: HoldSound | undefined): void {
+  useEffect(() => {
+    if (!on || !sound) return;
+    return sfx.hold(sound);
+  }, [on, sound]);
+}
 
 /* ------------------------------------------------------------------ input */
 
@@ -409,7 +430,7 @@ export function useRaf(cb: (dt: number, t: number) => void, active = true): void
     let last = now();
     const loop = () => {
       const t = now();
-      const dt = Math.min(0.05, Math.max(0, (t - last) / 1000));
+      const dt = Math.min(0.1, Math.max(0, (t - last) / 1000)); // keeps pace down to 10 fps
       last = t;
       ref.current(dt, t);
       id = requestAnimationFrame(loop);
@@ -442,8 +463,9 @@ export function useTimers() {
  * Hold input: pointer press (with capture) or Space/Enter held down.
  * `extraKeys` lets a game also accept e.g. ArrowDown as the hold key.
  */
-export function useHold(enabled: boolean, extraKeys: Dir[] = []) {
+export function useHold(enabled: boolean, extraKeys: Dir[] = [], sound?: HoldSound) {
   const [holding, setHolding] = useState(false);
+  useHoldSound(holding && enabled, sound);
   const ref = useRef(false);
   const set = useCallback((v: boolean) => {
     if (ref.current === v) return;
@@ -471,7 +493,8 @@ export function useHold(enabled: boolean, extraKeys: Dir[] = []) {
   const key = (k: KeyInput): boolean => {
     if (k.action || (k.dir && extraKeys.includes(k.dir))) {
       if (!k.down) set(false);
-      else if (!k.repeat && enabled) set(true);
+      // A key already held when the control becomes live engages on its auto-repeat.
+      else if (enabled && (!k.repeat || !ref.current)) set(true);
       return true;
     }
     return false;

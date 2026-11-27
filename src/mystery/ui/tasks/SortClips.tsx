@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, GameShell, Meter, Stage, Toast, capture, svgPoint, useBump, useFinish, useIds, useTimers, type Ids, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, GameShell, Meter, Stage, Toast, capture, svgPoint, tsfx, useBump, useFinish, useIds, useTimers, type Ids, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -61,11 +61,13 @@ export default function SortClips({ kind, seed, onComplete, reducedMotion }: Min
     if (busy || !clip) return;
     setDrag(null);
     if ((side === 0) !== clip.keep) {
+      tsfx('bad');
       bumpShake();
       setToast((t) => ({ k: t.k + 1, text: side === 0 ? `Greek: "${clip.caption}"? Outtake!` : 'Greek: that one is a keeper!' }));
       return;
     }
     setFly(side);
+    tsfx(side === 0 ? 'good' : 'drop', (idx + 1) / clips.length);
     setBurst((b) => ({ k: b.k + 1, side }));
     setCounts((c) => (side === 0 ? [c[0] + 1, c[1]] : [c[0], c[1] + 1]));
     later(() => {

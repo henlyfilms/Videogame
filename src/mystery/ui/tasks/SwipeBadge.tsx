@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, C, Caption, FocusRing, GameShell, Stage, capture, clamp, now, svgPoint, useFinish, useHold, useIds, useRaf, useTimers, type BerryKind, type KeyInput } from './kit';
+import { Berry, C, Caption, FocusRing, GameShell, Stage, capture, clamp, now, svgPoint, tsfx, useFinish, useHold, useIds, useRaf, useTimers, type BerryKind, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -31,11 +31,14 @@ export default function SwipeBadge({ kind, seed, onComplete, reducedMotion }: Mi
   const [bx, setBx] = useState<number | null>(null); // badge x when in the slot
   const [anim, setAnim] = useState<{ ms: number } | null>(null);
   const drag = useRef<{ t0: number | null; last: number } | null>(null);
-  const hold = useHold(!done && anim === null);
+  const hold = useHold(!done && anim === null, [], 'charge');
 
   const result = (speed: 'fast' | 'slow' | 'ok') => {
     setMsg(speed);
-    if (speed === 'ok') finish(500);
+    if (speed === 'ok') {
+      tsfx('good', 1);
+      finish(500);
+    } else tsfx('bad');
   };
 
   useRaf(
@@ -54,6 +57,7 @@ export default function SwipeBadge({ kind, seed, onComplete, reducedMotion }: Mi
     const verdict = c < g.zone - ZONE_W / 2 ? 'slow' : c > g.zone + ZONE_W / 2 ? 'fast' : 'ok';
     const ms = verdict === 'fast' ? 220 : verdict === 'slow' ? 1300 : 560;
     setMsg('reading');
+    tsfx('grab');
     setBx(READER.x0);
     setAnim({ ms: 0 });
     later(() => {
@@ -106,7 +110,10 @@ export default function SwipeBadge({ kind, seed, onComplete, reducedMotion }: Mi
           if (!d || done) return;
           const p = svgPoint(svg.current, e);
           const x = clamp(p.x, READER.x0 - 40, READER.x1 + 10);
-          if (d.t0 === null && x > READER.x0 + 10) d.t0 = now();
+          if (d.t0 === null && x > READER.x0 + 10) {
+            d.t0 = now();
+            tsfx('grab'); // the stripe meets the reader
+          }
           if (x < d.last - 30) d.t0 = null; // went backwards: restart timing
           d.last = x;
           setBx(x);

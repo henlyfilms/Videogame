@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Burst, C, Caption, FocusCircle, GameShell, Stage, Toast, capture, nextOpen, shapePath, svgPoint, useFinish, useIds, type KeyInput, type ShapeKind } from './kit';
+import { Burst, C, Caption, FocusCircle, GameShell, Stage, Toast, capture, nextOpen, shapePath, svgPoint, tsfx, useFinish, useIds, type KeyInput, type ShapeKind } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -45,12 +45,14 @@ export default function FixWiring({ kind, seed, onComplete, reducedMotion }: Min
     if (links[li] !== undefined || linkedR.has(ri)) return;
     const w = g.left[li] as number;
     if (g.right[ri] !== w) {
+      tsfx('bad');
       setSpark((s) => ({ k: s.k + 1, x: RX, y: rowY(ri), ok: false }));
       setToast((t) => ({ k: t.k + 1, text: `Zap! Match the ${WIRES[w]?.shape} to its ${WIRES[w]?.shape}` }));
       return;
     }
     const next = { ...links, [li]: ri };
     setLinks(next);
+    tsfx('good', Object.keys(next).length / 4);
     setSpark((s) => ({ k: s.k + 1, x: RX, y: rowY(ri), ok: true }));
     if (Object.keys(next).length === 4) finish(500);
     else setCurL(nextOpen(4, li, (i) => next[i] !== undefined));
@@ -60,14 +62,18 @@ export default function FixWiring({ kind, seed, onComplete, reducedMotion }: Min
     if (!k.down || done) return;
     if (k.dir === 'up' || k.dir === 'down') {
       const d = k.dir === 'up' ? -1 : 1;
-      if (side === 'L') setCurL((c) => Math.max(0, Math.min(3, c + d)));
-      else setCurR((c) => Math.max(0, Math.min(3, c + d)));
+      const cur = side === 'L' ? curL : curR;
+      const n = Math.max(0, Math.min(3, cur + d));
+      if (n !== cur) tsfx('move');
+      if (side === 'L') setCurL(n);
+      else setCurR(n);
     } else if (k.dir === 'left' && side === 'R') {
       setSide('L');
       setSel(null);
     } else if ((k.action || k.dir === 'right') && !k.repeat) {
       if (side === 'L') {
         if (links[curL] !== undefined) return;
+        tsfx('grab');
         setSel(curL);
         setSide('R');
         setCurR(curL);
@@ -143,6 +149,7 @@ export default function FixWiring({ kind, seed, onComplete, reducedMotion }: Min
                 capture(e);
                 const p = svgPoint(svg.current, e);
                 setDrag({ i, x: p.x, y: p.y, moved: false });
+                tsfx('grab');
                 setSide('L');
               }}
             >

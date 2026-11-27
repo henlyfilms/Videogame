@@ -9,7 +9,7 @@ export default function FuelEngine({ kind, onComplete, reducedMotion }: MiniGame
   const { done, finish } = useFinish(kind, onComplete);
   const [level, setLevel] = useState(0);
   const levelRef = useRef(0);
-  const hold = useHold(!done);
+  const hold = useHold(!done, [], 'pour');
   const [burst, setBurst] = useState(0);
   const [t, setT] = useState(0);
 

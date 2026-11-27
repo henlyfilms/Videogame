@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Burst, C, Caption, GameShell, Stage, Toast, gridMove, svgPoint, useBump, useFinish, useIds, useShell, useTimers, type KeyInput } from './kit';
+import { Burst, C, Caption, GameShell, Stage, Toast, gridMove, svgPoint, tsfx, useBump, useFinish, useIds, useShell, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -42,12 +42,16 @@ export default function ReplaceFuse({ kind, seed, onComplete, reducedMotion }: M
     moveCursor(i);
     if (phase === 'find') {
       if (i !== g.blown) {
+        tsfx('bad');
         setFine((f) => ({ k: f.k + 1, i }));
         bumpToast();
         return;
       }
+      tsfx('grab');
       setPhase('insert');
     } else if (phase === 'insert' && i === g.blown) {
+      tsfx('drop');
+      later(() => tsfx('good', 1), 120);
       setPhase('lit');
       setBurst(1);
       later(() => finish(400), 300);
@@ -56,7 +60,11 @@ export default function ReplaceFuse({ kind, seed, onComplete, reducedMotion }: M
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir) moveCursor(gridMove(cursor, k.dir, FUSE_COLS, FUSE_COUNT));
+    if (k.dir) {
+      const n = gridMove(cursor, k.dir, FUSE_COLS, FUSE_COUNT);
+      if (n !== cursor) tsfx('move');
+      moveCursor(n);
+    }
     else if (k.action && !k.repeat) act(cursor);
   };
 

@@ -105,10 +105,16 @@ export const MINIGAME_CSS = `
 @keyframes mmg-draw{to{stroke-dashoffset:0}}
 @keyframes mmg-fadein{from{opacity:0}to{opacity:1}}
 @keyframes mmg-panel-in{0%{opacity:0;transform:translateY(14px) scale(.96)}100%{opacity:1;transform:none}}
+.mmg-host{display:contents;}
+.mmg-leaving .mmg-overlay{pointer-events:none;}
+.mmg-leaving .mmg-overlay{animation:mmg-fadeout 190ms ease-in both;}
+.mmg-leaving .mmg-panel{animation:mmg-panel-out 190ms cubic-bezier(.4,0,1,1) both;}
+@keyframes mmg-fadeout{from{opacity:1}to{opacity:0}}
+@keyframes mmg-panel-out{0%{opacity:1;transform:none}100%{opacity:0;transform:translateY(10px) scale(.95)}}
 @media (max-height:460px){.mmg-panel{--chrome:68px;}.mmg-foot{display:none;}.mmg-title span{display:none;}}
 @media (max-width:420px){.mmg-panel{--pad:6px;border-radius:14px;}}
 @media (min-width:900px) and (min-height:700px){.mmg-panel{--pad:12px;--chrome:112px;gap:10px;}.mmg-title b{font-size:17px;}.mmg-foot{font-size:12.5px;}}
-@media (prefers-reduced-motion:reduce){.mmg-overlay,.mmg-panel{animation:none;}}
+@media (prefers-reduced-motion:reduce){.mmg-overlay,.mmg-panel,.mmg-leaving .mmg-overlay,.mmg-leaving .mmg-panel{animation:none;}}
 `;
 
 let injected = false;

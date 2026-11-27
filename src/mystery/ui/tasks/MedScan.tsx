@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, C, Caption, GameShell, Meter, Stage, SvgButton, Toast, useBump, useFinish, useIds, useRaf, type BerryKind, type KeyInput } from './kit';
+import { Berry, C, Caption, GameShell, Meter, Stage, SvgButton, Toast, tsfx, useBump, useFinish, useHoldSound, useIds, useRaf, type BerryKind, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -32,6 +32,7 @@ export default function MedScan({ kind, seed, onComplete, reducedMotion }: MiniG
   const [clock, setClock] = useState(0);
   const [moved, bumpMoved] = useBump();
   const [pressed, setPressed] = useState(false);
+  useHoldSound(running && !done, 'scan');
 
   useRaf((dt, now) => {
     setClock(now / 1000);
@@ -44,6 +45,7 @@ export default function MedScan({ kind, seed, onComplete, reducedMotion }: MiniG
   const start = () => {
     if (running || done) return;
     setPressed(true);
+    tsfx('grab');
     setRunning(true);
   };
 
@@ -54,6 +56,7 @@ export default function MedScan({ kind, seed, onComplete, reducedMotion }: MiniG
       // fidgeting restarts the scan
       tRef.current = 0;
       setT(0);
+      tsfx('bad');
       bumpMoved();
     }
   };

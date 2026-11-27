@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sfx } from '../../src/mystery/audio/sfx';
 import { TASKS } from '../../src/mystery/core/tasks';
 import { genAlignDish, DISH_STEP } from '../../src/mystery/ui/tasks/AlignDish';
 import { genTurntable, TARGET_BPM } from '../../src/mystery/ui/tasks/CalibrateTurntable';
@@ -405,6 +406,42 @@ describe.each(MINI_GAME_KINDS.map((k) => [k]))('%s', (kind) => {
     key('Escape');
     expect(m.onClose).toHaveBeenCalledTimes(1);
     expect(m.onComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe('mini-game sounds', () => {
+  it.each(MINI_GAME_KINDS.map((k) => [k]))('%s makes step sounds while solved, then the solve sparkle once', (kind) => {
+    const task = vi.spyOn(sfx, 'task');
+    const hold = vi.spyOn(sfx, 'hold');
+    const play = vi.spyOn(sfx, 'play');
+    try {
+      const m = mount(kind, 42);
+      SOLVERS[kind](42);
+      wait(10000);
+      expect(m.onComplete).toHaveBeenCalledTimes(1);
+      const steps = task.mock.calls.filter(([k]) => k !== 'solve').length + hold.mock.calls.length;
+      expect(steps, `${kind} step sounds`).toBeGreaterThan(0);
+      expect(task.mock.calls.filter(([k]) => k === 'solve')).toHaveLength(1);
+      // every key press ticks
+      expect(play.mock.calls.some(([n]) => n === 'task.tick')).toBe(true);
+    } finally {
+      task.mockRestore();
+      hold.mockRestore();
+      play.mockRestore();
+    }
+  });
+
+  it('a faked task plays the completion chime locally (the server stays silent)', () => {
+    const play = vi.spyOn(sfx, 'play');
+    try {
+      const m = mount('sortClips', 9, { fake: true });
+      SOLVERS.sortClips(9);
+      wait(5000);
+      expect(m.onComplete).toHaveBeenCalledTimes(1);
+      expect(play.mock.calls.filter(([n]) => n === 'taskDone')).toHaveLength(1);
+    } finally {
+      play.mockRestore();
+    }
   });
 });
 

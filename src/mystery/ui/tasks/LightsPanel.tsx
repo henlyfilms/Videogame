@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Burst, C, Caption, FocusRing, GameShell, Stage, useFinish, useIds, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusRing, GameShell, Stage, tsfx, useFinish, useIds, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -31,6 +31,10 @@ export default function LightsPanel({ kind, seed, onComplete, reducedMotion }: M
     if (done) return;
     setCursor(i);
     const next = on.map((s, j) => (j === i ? (v ?? !s) : s));
+    if (next[i] !== on[i]) {
+      if (next[i]) tsfx('good', next.filter(Boolean).length / SWITCHES);
+      else tsfx('drop');
+    }
     setOn(next);
     if (next.every(Boolean)) {
       setBurst(1);
@@ -40,8 +44,11 @@ export default function LightsPanel({ kind, seed, onComplete, reducedMotion }: M
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir === 'left') setCursor((c) => Math.max(0, c - 1));
-    else if (k.dir === 'right') setCursor((c) => Math.min(SWITCHES - 1, c + 1));
+    if (k.dir === 'left' || k.dir === 'right') {
+      const n = k.dir === 'left' ? Math.max(0, cursor - 1) : Math.min(SWITCHES - 1, cursor + 1);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.dir === 'up' && !k.repeat) set(cursor, true);
     else if (k.dir === 'down' && !k.repeat) set(cursor, false);
     else if (k.action && !k.repeat) set(cursor);

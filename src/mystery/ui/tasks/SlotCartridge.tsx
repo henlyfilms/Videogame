@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Burst, C, Caption, FocusRing, GameShell, Stage, Toast, shapePath, useBump, useFinish, useIds, useTimers, type KeyInput, type ShapeKind } from './kit';
+import { Burst, C, Caption, FocusRing, GameShell, Stage, Toast, shapePath, tsfx, useBump, useFinish, useIds, useTimers, type KeyInput, type ShapeKind } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -47,17 +47,21 @@ export default function SlotCartridge({ kind, seed, onComplete, reducedMotion }:
     if (busy || !cart) return;
     setCursor(i);
     if (filled[i] !== undefined) {
+      tsfx('bad');
       setToast((t) => ({ k: t.k + 1, text: 'That slot is already humming' }));
       return;
     }
     if (g.slots[i] !== cart.shape) {
       setAnim('bounce');
+      tsfx('bad');
       setToast((t) => ({ k: t.k + 1, text: `Clunk! That's a ${g.slots[i]} slot` }));
       later(() => setAnim(null), 420);
       return;
     }
     setAnim('in');
+    tsfx('grab');
     later(() => {
+      tsfx('good', (ci + 1) / g.carts.length);
       setFilled((f) => ({ ...f, [i]: cart.color }));
       setBurst((b) => ({ k: b.k + 1, x: slotX(i) }));
     }, 330);
@@ -72,8 +76,11 @@ export default function SlotCartridge({ kind, seed, onComplete, reducedMotion }:
 
   const onKey = (k: KeyInput) => {
     if (!k.down) return;
-    if (k.dir === 'left') setCursor((c) => Math.max(0, c - 1));
-    else if (k.dir === 'right') setCursor((c) => Math.min(4, c + 1));
+    if (k.dir === 'left' || k.dir === 'right') {
+      const n = k.dir === 'left' ? Math.max(0, cursor - 1) : Math.min(4, cursor + 1);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if ((k.action || k.dir === 'up') && !k.repeat) insert(cursor);
   };
 

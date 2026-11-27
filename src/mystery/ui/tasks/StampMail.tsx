@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, tsfx, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -67,12 +67,14 @@ export default function StampMail({ kind, seed, onComplete, reducedMotion }: Min
     setCursor(choice);
     const correct = (choice === 1) === letter.good;
     if (!correct) {
+      tsfx('bad');
       bumpShake();
       setToast((t) => ({ k: t.k + 1, text: choice === 1 ? 'Noise never gets the stamp!' : 'That one is real mail!', tone: C.bad }));
       return;
     }
     setAnim(choice === 1 ? 'stamp' : 'toss');
-    if (choice === 1) later(() => setInked(true), 190);
+    if (choice === 1) later(() => (setInked(true), tsfx('good', (idx + 1) / letters.length)), 190);
+    else later(() => tsfx('drop'), 330);
     later(() => bumpBurst(), choice === 1 ? 200 : 380);
     later(() => {
       const next = idx + 1;
@@ -86,8 +88,11 @@ export default function StampMail({ kind, seed, onComplete, reducedMotion }: Min
 
   const onKey = (k: KeyInput) => {
     if (!k.down) return;
-    if (k.dir === 'left') setCursor(0);
-    else if (k.dir === 'right') setCursor(1);
+    if (k.dir === 'left' || k.dir === 'right') {
+      const c = k.dir === 'left' ? 0 : 1;
+      if (c !== cursor) tsfx('move');
+      setCursor(c);
+    }
     else if (k.action && !k.repeat) act(cursor);
   };
 

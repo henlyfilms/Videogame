@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, clamp, svgPoint, useBump, useFinish, useHold, useIds, useRaf, useTimers, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, clamp, svgPoint, tsfx, useBump, useFinish, useHold, useIds, useRaf, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -28,7 +28,7 @@ export default function LightLantern({ kind, seed, onComplete, reducedMotion }: 
   const [fizz, bumpFizz] = useBump();
   const [wick, setWick] = useState(0);
   const wickRef = useRef(0);
-  const hold = useHold(phase === 'lit');
+  const hold = useHold(phase === 'lit', [], 'burn');
   const drag = useRef<{ x0: number; struck: boolean } | null>(null);
   const [burst, setBurst] = useState(0);
   const [matchPos, setMatchPos] = useState<{ x: number; y: number } | null>(null);
@@ -36,13 +36,14 @@ export default function LightLantern({ kind, seed, onComplete, reducedMotion }: 
   const strike = () => {
     if (phase !== 'strike' || striking) return;
     setStriking(true);
+    tsfx('grab');
     bumpSpark();
     const n = tries + 1;
     setTries(n);
     later(() => {
       setStriking(false);
-      if (n >= g.strikes) setPhase('lit');
-      else bumpFizz();
+      if (n >= g.strikes) (setPhase('lit'), tsfx('good', 0.5));
+      else (bumpFizz(), tsfx('bad'));
     }, 260);
   };
 

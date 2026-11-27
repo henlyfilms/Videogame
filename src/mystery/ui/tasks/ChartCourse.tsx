@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusCircle, GameShell, Stage, Twinkles, capture, svgPoint, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusCircle, GameShell, Stage, Twinkles, capture, svgPoint, tsfx, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -31,6 +31,7 @@ export default function ChartCourse({ kind, seed, onComplete, reducedMotion }: M
     const wp = g.wps[n - 1]!;
     reachedRef.current = n;
     setReached(n);
+    tsfx('good', n / g.wps.length);
     setBurst((b) => ({ k: b.k + 1, x: wp.x, y: wp.y }));
     if (n >= g.wps.length) finish(550);
   };
@@ -41,6 +42,7 @@ export default function ChartCourse({ kind, seed, onComplete, reducedMotion }: M
     const wp = g.wps[n];
     if (!wp) return;
     setGliding(true);
+    tsfx('grab');
     setShip(wp);
     setTrail((t) => [...t, wp]);
     later(() => {
@@ -131,6 +133,7 @@ export default function ChartCourse({ kind, seed, onComplete, reducedMotion }: M
           onPointerDown={(e) => {
             if (done) return;
             capture(e);
+            tsfx('grab');
             setDragging(true);
           }}
         >

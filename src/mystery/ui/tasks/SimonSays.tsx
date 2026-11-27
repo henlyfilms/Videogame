@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Berry, C, Caption, FocusRing, GameShell, Stage, gridMove, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Berry, C, Caption, FocusRing, GameShell, Stage, gridMove, tsfx, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -50,7 +50,8 @@ export default function SimonSays({ kind, seed, onComplete, reducedMotion }: Min
     const id = ++playId.current;
     for (let i = 0; i <= round; i++) {
       const at = LEAD_MS + i * (ON_MS + GAP_MS);
-      later(() => playId.current === id && setLit(seq[i] as number), at);
+      // Each pad has its own note (the pentatonic ladder has one per pad).
+      later(() => playId.current === id && (setLit(seq[i] as number), tsfx('good', (seq[i] as number) / 8)), at);
       later(() => playId.current === id && setLit(null), at + ON_MS);
     }
     later(() => {
@@ -64,8 +65,10 @@ export default function SimonSays({ kind, seed, onComplete, reducedMotion }: Min
     setCursor(i);
     if (phase !== 'input' || done) return;
     setLit(i);
+    if (seq[step] === i) tsfx('good', i / 8);
     later(() => setLit((l) => (l === i ? null : l)), 180);
     if (seq[step] !== i) {
+      tsfx('bad');
       setPhase('oops');
       later(() => {
         setReplay((r) => r + 1);
@@ -90,7 +93,11 @@ export default function SimonSays({ kind, seed, onComplete, reducedMotion }: Min
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir) setCursor((c) => gridMove(c, k.dir!, SIMON_COLS, 9));
+    if (k.dir) {
+      const n = gridMove(cursor, k.dir, SIMON_COLS, 9);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action && !k.repeat) press(cursor);
     else if (/^[1-9]$/.test(k.key) && !k.repeat) {
       press(Number(k.key) - 1);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { sfx } from '../../audio/sfx';
 import { CONTROLS, MINI_GAMES, TOUCH } from './registry';
 import { ensureMiniGameStyles } from './styles';
 import type { MiniGameKind } from './types';
@@ -28,6 +29,39 @@ export function TaskModal(props: TaskModalProps) {
   return <TaskModalPanel key={`${props.kind}:${props.seed}`} {...props} />;
 }
 
+const EXIT_MS = 190;
+const noop = () => {};
+
+/**
+ * TaskModal with an exit animation: while `open` turns false the last panel
+ * stays on screen for a short fade/scale-out (inert: no input, no callbacks).
+ */
+export function TaskModalPresence({ open, ...props }: TaskModalProps & { open: boolean }) {
+  const last = useRef<TaskModalProps | null>(null);
+  if (open) last.current = props;
+  const [leaving, setLeaving] = useState(false);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open && !props.reducedMotion) {
+      setLeaving(true);
+      const t = setTimeout(() => setLeaving(false), EXIT_MS);
+      wasOpen.current = open;
+      return () => clearTimeout(t);
+    }
+    wasOpen.current = open;
+    setLeaving(false);
+    return undefined;
+  }, [open, props.reducedMotion]);
+  const shown = open ? props : leaving ? last.current : null;
+  if (!shown) return null;
+  // Same tree either way, so the panel (and its finished game) is not remounted for the exit.
+  return (
+    <div className={open ? 'mmg-host' : 'mmg-host mmg-leaving'} aria-hidden={open ? undefined : true}>
+      <TaskModal {...shown} onComplete={open ? shown.onComplete : noop} onClose={open ? shown.onClose : noop} />
+    </div>
+  );
+}
+
 function TaskModalPanel({ kind, seed, title, step, onComplete, onClose, reducedMotion, fake }: TaskModalProps) {
   ensureMiniGameStyles();
   const entry = MINI_GAMES[kind];
@@ -49,13 +83,16 @@ function TaskModalPanel({ kind, seed, title, step, onComplete, onClose, reducedM
   const complete = useCallback(() => {
     phaseRef.current = 'complete';
     setPhase('complete');
+    // A faked task gets no credit (so no server chime): play it here so it sounds real.
+    if (fake) sfx.play('taskDone');
     cbs.current.onComplete();
-  }, []);
+  }, [fake]);
 
   const onGameComplete = useCallback(() => {
     if (phaseRef.current !== 'play') return;
     phaseRef.current = 'flourish';
     setPhase('flourish');
+    sfx.task('solve');
     if (reducedMotion) complete();
     else timer.current = setTimeout(complete, FLOURISH_MS);
   }, [reducedMotion, complete]);
@@ -88,8 +125,15 @@ function TaskModalPanel({ kind, seed, title, step, onComplete, onClose, reducedM
         if (downOnBackdrop.current && e.target === e.currentTarget) close();
         downOnBackdrop.current = false;
       }}
+      // Every tap and key press in a task ticks; the games add their own step sounds on top.
+      onPointerDownCapture={(e) => {
+        if (e.target !== e.currentTarget && !(e.target as Element).closest?.('.mmg-close')) sfx.play('task.tick');
+      }}
+      onKeyDownCapture={(e) => {
+        if (!e.repeat && e.key !== 'Escape' && e.key !== 'Tab' && phaseRef.current === 'play') sfx.play('task.tick');
+      }}
     >
-      <div className={`mmg-panel${fake ? ' mmg-fakepanel' : ''}${reducedMotion ? ' mmg-rm' : ''}`} role="dialog" aria-modal="true" aria-label={heading} data-task-modal={kind}>
+      <div className={`mmg-panel${fake ? ' mmg-fakepanel' : ''}${reducedMotion ? ' mmg-rm' : ''}`} role="dialog" aria-modal="true" aria-label={heading} data-task-modal={kind} data-task-seed={seed}>
         <header className="mmg-head">
           <span className="mmg-badge" aria-hidden="true">
             <svg width="16" height="16" viewBox="-10 -10 20 20">
