@@ -19,6 +19,7 @@ const PATHS: Record<string, string> = {
   home: 'M3 11l9-8 9 8 M5 10v10h14V10',
   chevron: 'M6 9l6 6 6-6',
   restart: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5',
+  download: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
 };
 
 export function Icon({ name, size = 14, className = '' }: { name: keyof typeof PATHS | string; size?: number; className?: string }) {

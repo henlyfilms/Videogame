@@ -5,6 +5,7 @@ import { SPEEDS, useGame } from '../store/gameStore';
 import { THEME_ORDER, THEMES, type ThemeName } from '../theme/tokens';
 import { countStates, useBots } from './hooks';
 import { Icon } from './Icon';
+import { UpdateButton } from './UpdateButton';
 
 const ADAPTERS: { kind: AdapterKind; label: string; icon: string }[] = [
   { kind: 'live', label: 'Live', icon: 'live' },
@@ -113,6 +114,7 @@ export function TopBar() {
         <button className="hq-btn h-7 w-7 p-0" onClick={() => s.setHelp(true)} aria-label="Controls & help" title="Controls (?)">
           <Icon name="help" size={13} />
         </button>
+        <UpdateButton />
       </div>
 
       {wsOpen && s.adapter === 'ws' && <WsPopover onClose={() => setWsOpen(false)} />}

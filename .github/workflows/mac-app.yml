@@ -1,0 +1,85 @@
+# Builds the Marion HQ Mac app on every push.
+#  - Any branch: the .dmg/.zip are attached to the workflow run as an artifact.
+#  - Default branch: also publishes GitHub Release "build-<run number>", which the
+#    in-app Update button pulls (marion-hq-web.zip + manifest.json).
+name: Mac app
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      MARION_BUILD: ${{ github.run_number }}
+      MARION_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install & test the game
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Install & test the desktop shell
+        working-directory: desktop
+        run: |
+          npm ci
+          npm test
+
+      - name: Stage and pack the web bundle
+        working-directory: desktop
+        run: |
+          npm run stage
+          npm run pack:web
+
+      - name: Build Marion HQ.app (universal, ad-hoc signed)
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:mac
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marion-HQ-mac-build-${{ github.run_number }}
+          path: |
+            desktop/release/Marion-HQ.dmg
+            desktop/release/Marion-HQ.zip
+          if-no-files-found: error
+
+      - name: Publish release (default branch only)
+        if: github.ref_name == github.event.repository.default_branch
+        working-directory: desktop/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${MARION_BUILD}"
+          FILES="Marion-HQ.dmg Marion-HQ.zip marion-hq-web.zip manifest.json"
+          NOTES="Marion HQ build ${MARION_BUILD} from ${GITHUB_SHA::7}.
+
+          New install: download **Marion-HQ.dmg** below. Already installed: click **Update** in the app's top bar."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --clobber
+          else
+            gh release create "$TAG" $FILES --title "Marion HQ build ${MARION_BUILD}" --notes "$NOTES" --target "$GITHUB_SHA" --latest
+          fi

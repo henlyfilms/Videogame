@@ -1,0 +1,64 @@
+{
+  "name": "marion-hq-desktop",
+  "productName": "Marion HQ",
+  "version": "1.0.0",
+  "description": "Marion HQ for macOS \u2014 self-updating desktop shell for the Marion HQ game.",
+  "private": true,
+  "main": "main.cjs",
+  "author": "henlyfilms",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/henlyfilms/Videogame.git"
+  },
+  "marion": {
+    "repo": "henlyfilms/Videogame"
+  },
+  "scripts": {
+    "stage": "node scripts/stage-web.mjs",
+    "pack:web": "node scripts/pack-web.mjs",
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --universal --publish never",
+    "test": "node --test updater.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.11.6",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.henlyfilms.marionhq",
+    "productName": "Marion HQ",
+    "copyright": "\u00a9 henlyfilms",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "updater.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "web",
+        "to": "web"
+      }
+    ],
+    "artifactName": "Marion-HQ.${ext}",
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "title": "Marion HQ"
+    },
+    "publish": null
+  }
+}

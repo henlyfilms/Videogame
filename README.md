@@ -13,8 +13,12 @@ npm install && npm run dev      # http://localhost:5173
 | `npm run dev` | Vite dev server |
 | `npm run build` | `tsc --noEmit` + production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
-| `npm test` | Vitest (jsdom + canvas mock), 111 tests |
+| `npm test` | Vitest (jsdom + canvas mock), 115 tests |
 | `npm run typecheck` | Strict TypeScript check |
+
+## Mac app
+
+There's a self-updating macOS app in [`desktop/`](desktop/README.md). Download **Marion-HQ.dmg** from the [latest release](https://github.com/henlyfilms/Videogame/releases/latest); after that, the **Update** button in the top bar pulls new builds and restarts the app. Every push to the default branch publishes a new build automatically.
 
 ---
 
