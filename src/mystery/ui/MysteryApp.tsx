@@ -342,21 +342,24 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       {!inRoom && screen === 'freeplay' && <FreeplayScreen />}
       {!inRoom && screen === 'wardrobe' && <Wardrobe />}
       {!inRoom && screen === 'room' && (
-        <div className="mm-loading">
-          <BerryAvatar cosmetics={prefs.cosmetics} size={110} moving />
-          <div className="mm-label">Connecting…</div>
-          <div className="mm-loadbar" aria-hidden>
-            <i />
+        <div className="mm-loading mm-loading-screen" role="status">
+          <div className="mm-panel mm-loadcard mm-in-pop">
+            <BerryAvatar cosmetics={prefs.cosmetics} size={110} moving />
+            <div className="mm-loadcard-t">Connecting…</div>
+            <div className="mm-loadbar" aria-hidden>
+              <i />
+            </div>
+            <button className="mm-btn mm-pill" onClick={() => setScreen('title')}>
+              <MIcon name="close" size={16} /> Cancel
+            </button>
           </div>
-          <button className="mm-btn" onClick={() => setScreen('title')}>
-            Cancel
-          </button>
         </div>
       )}
       {inRoom && (stage === 'lobby' || stage === 'countdown') && <WaitingRoom />}
       {inRoom && (stage === 'match' || stage === 'results') && <MatchScreen />}
-      {onExit && !inRoom && (
-        <button className="mm-btn mm-exit" onClick={onExit}>
+      {/* Back to the HQ (Arcade launches only). Title screen only: the other screens have their own back button there. */}
+      {onExit && !inRoom && screen === 'title' && (
+        <button className="mm-btn mm-pill mm-exit mm-in-left" onClick={onExit} aria-label="Back to Marion HQ">
           <MIcon name="back" /> Marion HQ
         </button>
       )}

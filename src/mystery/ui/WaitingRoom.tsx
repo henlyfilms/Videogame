@@ -85,13 +85,15 @@ export function WaitingRoom() {
   const transport = useMystery((s) => s.transport);
   const coarse = useCoarsePointer();
   const vp = useViewport();
-  const narrow = vp.w < 760;
+  // Matches the CSS breakpoint: narrow windows and short landscape phones share the compact lobby.
+  const narrow = vp.w < 760 || (vp.h <= 500 && vp.w > vp.h);
   const isHost = room.hostId === pid;
   const me = room.players.find((p) => p.id === pid);
   const host = room.players.find((p) => p.id === room.hostId);
   const [panel, setPanel] = useState<null | 'wardrobe' | 'settings' | 'invite' | 'menu'>(null);
-  const [showPlayers, setShowPlayers] = useState(() => typeof innerWidth === 'number' && innerWidth > 760);
-  const [showBoard, setShowBoard] = useState(() => typeof innerWidth === 'number' && innerWidth > 760);
+  // Compact screens start with the crew list and board tucked away (the top buttons open them).
+  const [showPlayers, setShowPlayers] = useState(() => !narrow);
+  const [showBoard, setShowBoard] = useState(() => !narrow);
   const [chat, setChat] = useState('');
   const [nearLabel, setNearLabel] = useState<string | null>(null);
   const [now, setNow] = useState(0);

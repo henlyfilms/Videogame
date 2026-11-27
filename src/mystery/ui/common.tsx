@@ -33,6 +33,7 @@ const P: Record<string, string> = {
   play: 'M7 5l11 7-11 7z',
   plus: 'M12 5v14 M5 12h14',
   close: 'M6 6l12 12M18 6 6 18',
+  backspace: 'M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z M12 9l6 6 M18 9l-6 6',
   back: 'M15 18l-6-6 6-6',
   globe: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20',
   bot: 'M12 8V4 M8 4h8 M5 8h14v11H5z M9 13h.01 M15 13h.01 M9 17h6',
@@ -183,9 +184,10 @@ export function BerryAvatar({
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    c.width = size * dpr;
-    c.height = size * dpr;
+    // Small portraits are cheap, so 3× phones get them at full sharpness.
+    const dpr = Math.min(size <= 128 ? 3 : 2, window.devicePixelRatio || 1);
+    c.width = Math.round(size * dpr);
+    c.height = Math.round(size * dpr);
     const ctx = c.getContext('2d');
     if (!ctx) return;
     let raf = 0;
@@ -237,10 +239,38 @@ export function Modal({ children, onClose, wide = false, title }: { children: Re
     window.addEventListener('keydown', k, true);
     return () => window.removeEventListener('keydown', k, true);
   }, [closable, close]);
+  // Keyboard users land inside the dialog and return to where they were when it closes.
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    const box = boxRef.current;
+    if (box && !box.contains(document.activeElement)) box.focus({ preventScroll: true });
+    return () => {
+      if (prev && prev.isConnected && prev !== document.body) prev.focus({ preventScroll: true });
+    };
+  }, []);
+  // Tab cycles inside the dialog instead of wandering into the game behind it.
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const box = boxRef.current;
+    if (!box) return;
+    const items = [...box.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const at = document.activeElement;
+    if (e.shiftKey && (at === first || at === box)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && at === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   const st = closing ? 'out' : 'in';
   return (
-    <div className="mm-modal-back" data-state={st} onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div className={`mm-modal mm-safe${wide ? ' wide' : ''}`} data-state={st} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
+    <div className="mm-modal-back mm-safe" data-state={st} onPointerDown={(e) => e.target === e.currentTarget && close()}>
+      <div ref={boxRef} tabIndex={-1} onKeyDown={trap} className={`mm-modal${wide ? ' wide' : ''}`} data-state={st} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
         {(title || onClose) && (
           <div className="mm-modal-head">
             <div className="mm-modal-title">{title}</div>

@@ -252,6 +252,10 @@
 .mm-round:hover {
   background: #fff;
   color: #0b0d10;
+  transform: scale(1.06);
+}
+/* only the close cross spins; back arrows and play buttons keep pointing the right way */
+.mm-round[aria-label='Close']:hover {
   transform: rotate(90deg) scale(1.05);
 }
 .mm-round:active {
@@ -422,6 +426,26 @@
   justify-content: center;
   flex-direction: column;
   gap: 14px;
+}
+.mm-loading-screen {
+  z-index: 5;
+  background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.78) 70%);
+  animation: mm-fade 0.25s ease both;
+}
+.mm-loadcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+  padding: 18px 28px 20px;
+}
+.mm-loadcard-t {
+  font-family: var(--mm-display);
+  font-weight: 600;
+  font-size: 1.5em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .mm-loadbar {
   width: 200px;
@@ -680,9 +704,11 @@
   pointer-events: none;
 }
 .mm-modal {
-  width: min(560px, 94vw);
-  max-height: 92vh;
-  max-height: 92dvh;
+  width: min(560px, 100%);
+  max-height: min(92vh, 100%);
+  max-height: min(92dvh, 100%);
+  padding: 16px;
+  outline: none;
   display: flex;
   flex-direction: column;
   background: #07090c;
@@ -692,7 +718,7 @@
   animation: mm-modal-in 0.42s var(--ease-spring) both;
 }
 .mm-modal.wide {
-  width: min(1040px, 96vw);
+  width: min(1040px, 100%);
 }
 .mm-modal[data-state='out'] {
   animation: mm-modal-out 0.17s ease-in both;
@@ -1106,7 +1132,8 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
-  z-index: 12;
+  /* above the practice coach, so the chat / emote drawers open over it */
+  z-index: 13;
   pointer-events: none;
 }
 .mmh-tr > * {
@@ -1666,6 +1693,10 @@
   z-index: 4;
   font-size: calc(28px * var(--mm-scale));
   transition: transform 0.25s var(--ease-spring);
+}
+.mmh-big-label[data-long='true'] {
+  font-size: calc(21px * var(--mm-scale));
+  letter-spacing: 0.02em;
 }
 /* The ready burst spills past the disc: lift the label over it and nudge it clear. */
 .mmh-big[data-ready='true'] .mmh-big-label {
@@ -2444,6 +2475,8 @@
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  /* rows grow a little when there's room (few players on a tall screen) */
+  grid-auto-rows: minmax(64px, 82px);
   gap: 8px;
   align-content: start;
   padding: 3px;
@@ -2750,6 +2783,9 @@
 }
 .mme-caret {
   transition: opacity 0.3s;
+}
+.mme-rest {
+  visibility: hidden;
 }
 .mme-sub {
   margin-top: 6px;
@@ -3090,7 +3126,7 @@
 }
 .mmr-crew {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px;
 }
 .mmr-card {
@@ -3218,7 +3254,35 @@
   width: 50px;
   flex: none;
   color: var(--mm-muted);
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--mm-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.mmr-ev-ic {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -2px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  color: #cfd5dc;
+}
+.mmr-ev-ic[data-type='kill'],
+.mmr-ev-ic[data-type='poison'],
+.mmr-ev-ic[data-type='sabotage'],
+.mmr-ev-ic[data-type='blackout'] {
+  color: var(--mm-red-hi);
+}
+.mmr-ev-ic[data-type='report'],
+.mmr-ev-ic[data-type='emergency'],
+.mmr-ev-ic[data-type='final'] {
+  color: var(--mm-yellow);
+}
+.mmr-ev-ic[data-type='fixed'],
+.mmr-ev-ic[data-type='shield.hit'] {
+  color: var(--mm-green);
 }
 
 /* ============================================================ title (mmx) */
@@ -3511,7 +3575,26 @@
 }
 .mmj-key.wide {
   grid-column: span 2;
-  font-size: 0.95em;
+  display: grid;
+  place-items: center;
+}
+.mmj-key.clear {
+  font-size: 0.8em;
+  letter-spacing: 0.04em;
+}
+.mmj {
+  width: min(540px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.mmj-paste {
+  margin-bottom: 12px;
+  text-align: center;
+}
+.mmj-join {
+  width: 100%;
+  margin-top: 14px;
+  min-height: 54px;
 }
 .mmj-key:focus-visible {
   outline: 3px solid var(--mm-yellow);
@@ -3572,6 +3655,15 @@
   flex-direction: column;
   gap: 12px;
 }
+.mm-modal-body:has(> .mms) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.mm-modal-body > .mms {
+  flex: 1;
+  min-height: 0;
+}
 .mms-tabs {
   display: flex;
   gap: 8px;
@@ -3612,12 +3704,17 @@
 }
 .mms-panel {
   position: relative;
-  min-height: 300px;
+  flex: 0 1 auto;
+  height: clamp(300px, 56vh, 470px);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
   padding: 16px;
   border-radius: 10px;
   background: #000;
   border: 2px solid var(--mm-line);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 .mms-page {
   animation: mm-page 0.3s var(--ease-out) both;
@@ -3765,13 +3862,18 @@
   font-size: 0.85em;
   color: #cfd5dc;
 }
+.mms-page:has(> .mms-match) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 .mms-match {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  min-height: 260px;
   text-align: center;
 }
 .mms-matchinfo {
@@ -5392,7 +5494,8 @@
 .mm-coach {
   position: absolute;
   right: 0;
-  top: max(150px, 20vh);
+  /* under the round buttons and meters, clear of the action stack on 720p screens */
+  top: max(120px, 16vh);
   z-index: 12;
   pointer-events: none;
   max-width: min(360px, 92vw);
@@ -5870,6 +5973,212 @@
   }
 }
 
+/* ============================================================ how to play */
+.mmh2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.mmh2-grid.wide {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+.mmh2-card {
+  padding: 12px 14px;
+  border-left: 5px solid var(--c, var(--mm-line-soft));
+  animation: mm-rise 0.35s var(--ease-out) both;
+}
+.mmh2-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+.mmh2-card:nth-child(3) {
+  animation-delay: 80ms;
+}
+.mmh2-card:nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+.mmh2-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mm-display);
+  font-weight: 600;
+  font-size: 1.2em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mmh2-tag {
+  margin: 2px 0 8px;
+  color: var(--c);
+  font-weight: 700;
+}
+.mmh2-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  line-height: 1.35;
+}
+.mmh2-rolehead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.mmh2-rolehead b {
+  font-family: var(--mm-display);
+  font-weight: 600;
+  font-size: 1.1em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mmh2-help {
+  margin: 6px 0;
+  font-size: 0.92em;
+  line-height: 1.35;
+}
+.mmh2-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================ freeplay picker */
+.mmf {
+  display: flex;
+  flex-direction: column;
+}
+.mmf-intro {
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+.mmf-h {
+  margin: 0 0 6px;
+}
+.mmf-maps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mmf-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border-radius: 10px;
+  border: 2px solid var(--mm-line-soft);
+  background: #0b0d10;
+  color: #fff;
+  font-family: var(--mm-display);
+  font-size: 0.95em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  animation: mm-rise 0.4s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+  transition: transform 0.18s var(--ease-spring), border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.mmf-map b {
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+}
+.mmf-map canvas {
+  max-width: 100%;
+  object-fit: contain;
+}
+.mmf-map:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-2px);
+}
+.mmf-map:active {
+  transform: scale(0.97);
+}
+.mmf-map[data-on='true'] {
+  border-color: var(--mm-yellow);
+  box-shadow: 0 0 0 1px var(--mm-yellow);
+  background: #16140a;
+  color: var(--mm-yellow);
+}
+.mmf-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+}
+.mmf-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mmf-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--mm-line-soft);
+  background: #0b0d10;
+  color: var(--rc, #fff);
+  font-family: var(--mm-display);
+  font-size: 0.95em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease-spring), border-color 0.15s, background 0.15s, color 0.15s;
+}
+.mmf-opt:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-1px);
+}
+.mmf-opt:active {
+  transform: scale(0.95);
+}
+.mmf-opt[data-on='true'] {
+  border-color: var(--mm-yellow);
+  background: var(--mm-yellow);
+  color: #1c1400;
+}
+.mmf-map:focus-visible,
+.mmf-opt:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.mmf-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mm-line-soft);
+  background: #07090c;
+}
+.mmf-help {
+  flex: 1;
+  min-width: 0;
+  color: var(--mm-muted);
+  font-size: 0.92em;
+  line-height: 1.35;
+  animation: mm-fade 0.25s ease both;
+}
+.mmf-start {
+  flex: none;
+  min-height: 52px;
+  padding: 0 28px;
+  font-size: 1.15em;
+}
+@media (max-width: 640px) {
+  .mmf-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
 /* ============================================================ phone landscape
  * Phones play sideways (portrait phones get the rotate card), so short,
  * wide screens keep the two-column desktop layouts in a compact form. */
@@ -5912,20 +6221,91 @@
   .mmx-name .mm-input {
     font-size: 1em;
   }
+  .mmx-logo-top {
+    margin-bottom: 4px;
+  }
+  /* The whole menu fits without scrolling: Browse and How to Play share a row,
+   * the view picker and the icon buttons go single-line. */
   .mmx-menu {
-    padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 8px 10px;
     gap: 6px;
     max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
   }
+  .mmx-menu > * {
+    grid-column: 1 / -1;
+  }
+  .mmx-menu > .mm-btn:nth-child(3),
+  .mmx-menu > .mm-btn:nth-child(5) {
+    grid-column: auto;
+  }
+  .mmx-menu > :nth-child(4) {
+    order: 1;
+  }
+  .mmx-menu > .mmx-view {
+    order: 2;
+  }
+  .mmx-menu > .mmx-icons {
+    order: 3;
+  }
+  .mmx-menu > .mm-chip {
+    order: 4;
+  }
   .mmx-menu > .mm-btn,
   .mmx-row2 .mm-btn {
-    min-height: 40px;
-    font-size: 1em;
+    min-height: 36px;
+    padding: 3px 10px;
+    gap: 6px;
+    font-size: 0.95em;
+    white-space: nowrap;
+  }
+  .mmx-row2 {
+    gap: 6px;
   }
   .mmx-play {
-    min-height: 48px !important;
-    font-size: 1.15em !important;
+    min-height: 44px !important;
+    font-size: 1.12em !important;
+  }
+  .mmx-view {
+    gap: 3px;
+    margin-top: 0;
+  }
+  .mmx-view .mm-label {
+    font-size: 0.68em;
+  }
+  .mmx-view .mm-seg-opt {
+    flex-direction: row;
+    justify-content: center;
+    gap: 5px;
+    min-height: 34px;
+    padding: 2px 4px;
+  }
+  .mmx-view .mm-seg-opt svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .mmx-view .mm-seg-label {
+    font-size: 0.7em;
+    text-align: left;
+  }
+  .mmx-icons {
+    gap: 6px;
+    margin-top: 0;
+  }
+  .mmx-icon {
+    flex-direction: row;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 2px 4px;
+    font-size: 0.78em;
+  }
+  .mmx-icon svg {
+    width: 18px;
+    height: 18px;
   }
   /* HUD: the task list scrolls instead of running into the action buttons. */
   .mmh-tl {
@@ -5942,6 +6322,7 @@
   }
   .mmm-ballot {
     grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    grid-auto-rows: auto;
     overflow-y: auto;
   }
   .mmm-chat {
@@ -6011,5 +6392,374 @@
     max-height: calc(100dvh - 16px);
     overflow-y: auto;
     font-size: 0.8em;
+  }
+  /* Join: code and Join on the left, keypad on the right. */
+  .mm-card {
+    padding: 10px 14px;
+  }
+  .mm-card-head {
+    margin-bottom: 8px;
+  }
+  .mm-card-head h2 {
+    font-size: 1.25em;
+  }
+  .mm-card-head .mm-round {
+    width: 36px;
+    height: 36px;
+  }
+  .mmj {
+    width: min(700px, 100%);
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    grid-template-areas: 'head keys' 'slots keys' 'paste keys' 'go keys';
+    grid-template-rows: auto auto auto 1fr;
+    column-gap: 16px;
+  }
+  .mmj-head {
+    grid-area: head;
+  }
+  .mmj-slots {
+    grid-area: slots;
+    gap: 5px;
+    margin: 2px 0 8px;
+  }
+  .mmj-slot {
+    width: 100%;
+    max-width: 46px;
+    height: 52px;
+    font-size: 28px;
+  }
+  .mmj-paste {
+    grid-area: paste;
+    min-height: 36px;
+    margin-bottom: 0;
+    padding: 4px 10px;
+    font-size: 0.85em;
+  }
+  .mmj-keys {
+    grid-area: keys;
+    align-self: center;
+    gap: 5px;
+  }
+  .mmj-key {
+    min-height: 42px;
+  }
+  .mmj-go {
+    grid-area: go;
+    align-self: end;
+  }
+  .mmj-join {
+    min-height: 46px;
+    margin-top: 8px;
+  }
+  /* Modals: the backdrop keeps clear of the notch; slimmer head and tabs leave room for the page. */
+  .mm-modal-back {
+    padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+  .mm-modal {
+    padding: 8px 12px 10px;
+    border-radius: 12px;
+  }
+  .mm-modal-head {
+    margin-bottom: 6px;
+  }
+  .mm-modal-title {
+    font-size: 1.15em;
+  }
+  .mm-modal-head .mm-round {
+    width: 34px;
+    height: 34px;
+  }
+  .mms {
+    gap: 6px;
+  }
+  .mms-tabs {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .mms-tab {
+    min-width: 0;
+    min-height: 32px;
+    padding: 2px 8px;
+    gap: 6px;
+    font-size: 0.88em;
+  }
+  .mms-tab svg {
+    width: 15px;
+    height: 15px;
+  }
+  .mm-modal:has(> .mm-modal-body > .mms) {
+    height: 100%;
+  }
+  .mms-panel {
+    flex: 1 1 0;
+    height: auto;
+    padding: 6px 12px;
+  }
+  .mms-row {
+    padding: 4px 0;
+  }
+  .mms-juke {
+    max-height: none;
+    overflow: visible;
+  }
+  .mms-cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+  .mms-keys {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 4px;
+  }
+  .mms-key {
+    min-height: 32px;
+  }
+  .mms-match {
+    gap: 8px;
+  }
+  .mms-big {
+    min-height: 44px;
+    font-size: 1.1em;
+  }
+  .mms-foot .mm-btn {
+    min-height: 32px;
+    padding: 2px 12px;
+    font-size: 0.88em;
+  }
+  /* Touch HUD: the minimap tucks right under the round buttons (clear of the action stack),
+   * and the timer / battery / hiders meters sit to its left instead of on top of it. */
+  .mmh-mini.touch {
+    top: calc(max(12px, env(safe-area-inset-top)) + 58px);
+  }
+  .mmh-tr.touch {
+    gap: 6px;
+  }
+  .mmh-tr.touch > .mmh-timer,
+  .mmh-tr.touch > .mmh-meter {
+    margin-right: calc(var(--mini-w, 140px) + 22px);
+  }
+  .mmh-tr.touch > .mmh-sqrow + .mmh-timer,
+  .mmh-tr.touch > .mmh-sqrow + .mmh-meter {
+    margin-top: 2px;
+  }
+  .mmh-tr.touch > .mmh-meter {
+    width: 170px;
+    padding: 4px 10px;
+  }
+  /* the battery hangs under the minimap, so the practice coach (top centre) never covers it */
+  .mmh-tr.touch > .mmh-meter.battery {
+    position: absolute;
+    top: calc(max(12px, env(safe-area-inset-top)) + 58px + var(--mini-h, 92px) + 20px);
+    right: max(10px, env(safe-area-inset-right));
+    width: calc(var(--mini-w, 140px) + 14px);
+    margin: 0;
+    padding: 2px 8px;
+    gap: 6px;
+    font-size: 0.85em;
+  }
+  .mmh-timer {
+    padding: 2px 12px;
+    font-size: 1.1em;
+  }
+  /* Centre banners drop below the meters row (and above the practice coach); the hide
+   * countdown leans left into the gap between the left column and the meters. */
+  .mmh-center {
+    top: 98px;
+    z-index: 13;
+  }
+  .mmh-sab {
+    zoom: 0.8;
+  }
+  .mmh-notice.big {
+    margin-right: 90px;
+    padding: 6px 14px;
+    font-size: 0.85em;
+  }
+  /* Sabotage: compact 2×2 cards so every option shows without scrolling */
+  .mmh-sabwrap .mmh-sabgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .mmh-sabwrap .mmh-sabcard {
+    min-width: 0;
+    padding: 6px 6px;
+    gap: 2px;
+    font-size: 0.8em;
+    line-height: 1.1;
+    text-align: center;
+  }
+  .mmh-sabwrap .mmh-sabcard svg {
+    width: 20px;
+    height: 20px;
+  }
+  .mmh-sabwrap .mmh-sabgrid > .mm-chip {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+  /* Role reveal fits the short screen: smaller title, avatar and spacing. */
+  .mmv-card {
+    padding: 6px 12px;
+  }
+  .mmv-youare {
+    font-size: 0.8em;
+  }
+  .mmv-role {
+    font-size: clamp(40px, 16vh, 72px);
+    margin: 2px 0;
+  }
+  .mmv-cast {
+    margin: 2px 0;
+  }
+  .mmv-cast canvas {
+    width: 96px !important;
+    height: 96px !important;
+  }
+  .mmv-cast > :not(:last-child) canvas {
+    width: 64px !important;
+    height: 64px !important;
+  }
+  .mmv-blurb {
+    margin-bottom: 6px;
+    font-size: 1em;
+  }
+  .mmv-abil .mm-chip {
+    padding: 2px 10px;
+    font-size: 0.72em;
+  }
+  .mmv-mode {
+    margin-top: 6px;
+    font-size: 0.8em;
+  }
+  /* Facility consoles open under the top bar and scroll, so their head and Close stay on screen. */
+  .mmh-console-wrap {
+    top: calc(max(12px, env(safe-area-inset-top)) + 56px);
+    bottom: auto !important;
+    z-index: 14;
+  }
+  .mmh-console {
+    max-height: calc(100dvh - 76px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-width: min(560px, calc(100vw - 24px));
+    overflow-y: auto;
+    padding: 8px 10px;
+  }
+  .mmh-vitals {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 4px;
+  }
+  /* Results: a slimmer header so the board starts above the fold. */
+  .mmr-top {
+    align-items: center;
+    gap: 8px;
+  }
+  .mmr-verdict {
+    font-size: 0.8em;
+  }
+  .mmr-title {
+    font-size: clamp(30px, 11vh, 44px);
+  }
+  .mmr-reason {
+    font-size: 0.85em;
+  }
+  .mmr-btns {
+    gap: 6px;
+  }
+  .mmr-btns .mm-btn {
+    min-height: 36px;
+    padding: 2px 14px;
+    font-size: 0.92em;
+  }
+  .mmr-tabs {
+    margin: 8px auto 8px;
+  }
+  /* Freeplay: the coach explains the basics, so the intro goes and the cards shrink to fit one screen. */
+  .mmf-intro {
+    display: none;
+  }
+  .mmf-maps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .mmf-map {
+    gap: 3px;
+    padding: 4px 4px 6px;
+    font-size: 0.78em;
+  }
+  .mmf-map canvas {
+    width: auto !important;
+    height: 38px !important;
+  }
+  .mmf-row {
+    gap: 12px;
+  }
+  .mmf-opts {
+    gap: 4px;
+  }
+  .mmf-opt {
+    min-height: 30px;
+    padding: 2px 10px;
+    font-size: 0.82em;
+  }
+  .mmf-foot {
+    margin-top: 8px;
+    padding-top: 6px;
+  }
+  .mmf-help {
+    font-size: 0.8em;
+  }
+  .mmf-start {
+    min-height: 42px;
+    padding: 0 18px;
+    font-size: 1em;
+  }
+  /* Lobby board: compact rows so code, settings, privacy and Edit/View fit under the top buttons. */
+  .mml-board {
+    padding: 8px 12px 10px;
+    gap: 4px;
+    max-height: calc(100dvh - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+  .mml-board .mm-label {
+    font-size: 0.72em;
+  }
+  .mml-board > .mm-label,
+  .mml-board > .mml-sep {
+    display: none;
+  }
+  .mml-code {
+    font-size: 1.7em;
+  }
+  .mml-modename {
+    font-size: 1.35em;
+  }
+  .mml-mapname {
+    margin-top: -2px;
+    font-size: 0.8em;
+  }
+  .mml-rows {
+    gap: 4px;
+    margin: 2px 0;
+  }
+  .mml-k,
+  .mml-v {
+    min-height: 30px;
+    font-size: 0.85em;
+  }
+  .mml-edit .mm-btn {
+    min-height: 38px;
+    padding: 2px 10px;
+    font-size: 1.15em;
+  }
+  /* Arcade exit: a slim pill in the corner, above the logo instead of on it. */
+  .mm-exit {
+    top: max(8px, env(safe-area-inset-top));
+    min-height: 30px;
+    padding: 2px 12px 2px 8px;
+    gap: 4px;
+    font-size: 0.8em;
+  }
+  .mm-exit svg {
+    width: 16px;
+    height: 16px;
   }
 }

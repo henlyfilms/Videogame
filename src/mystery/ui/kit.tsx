@@ -349,7 +349,8 @@ export function SchematicMap({
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    // Small maps (the phone minimap) get full 3× sharpness; big ones stay at 2× for speed.
+    const dpr = Math.min(width * height <= 40000 ? 3 : 2, window.devicePixelRatio || 1);
     c.width = Math.round(width * dpr);
     c.height = Math.round(height * dpr);
     const g = c.getContext('2d');
