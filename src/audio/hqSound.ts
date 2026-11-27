@@ -29,6 +29,13 @@ export function hqAmbienceFor(season: Season, night: boolean): string {
   return `${season}:${night ? 'night' : 'day'}`;
 }
 
+let uiActive = false;
+
+/** Play an HQ UI sound from components (popovers closing on an outside tap or Esc); no-op while muted or in the Arcade. */
+export function hqUiSound(id: 'ui.open' | 'ui.close' | 'ui.click' | 'ui.toggle'): void {
+  if (uiActive) sfx.play(id);
+}
+
 export interface HqSoundState {
   active: boolean;
   track: string | null;
@@ -123,6 +130,7 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
       stopAmbience();
     }
     state.active = active;
+    uiActive = active;
   };
 
   // First gesture unlocks audio (iOS / autoplay policies). iOS only counts
@@ -171,6 +179,7 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
     if (!outsideMystery(el)) return;
     if (el.type === 'checkbox') sfx.play('ui.toggle');
     else if (el.type === 'range') sfx.play('ui.slide');
+    else if (el.tagName === 'SELECT') sfx.play('ui.toggle');
     else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') sfx.play('ui.type');
   };
   document.addEventListener('pointerdown', onDown, true);
@@ -188,10 +197,14 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
       else if ((!s.selectedBot && p.selectedBot) || (!s.selectedRoom && p.selectedRoom)) sfx.play('ui.close');
       if (s.hqView !== p.hqView) sfx.play('ui.go');
       if (s.paused !== p.paused) sfx.play(s.paused ? 'ui.back' : 'ui.go');
+      // Palette and help also open/close from the keyboard (⌘K, ?, Esc).
+      if (s.paletteOpen !== p.paletteOpen || s.helpOpen !== p.helpOpen) sfx.play(s.paletteOpen || s.helpOpen ? 'ui.open' : 'ui.close');
     }
     if (s.muted !== p.muted || s.turntable !== p.turntable || s.season !== p.season || s.timeMode !== p.timeMode) {
       if (!s.muted) unlock();
       sync();
+      // Sound coming back on confirms itself.
+      if (s.muted !== p.muted && !s.muted && state.active) sfx.play('ui.toggle');
     }
   });
   // Re-sync after the Arcade overlay has unmounted (Mystery hands music back then).

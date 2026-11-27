@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AdapterKind } from '../adapters/types';
+import { hqUiSound } from '../audio/hqSound';
 import { manager } from '../game/runtime';
 import { SPEEDS, useGame } from '../store/gameStore';
 import { THEME_ORDER, THEMES, type ThemeName } from '../theme/tokens';
@@ -251,11 +252,13 @@ function useDismiss(ref: React.RefObject<HTMLElement>, onClose: () => void): voi
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element | null;
       if (!t || ref.current?.contains(t) || t.closest?.('[data-pop-toggle]')) return;
+      hqUiSound('ui.close');
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
+      hqUiSound('ui.close');
       onClose();
     };
     document.addEventListener('pointerdown', onDown, true);

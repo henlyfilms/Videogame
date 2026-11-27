@@ -74,7 +74,10 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
     let dragged = false;
     let pinchDist = 0;
 
-    const pick = (sx: number, sy: number, w: { x: number; y: number }) => (renderer?.pickBotScreen ? renderer.pickBotScreen(hq.sim, sx, sy) : pickBot(hq.sim, w));
+    // Hit radius: at least ~16 screen px (22 on touch) so zoomed-out bots stay easy to pick.
+    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const pick = (sx: number, sy: number, w: { x: number; y: number }) =>
+      renderer?.pickBotScreen ? renderer.pickBotScreen(hq.sim, sx, sy) : pickBot(hq.sim, w, Math.max(18, (coarse ? 22 : 16) / hq.camera.zoom));
 
     const local = (e: PointerEvent | WheelEvent) => {
       const r = canvas.getBoundingClientRect();

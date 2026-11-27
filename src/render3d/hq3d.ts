@@ -125,6 +125,8 @@ export class HQ3DRenderer {
   private cssW = 1;
   private cssH = 1;
   private dpr = 1;
+  /** Names and bubbles stay crisp at the full device ratio even when the GL buffer is capped. */
+  private odpr = 1;
   private readonly quality: Quality3D;
   private hemi = new THREE.HemisphereLight('#e6f0ff', '#6b7a5a', 1.5);
   private sun = new THREE.DirectionalLight('#fff4e0', 1.7);
@@ -581,14 +583,15 @@ export class HQ3DRenderer {
     this.cssH = Math.max(1, cssH);
     this.dpr = Math.min(dpr, this.quality === 'high' ? 2 : 1.5);
     this.renderer.setPixelRatio(this.dpr);
+    this.odpr = Math.min(Math.max(1, dpr), 3);
     this.renderer.setSize(this.cssW, this.cssH, false);
     this.canvas.style.width = `${this.cssW}px`;
     this.canvas.style.height = `${this.cssH}px`;
     this.camera.aspect = this.cssW / this.cssH;
     this.camera.updateProjectionMatrix();
     if (this.overlay) {
-      this.overlay.width = Math.round(this.cssW * this.dpr);
-      this.overlay.height = Math.round(this.cssH * this.dpr);
+      this.overlay.width = Math.round(this.cssW * this.odpr);
+      this.overlay.height = Math.round(this.cssH * this.odpr);
     }
   }
 
@@ -804,7 +807,7 @@ export class HQ3DRenderer {
     const g = this.octx;
     const o = this.overlay;
     if (!g || !o) return;
-    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.setTransform(this.odpr, 0, 0, this.odpr, 0, 0);
     g.clearRect(0, 0, this.cssW, this.cssH);
     const scale = this.labelScale();
 
