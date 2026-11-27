@@ -5494,7 +5494,8 @@
 .mm-coach {
   position: absolute;
   right: 0;
-  top: max(150px, 20vh);
+  /* under the round buttons and meters, clear of the action stack on 720p screens */
+  top: max(120px, 16vh);
   z-index: 12;
   pointer-events: none;
   max-width: min(360px, 92vw);
