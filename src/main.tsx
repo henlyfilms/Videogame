@@ -13,7 +13,14 @@ function wantsMystery(): boolean {
 
 // Offline shell (production only; dev server must stay uncached).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  window.addEventListener('load', () => {
+    // Sandboxed hosts (e.g. an embedded preview) may refuse service workers outright.
+    try {
+      void navigator.serviceWorker.register('/sw.js').catch(() => {});
+    } catch {
+      /* offline shell unavailable here */
+    }
+  });
 }
 
 const root = document.getElementById('root');
