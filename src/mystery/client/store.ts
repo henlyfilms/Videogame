@@ -9,6 +9,7 @@ import type { Snapshot } from '../core/project';
 import type { Settings } from '../core/settings';
 import type { ChatMsg, MapId, ModeId, RoleId, ViewMode } from '../core/types';
 import type { ClientMsg, RoomInfo, RoomListing, ServerMsg } from '../net/protocol';
+import { addSeeds, matchEarnings } from '../characters/shop';
 import { loadPrefs, savePrefs, type Prefs } from './prefs';
 import { runtime } from './runtime';
 import { defaultServerUrl, LocalTransport, WsTransport, type ConnState, type Transport } from './transport';
@@ -215,7 +216,9 @@ export const useMystery = create<MysteryState>((set, get) => {
     if (s.result!.mvp === get().pid) st.mvps++;
     st.tasks += s.you.tasks.filter((t) => t.done && !t.fake).length;
     st.kills += s.stats.murderers?.myKills ?? 0;
-    get().setPrefs({ stats: st });
+    // Shop Seeds for what this player did (the results screen shows the same breakdown).
+    const earned = matchEarnings({ stats: s.result!.stats[get().pid], won, mvp: s.result!.mvp === get().pid });
+    get().setPrefs({ stats: st, seeds: addSeeds(p.seeds, earned.total) });
   }
 
   function ensure(kind: 'ws' | 'local', url?: string) {

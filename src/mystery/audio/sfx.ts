@@ -156,6 +156,31 @@ class Sfx {
         engine.bell(ui, hz('E6'), t, 0.25, { kind: 'marimba' });
         engine.noiseHit(ui, t, 0.12, 0.05, 6000, 'highpass');
         break;
+      // ---- shop ----
+      case 'shop.try': // try an item on: cloth swish + soft pluck
+        engine.noiseHit(ui, t, 0.16, 0.05, 1400, 'bandpass', 1.2, 0.08, 4800);
+        engine.bell(ui, hz('A6'), t + 0.05, 0.14, { kind: 'marimba' });
+        break;
+      case 'shop.locked': // tapped something not owned yet: muted latch
+        engine.noiseHit(ui, t, 0.04, 0.09, 1600, 'bandpass', 2.5);
+        engine.tone(ui, 392, t, 0.07, 0.07, 'square', 330);
+        engine.tone(ui, 523, t + 0.07, 0.09, 0.05, 'triangle');
+        break;
+      case 'shop.coin': // one Seed counted
+        engine.bell(ui, 1568 + Math.random() * 180, t, 0.1, { kind: 'glass', rev: 0.1 });
+        engine.noiseHit(ui, t, 0.02, 0.03, 7500, 'highpass');
+        break;
+      case 'shop.earn': // Seeds earned at the end of a round
+        [hz('G5'), hz('B5'), hz('D6'), hz('G6')].forEach((f, i) => engine.bell(ui, f, t + i * 0.08, 0.22, { kind: 'musicbox', rev: 0.3 }));
+        this.caption('Seeds earned');
+        break;
+      case 'shop.buy': // purchase: rising seed cascade + sparkle tail
+        engine.tone(ui, 440, t, 0.16, 0.07, 'triangle', 880);
+        [hz('C6'), hz('E6'), hz('G6'), hz('C7'), hz('E7')].forEach((f, i) => engine.bell(ui, f, t + 0.06 + i * 0.065, 0.26, { kind: 'glass', rev: 0.35 }));
+        engine.noiseHit(ui, t + 0.3, 0.6, 0.05, 9000, 'highpass', 0.6, 0.45);
+        engine.bell(ui, hz('G7'), t + 0.45, 0.12, { kind: 'bell', rev: 0.5 });
+        this.caption('Purchase chime');
+        break;
       // ---- movement ----
       case 'wall':
         engine.noiseHit(out, t, 0.09, 0.22, 260, 'lowpass', 0.8, 0.05);
@@ -541,6 +566,15 @@ class Sfx {
       else if (el.type === 'range') this.play('ui.slide');
       else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') this.play('ui.type');
     };
+    // Keyboard activation (Enter / Space on a focused button) sounds like a tap.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || (e.key !== 'Enter' && e.key !== ' ')) return;
+      const el = e.target as HTMLElement | null;
+      if (!el || el.tagName !== 'BUTTON' || !el.closest('.mm-root') || (el as HTMLButtonElement).disabled) return;
+      const cls = el.className || '';
+      this.play(/primary|gold/.test(cls) ? 'ui.primary' : /back|close|leave/i.test(el.getAttribute('aria-label') ?? '') ? 'ui.back' : 'ui.click');
+    };
+    document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('pointerover', onOver, true);
     document.addEventListener('input', onInput, true);
@@ -597,6 +631,7 @@ class Sfx {
       unsub();
       clearInterval(iv);
       document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('pointerover', onOver, true);
       document.removeEventListener('input', onInput, true);
       this.stopAlarm();

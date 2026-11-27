@@ -2,6 +2,7 @@
  * Per-device preferences + lifetime profile stats (localStorage, guarded).
  */
 import { defaultCosmetics, sanitizeCosmetics } from '../characters/catalog';
+import { grandfather, sanitizeOwned, sanitizeSeeds, STARTING_SEEDS } from '../characters/shop';
 import type { Cosmetics, ModeId, RoleId, ViewMode } from '../core/types';
 
 export type Quality = 'auto' | 'low' | 'medium' | 'high';
@@ -78,6 +79,10 @@ export interface Prefs {
   /** Jukebox: track used on the menus. */
   menuTrack: string;
   stats: LifetimeStats;
+  /** Shop wallet: Seeds earned by playing (see characters/shop.ts). */
+  seeds: number;
+  /** Priced cosmetics owned (`slot:id` keys; free items are always owned). */
+  owned: string[];
 }
 
 const KEY = 'marion-mystery:v1';
@@ -110,6 +115,8 @@ export function defaultPrefs(): Prefs {
     tutorialDone: false,
     menuTrack: 'title',
     stats: emptyStats(),
+    seeds: STARTING_SEEDS,
+    owned: [],
   };
 }
 
@@ -119,10 +126,15 @@ export function loadPrefs(): Prefs {
     const raw = localStorage.getItem(KEY);
     if (!raw) return d;
     const o = JSON.parse(raw) as Partial<Prefs>;
+    const cosmetics = sanitizeCosmetics(o.cosmetics ?? d.cosmetics);
     return {
       ...d,
       ...o,
-      cosmetics: sanitizeCosmetics(o.cosmetics ?? d.cosmetics),
+      cosmetics,
+      // Wallet (added with the shop): older saves get the starter Seeds, and
+      // whatever the player already wears stays theirs (grandfathered).
+      seeds: sanitizeSeeds(o.seeds),
+      owned: grandfather(sanitizeOwned(o.owned), cosmetics),
       keys: { ...DEFAULT_KEYS, ...(o.keys ?? {}) },
       stats: { ...emptyStats(), ...(o.stats ?? {}) },
       view: o.view === '2d' || o.view === '3d-fp' || o.view === '3d-tp' ? o.view : d.view,

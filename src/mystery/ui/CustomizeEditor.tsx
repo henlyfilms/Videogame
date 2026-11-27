@@ -29,7 +29,9 @@ import {
   type CatalogItem,
 } from '../characters/catalog';
 import { drawBerry, drawEmoteBubble, drawNameplate, drawPet } from '../characters/draw2d';
-import { MIcon } from './common';
+import { isOwned, itemKey, priceOf, restrictToOwned, type ShopSlot } from '../characters/shop';
+import { sfx } from '../audio/sfx';
+import { MIcon, SeedGlyph } from './common';
 
 export interface CustomizeEditorProps {
   value: Cosmetics;
@@ -40,6 +42,13 @@ export interface CustomizeEditorProps {
   takenColors?: number[];
   /** Shows the big pill "Done" button. */
   onDone?(): void;
+  /**
+   * Shop ownership. When given, priced items not in `owned` show a lock and
+   * their price, and tapping one calls `onLocked` instead of equipping it.
+   * Omitted: everything is selectable (no shop).
+   */
+  owned?: readonly string[];
+  onLocked?(key: string): void;
 }
 
 type TabId = 'berry' | 'colour' | 'face' | 'hair' | 'hat' | 'faceacc' | 'outfit' | 'back' | 'pet' | 'nameplate' | 'emotes' | 'victory';
@@ -59,7 +68,35 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'victory', label: 'Victory', icon: 'trophy' },
 ];
 
-type ThumbKind = 'full' | 'face' | 'top' | 'pet' | 'plate' | 'emote' | 'pose';
+export type ThumbKind = 'full' | 'face' | 'top' | 'pet' | 'plate' | 'emote' | 'pose';
+
+/** How each catalog slot is photographed for its thumbnail. */
+export const THUMB_SPEC: Record<ShopSlot, { kind: ThumbKind; tweak?: (c: Cosmetics) => Cosmetics }> = {
+  berry: { kind: 'full', tweak: (c) => ({ ...c, hat: 'none', back: 'none' }) },
+  pattern: { kind: 'full', tweak: (c) => ({ ...c, outfit: 'none', hat: 'none', back: 'none' }) },
+  eyes: { kind: 'face' },
+  brows: { kind: 'face' },
+  mouth: { kind: 'face' },
+  hair: { kind: 'top', tweak: (c) => ({ ...c, hat: 'none' }) },
+  hat: { kind: 'top' },
+  face: { kind: 'face' },
+  outfit: { kind: 'full', tweak: (c) => ({ ...c, back: 'none' }) },
+  back: { kind: 'full' },
+  pet: { kind: 'pet' },
+  nameplate: { kind: 'plate' },
+  emotes: { kind: 'emote' },
+  victory: { kind: 'pose' },
+};
+
+/** Cached thumbnail (data URL) of `id` in `slot`, worn by the `base` look. */
+export function slotThumb(slot: ShopSlot, id: string, base: Cosmetics, name: string): string | null {
+  const { kind, tweak } = THUMB_SPEC[slot];
+  let c: Cosmetics = { ...base, [slot]: id } as Cosmetics;
+  if (kind === 'face') c = { ...c, hat: 'none', hair: 'none', back: 'none', outfit: 'none', face: slot === 'face' ? id : 'none' };
+  if (tweak) c = tweak(c);
+  const key = `${kind}|${slot}|${id}|${c.berry}|${c.color}|${c.pattern}|${c.eyes}|${c.brows}|${c.mouth}|${c.hair}|${c.hairColor}|${c.hat}|${c.face}|${c.outfit}|${c.back}`;
+  return renderThumb(key, kind, c, id, name);
+}
 
 // ---------------------------------------------------------------------------
 // Thumbnail cache (data URLs)
@@ -125,7 +162,7 @@ function renderThumb(key: string, kind: ThumbKind, c: Cosmetics, extra: string, 
 // ---------------------------------------------------------------------------
 // Styles
 
-const CSS = `
+export const EDITOR_CSS = `
 .mmce{--ce-ink:#f3f5f8;--ce-muted:#9aa3ad;--ce-line:rgba(236,240,245,.92);--ce-sel:#ffd426;--ce-tab:#3d66e0;
   color:var(--ce-ink);font-family:var(--mm-body,'Barlow',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif);
   background:#07090c;border:2px solid var(--ce-line);border-radius:14px;
@@ -204,9 +241,43 @@ const CSS = `
 .mmce-badge{position:absolute;top:4px;right:5px;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:#0b0d10;border:1px solid #fff;color:#fff}
 .mmce-count{font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--ce-muted)}
 .mmce-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mmce-item.locked img,.mmce-item.locked .mmce-ph{opacity:.45;filter:saturate(.5)}
+.mmce-item.locked{background:#1d2128;border-style:dashed}
+.mmce-lock{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#0b0d10;border:1.5px solid #fff;color:#ffd426}
+.mmce-own{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#1f9d4c;border:1.5px solid #c8ffd9;color:#fff;animation:mmce-in .3s cubic-bezier(.3,1.6,.5,1) both}
+.mmce-price{display:inline-flex;align-items:center;gap:3px;margin-top:1px;padding:1px 9px 1px 4px;border-radius:999px;background:#0b0d10;border:1.5px solid rgba(255,255,255,.8);
+  font-family:var(--mm-display,'Oswald','Arial Narrow',sans-serif);font-weight:600;font-size:14px;line-height:18px;letter-spacing:.04em;color:#fff;white-space:nowrap}
+.mmce-price.short{color:#ff9d9d}
+.mmce-item[data-tier=rare]{--tier:#5fb4ff}.mmce-item[data-tier=epic]{--tier:#c58cff}.mmce-item[data-tier=legendary]{--tier:#ffcf4a}
+.mmce-item[data-tier]::before{content:'';position:absolute;left:6px;right:6px;top:3px;height:3px;border-radius:2px;background:var(--tier,transparent);opacity:.9}
 @keyframes mmce-item{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:none}}
 @keyframes mmce-page{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 @keyframes mmce-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+@media (orientation:landscape) and (max-height:500px){
+  .mmce{grid-template-columns:116px minmax(0,1fr) minmax(176px,29%);grid-template-rows:minmax(0,1fr);grid-template-areas:"tabs main stage";
+    gap:8px;padding:8px;max-width:none;height:calc(100dvh - 78px);border-radius:12px}
+  .mm-modal .mmce{height:calc(92dvh - 84px)}
+  .mmce-tabs{flex-direction:column;overflow-x:hidden;overflow-y:auto;min-height:0;gap:5px;padding:2px 10px 2px 2px}
+  .mmce-tab{min-height:36px;padding:0 8px;font-size:13px;letter-spacing:.04em;gap:6px}
+  .mmce-tab[aria-selected=true]{transform:translateX(4px)}
+  .mmce-main{min-height:0;grid-template-columns:minmax(0,1fr) 26px;gap:4px}
+  .mmce-panel{max-height:none;height:100%;min-height:0;gap:8px}
+  .mmce-grid{grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:7px}
+  .mmce-grid.wide{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  .mmce-grid.swatches{grid-template-columns:repeat(auto-fill,minmax(54px,1fr))}
+  .mmce-sw{width:34px;height:34px}
+  .mmce-label{font-size:11px}
+  .mmce-stage{position:relative;top:auto;min-height:0}
+  .mmce-canvas{height:auto;flex:1;min-height:70px}
+  .mmce-stagebar{grid-template-columns:1fr auto;gap:5px;padding:6px}
+  .mmce-stagebar .mmce-name,.mmce-stagebar .mmce-done{grid-column:1/-1}
+  .mmce-name{min-height:34px;font-size:14px;padding:0 10px}
+  .mmce-btn{min-height:34px;min-width:34px;padding:0 8px;font-size:13px}
+  .mmce-done{min-height:40px;font-size:18px}
+  .mmce-pager{padding:0}
+  .mmce-arrow{width:26px;height:26px}.mmce-arrow svg{width:20px;height:20px}
+  .mmce-dots{gap:6px}.mmce-dot{width:8px;height:8px}
+}
 @media (prefers-reduced-motion:reduce){.mmce *{animation:none!important;transition:none!important}}
 .mm-reduced .mmce *{animation:none!important;transition:none!important}
 `;
@@ -221,9 +292,21 @@ interface GridItem {
   swatch?: string;
   dim?: boolean;
   badge?: string;
+  /** Seeds price pill under the thumbnail. */
+  price?: number;
+  /** The price pill turns red (can't afford). */
+  short?: boolean;
+  /** Not owned: dimmed with a lock (wardrobe). */
+  locked?: boolean;
+  /** Owned check (shop). */
+  owned?: boolean;
+  /** Rarity stripe. */
+  tier?: string;
+  /** Hide the name (shop tiles show the price instead; the name stays in aria-label + title). */
+  hideLabel?: boolean;
 }
 
-function Grid(props: { label: string; items: GridItem[]; selected: string[]; onSelect(id: string): void; multi?: boolean; variant?: 'wide' | 'swatches' | 'plate' }): JSX.Element {
+export function Grid(props: { label: string; items: GridItem[]; selected: string[]; onSelect(id: string): void; multi?: boolean; variant?: 'wide' | 'swatches' | 'plate' }): JSX.Element {
   const { items, selected, onSelect, multi, variant } = props;
   const ref = useRef<HTMLDivElement>(null);
   const firstSel = Math.max(0, items.findIndex((i) => selected.includes(i.id)));
@@ -243,6 +326,7 @@ function Grid(props: { label: string; items: GridItem[]; selected: string[]; onS
   };
   const move = (to: number): void => {
     const n = Math.max(0, Math.min(items.length - 1, to));
+    if (n !== focus) sfx.play('ui.hover');
     setFocus(n);
     const el = ref.current?.children[n] as HTMLElement | undefined;
     el?.focus();
@@ -287,20 +371,37 @@ function Grid(props: { label: string; items: GridItem[]; selected: string[]; onS
           <button
             key={it.id}
             type="button"
-            className={`mmce-item${it.dim ? ' taken' : ''}${variant === 'plate' ? ' plate' : ''}`}
+            className={`mmce-item${it.dim ? ' taken' : ''}${it.locked ? ' locked' : ''}${variant === 'plate' ? ' plate' : ''}`}
             role={multi ? undefined : 'radio'}
             aria-checked={multi ? undefined : on}
             aria-pressed={multi ? on : undefined}
-            aria-label={it.label + (it.badge ? ` (${it.badge})` : '')}
+            aria-label={it.label + (it.badge ? ` (${it.badge})` : '') + (it.locked ? `, locked, ${it.price ?? 0} Seeds` : it.owned ? ', owned' : it.price ? `, ${it.price} Seeds` : '')}
+            title={it.hideLabel ? it.label : undefined}
             data-item={it.id}
+            data-tier={it.tier && it.tier !== 'free' && it.tier !== 'common' ? it.tier : undefined}
             style={{ ['--i' as string]: i } as React.CSSProperties}
             tabIndex={i === focus ? 0 : -1}
             onFocus={() => setFocus(i)}
             onClick={() => onSelect(it.id)}
           >
             {it.swatch ? <span className="mmce-sw" style={{ background: it.swatch }} /> : it.thumb ? <img src={it.thumb} alt="" draggable={false} /> : <span className="mmce-ph" />}
-            <span className="mmce-label">{it.label}</span>
+            {it.hideLabel ? null : <span className="mmce-label">{it.label}</span>}
+            {it.price && !it.owned ? (
+              <span className={`mmce-price${it.short ? ' short' : ''}`}>
+                <SeedGlyph size={16} />
+                {it.price}
+              </span>
+            ) : null}
             {it.badge ? <span className="mmce-badge">{it.badge}</span> : null}
+            {it.locked ? (
+              <span className="mmce-lock" aria-hidden>
+                <MIcon name="lock" size={13} stroke={2.6} />
+              </span>
+            ) : it.owned ? (
+              <span className="mmce-own" aria-hidden>
+                <MIcon name="check" size={14} stroke={3} />
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -336,9 +437,9 @@ function usePreview2D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
       const { value: c, name: nm, emote: em } = state.current;
-      const s = Math.min(w / (c.pet !== 'none' ? 92 : 70), h / 72);
+      const s = Math.min(w / (c.pet !== 'none' ? 92 : 70), h / 86); // headroom for tall hats
       const fx = w / 2 - (c.pet !== 'none' ? 10 * s : 0);
-      const fy = h * 0.8;
+      const fy = h * 0.83;
       // Soft spotlight floor.
       const g = ctx.createRadialGradient(fx, fy, 2, fx, fy, 34 * s);
       g.addColorStop(0, 'rgba(110,161,255,0.28)');
@@ -453,23 +554,41 @@ function usePreview3D(canvas: React.RefObject<HTMLCanvasElement>, value: Cosmeti
   }, [value]);
 }
 
+/** Live animated preview: a three.js turntable, or the 2D painter (also the fallback). */
+export function PreviewCanvas({ value, name, emote, preview, className = 'mmce-canvas' }: { value: Cosmetics; name: string; emote: string | null; preview?: '2d' | '3d'; className?: string }): JSX.Element {
+  const [fallback2d, setFallback2d] = useState(false);
+  const canvas2d = useRef<HTMLCanvasElement>(null);
+  const canvas3d = useRef<HTMLCanvasElement>(null);
+  const use3d = preview === '3d' && !fallback2d;
+  usePreview2D(canvas2d, value, name, emote, !use3d);
+  const onFail = useCallback(() => setFallback2d(true), []);
+  usePreview3D(canvas3d, value, emote, use3d, onFail);
+  return use3d ? <canvas ref={canvas3d} className={className} /> : <canvas ref={canvas2d} className={className} role="img" aria-label={`${name || 'Your berry'} preview`} />;
+}
+
 // ---------------------------------------------------------------------------
 // Editor
 
 export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
-  const { onChange, onNameChange, takenColors } = props;
+  const { onChange, onNameChange, takenColors, onLocked } = props;
   const value = useMemo(() => sanitizeCosmetics(props.value), [props.value]);
   const [tab, setTab] = useState<TabId>('berry');
   const [previewEmote, setPreviewEmote] = useState<string | null>(null);
-  const [fallback2d, setFallback2d] = useState(false);
-  const canvas2d = useRef<HTMLCanvasElement>(null);
-  const canvas3d = useRef<HTMLCanvasElement>(null);
-  const use3d = props.preview === '3d' && !fallback2d;
   const name = props.name ?? '';
-
-  usePreview2D(canvas2d, value, name, previewEmote, !use3d);
-  const onFail = useCallback(() => setFallback2d(true), []);
-  usePreview3D(canvas3d, value, previewEmote, use3d, onFail);
+  const ownedSet = useMemo(() => (props.owned ? new Set(props.owned) : null), [props.owned]);
+  /** The item's key when the shop is on and it isn't owned yet. */
+  const lockedKey = (slot: ShopSlot, id: string): string | null => (ownedSet && !isOwned(ownedSet, itemKey(slot, id)) ? itemKey(slot, id) : null);
+  /** Equip unless locked (then hand the item to the shop). */
+  const pick = (slot: ShopSlot, id: string, apply: () => void): void => {
+    const k = lockedKey(slot, id);
+    if (k) {
+      sfx.play('shop.locked');
+      onLocked?.(k);
+      return;
+    }
+    sfx.play('ui.equip');
+    apply();
+  };
 
   useEffect(() => {
     if (tab === 'victory') setPreviewEmote(value.victory);
@@ -483,14 +602,10 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
     [onChange, value],
   );
 
-  const base = value;
-  const thumbItems = (list: readonly CatalogItem[], field: keyof Cosmetics, kind: ThumbKind, tweak?: (c: Cosmetics) => Cosmetics): GridItem[] =>
+  const thumbItems = (list: readonly CatalogItem[], slot: ShopSlot): GridItem[] =>
     list.map((it) => {
-      let c: Cosmetics = { ...base, [field]: it.id } as Cosmetics;
-      if (kind === 'face') c = { ...c, hat: 'none', hair: 'none', back: 'none', outfit: 'none', face: field === 'face' ? it.id : 'none' };
-      if (tweak) c = tweak(c);
-      const key = `${kind}|${String(field)}|${it.id}|${c.berry}|${c.color}|${c.pattern}|${c.eyes}|${c.brows}|${c.mouth}|${c.hair}|${c.hairColor}|${c.hat}|${c.face}|${c.outfit}|${c.back}`;
-      return { id: it.id, label: it.name, thumb: renderThumb(key, kind, c, it.id, name) };
+      const lk = lockedKey(slot, it.id);
+      return { id: it.id, label: it.name, thumb: slotThumb(slot, it.id, value, name), locked: !!lk, price: lk ? priceOf(lk) : undefined };
     });
 
   let body: ReactNode = null;
@@ -498,9 +613,9 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
     case 'berry':
       body = (
         <>
-          <Grid label="Berry type" items={thumbItems(BERRIES, 'berry', 'full', (c) => ({ ...c, hat: 'none', back: 'none' }))} selected={[value.berry]} onSelect={(id) => set({ berry: id as Cosmetics['berry'] })} />
+          <Grid label="Berry type" items={thumbItems(BERRIES, 'berry')} selected={[value.berry]} onSelect={(id) => pick('berry', id, () => set({ berry: id as Cosmetics['berry'] }))} />
           <h3 className="mmce-h">Pattern</h3>
-          <Grid label="Pattern" items={thumbItems(PATTERNS, 'pattern', 'full', (c) => ({ ...c, outfit: 'none', hat: 'none', back: 'none' }))} selected={[value.pattern]} onSelect={(id) => set({ pattern: id })} />
+          <Grid label="Pattern" items={thumbItems(PATTERNS, 'pattern')} selected={[value.pattern]} onSelect={(id) => pick('pattern', id, () => set({ pattern: id }))} />
         </>
       );
       break;
@@ -511,7 +626,10 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
           variant="swatches"
           items={PALETTE.map((p, i) => ({ id: String(i), label: p.name, swatch: `radial-gradient(circle at 35% 30%, ${p.light}, ${p.hex} 55%, ${p.dark})`, dim: !!takenColors?.includes(i) && i !== value.color, badge: takenColors?.includes(i) && i !== value.color ? 'taken' : undefined }))}
           selected={[String(value.color)]}
-          onSelect={(id) => set({ color: Number(id) })}
+          onSelect={(id) => {
+            sfx.play('ui.equip');
+            set({ color: Number(id) });
+          }}
         />
       );
       break;
@@ -519,46 +637,49 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
       body = (
         <>
           <h3 className="mmce-h">Eyes</h3>
-          <Grid label="Eyes" items={thumbItems(EYES, 'eyes', 'face')} selected={[value.eyes]} onSelect={(id) => set({ eyes: id })} />
+          <Grid label="Eyes" items={thumbItems(EYES, 'eyes')} selected={[value.eyes]} onSelect={(id) => pick('eyes', id, () => set({ eyes: id }))} />
           <h3 className="mmce-h">Brows</h3>
-          <Grid label="Brows" items={thumbItems(BROWS, 'brows', 'face')} selected={[value.brows]} onSelect={(id) => set({ brows: id })} />
+          <Grid label="Brows" items={thumbItems(BROWS, 'brows')} selected={[value.brows]} onSelect={(id) => pick('brows', id, () => set({ brows: id }))} />
           <h3 className="mmce-h">Mouth</h3>
-          <Grid label="Mouth" items={thumbItems(MOUTHS, 'mouth', 'face')} selected={[value.mouth]} onSelect={(id) => set({ mouth: id })} />
+          <Grid label="Mouth" items={thumbItems(MOUTHS, 'mouth')} selected={[value.mouth]} onSelect={(id) => pick('mouth', id, () => set({ mouth: id }))} />
         </>
       );
       break;
     case 'hair':
       body = (
         <>
-          <Grid label="Hair style" items={thumbItems(HAIR, 'hair', 'top', (c) => ({ ...c, hat: 'none' }))} selected={[value.hair]} onSelect={(id) => set({ hair: id })} />
+          <Grid label="Hair style" items={thumbItems(HAIR, 'hair')} selected={[value.hair]} onSelect={(id) => pick('hair', id, () => set({ hair: id }))} />
           <h3 className="mmce-h">Hair colour</h3>
           <Grid
             label="Hair colour"
             variant="swatches"
             items={HAIR_COLORS.map((h) => ({ id: h.hex, label: h.name, swatch: `radial-gradient(circle at 35% 30%, #ffffff55, ${h.hex} 55%)` }))}
             selected={[value.hairColor]}
-            onSelect={(id) => set({ hairColor: id })}
+            onSelect={(id) => {
+              sfx.play('ui.equip');
+              set({ hairColor: id });
+            }}
           />
         </>
       );
       break;
     case 'hat':
-      body = <Grid label="Hat" items={thumbItems(HATS, 'hat', 'top')} selected={[value.hat]} onSelect={(id) => set({ hat: id })} />;
+      body = <Grid label="Hat" items={thumbItems(HATS, 'hat')} selected={[value.hat]} onSelect={(id) => pick('hat', id, () => set({ hat: id }))} />;
       break;
     case 'faceacc':
-      body = <Grid label="Face accessory" items={thumbItems(FACE, 'face', 'face')} selected={[value.face]} onSelect={(id) => set({ face: id })} />;
+      body = <Grid label="Face accessory" items={thumbItems(FACE, 'face')} selected={[value.face]} onSelect={(id) => pick('face', id, () => set({ face: id }))} />;
       break;
     case 'outfit':
-      body = <Grid label="Outfit" items={thumbItems(OUTFITS, 'outfit', 'full', (c) => ({ ...c, back: 'none' }))} selected={[value.outfit]} onSelect={(id) => set({ outfit: id })} />;
+      body = <Grid label="Outfit" items={thumbItems(OUTFITS, 'outfit')} selected={[value.outfit]} onSelect={(id) => pick('outfit', id, () => set({ outfit: id }))} />;
       break;
     case 'back':
-      body = <Grid label="Back item" items={thumbItems(BACK, 'back', 'full')} selected={[value.back]} onSelect={(id) => set({ back: id })} />;
+      body = <Grid label="Back item" items={thumbItems(BACK, 'back')} selected={[value.back]} onSelect={(id) => pick('back', id, () => set({ back: id }))} />;
       break;
     case 'pet':
-      body = <Grid label="Pet" items={thumbItems(PETS, 'pet', 'pet')} selected={[value.pet]} onSelect={(id) => set({ pet: id })} />;
+      body = <Grid label="Pet" items={thumbItems(PETS, 'pet')} selected={[value.pet]} onSelect={(id) => pick('pet', id, () => set({ pet: id }))} />;
       break;
     case 'nameplate':
-      body = <Grid label="Nameplate" variant="plate" items={thumbItems(NAMEPLATES, 'nameplate', 'plate')} selected={[value.nameplate]} onSelect={(id) => set({ nameplate: id })} />;
+      body = <Grid label="Nameplate" variant="plate" items={thumbItems(NAMEPLATES, 'nameplate')} selected={[value.nameplate]} onSelect={(id) => pick('nameplate', id, () => set({ nameplate: id }))} />;
       break;
     case 'emotes':
       body = (
@@ -569,16 +690,18 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
           <Grid
             label="Emotes"
             multi
-            items={thumbItems(EMOTES, 'emotes', 'emote').map((it, i) => ({ ...it, badge: value.emotes.includes(it.id) ? String(value.emotes.indexOf(it.id) + 1) : undefined, label: EMOTES[i]!.name }))}
+            items={thumbItems(EMOTES, 'emotes').map((it) => ({ ...it, badge: value.emotes.includes(it.id) ? String(value.emotes.indexOf(it.id) + 1) : undefined }))}
             selected={value.emotes}
-            onSelect={(id) => {
-              setPreviewEmote(id);
-              const has = value.emotes.includes(id);
-              if (has) {
-                if (value.emotes.length > 1) set({ emotes: value.emotes.filter((e) => e !== id) });
-              } else if (value.emotes.length < MAX_EMOTES) set({ emotes: [...value.emotes, id] });
-              else set({ emotes: [...value.emotes.slice(1), id] });
-            }}
+            onSelect={(id) =>
+              pick('emotes', id, () => {
+                setPreviewEmote(id);
+                const has = value.emotes.includes(id);
+                if (has) {
+                  if (value.emotes.length > 1) set({ emotes: value.emotes.filter((e) => e !== id) });
+                } else if (value.emotes.length < MAX_EMOTES) set({ emotes: [...value.emotes, id] });
+                else set({ emotes: [...value.emotes.slice(1), id] });
+              })
+            }
           />
         </>
       );
@@ -587,12 +710,14 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
       body = (
         <Grid
           label="Victory pose"
-          items={thumbItems(VICTORY, 'victory', 'pose')}
+          items={thumbItems(VICTORY, 'victory')}
           selected={[value.victory]}
-          onSelect={(id) => {
-            setPreviewEmote(id);
-            set({ victory: id });
-          }}
+          onSelect={(id) =>
+            pick('victory', id, () => {
+              setPreviewEmote(id);
+              set({ victory: id });
+            })
+          }
         />
       );
       break;
@@ -636,14 +761,18 @@ export function CustomizeEditor(props: CustomizeEditorProps): JSX.Element {
 
   return (
     <div className="mmce" data-testid="customize-editor">
-      <style>{CSS}</style>
+      <style>{EDITOR_CSS}</style>
       <section className="mmce-stage" aria-label="Character preview">
-        {use3d ? <canvas ref={canvas3d} className="mmce-canvas" /> : <canvas ref={canvas2d} className="mmce-canvas" role="img" aria-label={`${name || 'Your berry'} preview`} />}
+        <PreviewCanvas value={value} name={name} emote={previewEmote} preview={props.preview} />
         <div className="mmce-stagebar">
           {onNameChange ? (
             <input className="mmce-name" aria-label="Name" value={name} maxLength={16} placeholder="Your name" onChange={(e) => onNameChange(e.target.value.slice(0, 16))} />
           ) : null}
-          <button type="button" className="mmce-btn" onClick={() => onChange(sanitizeCosmetics(randomCosmetics(Math.floor(Math.random() * 1e9))))}>
+          <button type="button" className="mmce-btn" onClick={() => {
+              // Randomise only picks from what this player owns.
+              const rnd = randomCosmetics(Math.floor(Math.random() * 1e9));
+              onChange(sanitizeCosmetics(ownedSet ? restrictToOwned(rnd, ownedSet, value) : rnd));
+            }}>
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
               <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
               <circle cx="8.5" cy="8.5" r="1.3" fill="currentColor" stroke="none" />
