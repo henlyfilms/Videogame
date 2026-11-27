@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, useFinish, useHold, useIds, useRaf, useTimers, type BerryKind, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, tsfx, useFinish, useHold, useIds, useRaf, useTimers, type BerryKind, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -30,7 +30,7 @@ export default function WaterPlants({ kind, seed, onComplete, reducedMotion }: M
   const draining = useRef([false, false, false]);
   const [toast, setToast] = useState({ k: 0, text: '' });
   const [burst, setBurst] = useState({ k: 0, x: 0 });
-  const hold = useHold(!done);
+  const hold = useHold(!done, [], 'pour');
   const wasHolding = useRef(false);
 
   const moveTo = (i: number) => {
@@ -44,6 +44,7 @@ export default function WaterPlants({ kind, seed, onComplete, reducedMotion }: M
     if (okRef.current[i] || v < line - BAND_LO || v > line + BAND_HI) return;
     okRef.current = okRef.current.map((o, j) => (j === i ? true : o));
     setOk(okRef.current);
+    tsfx('good', okRef.current.filter(Boolean).length / okRef.current.length);
     setBurst((b) => ({ k: b.k + 1, x: POT_X[i] as number }));
     if (okRef.current.every(Boolean)) finish(600);
     else {
@@ -62,6 +63,7 @@ export default function WaterPlants({ kind, seed, onComplete, reducedMotion }: M
       if (v > line + BAND_HI) {
         draining.current = draining.current.map((d, j) => (j === i ? true : d));
         setToast((t) => ({ k: t.k + 1, text: 'Whoa — overflow! Let it drain' }));
+        tsfx('bad');
         hold.set(false);
       }
     }
@@ -82,7 +84,9 @@ export default function WaterPlants({ kind, seed, onComplete, reducedMotion }: M
     if (done) return;
     if (k.down && (k.dir === 'left' || k.dir === 'right')) {
       if (hold.ref.current) return;
-      moveTo(Math.max(0, Math.min(2, cursorRef.current + (k.dir === 'left' ? -1 : 1))));
+      const n = Math.max(0, Math.min(2, cursorRef.current + (k.dir === 'left' ? -1 : 1)));
+      if (n !== cursorRef.current) tsfx('move');
+      moveTo(n);
       return;
     }
     hold.key(k);

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Burst, C, Caption, FocusCircle, GameShell, Stage, capture, clamp, svgPoint, useFinish, useHold, useIds, useRaf, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusCircle, GameShell, Stage, capture, clamp, svgPoint, useFinish, useHold, useHoldSound, useIds, useRaf, type KeyInput } from './kit';
 import type { MiniGameProps } from './types';
 
 export const CRANK_RATE = 0.36; // charge per second while cranking
@@ -20,6 +20,9 @@ export default function RechargeGenerator({ kind, onComplete, reducedMotion }: M
   const hold = useHold(!done);
   const [burst, setBurst] = useState(0);
   const lastSpin = useRef(0);
+  // Ratchet sound while the crank turns (held or spun by hand).
+  const [spinning, setSpinning] = useState(false);
+  useHoldSound(spinning && !done, 'crank');
 
   const bump = (v: number) => {
     cRef.current = clamp(cRef.current + v, 0, 1);
@@ -38,6 +41,7 @@ export default function RechargeGenerator({ kind, onComplete, reducedMotion }: M
     } else if (now - lastSpin.current > 200) cRef.current = Math.max(0, cRef.current - DECAY * dt);
     setCharge(cRef.current);
     setAngle(aRef.current);
+    setSpinning(now - lastSpin.current < 160);
   });
 
   const needle = -100 + charge * 200;

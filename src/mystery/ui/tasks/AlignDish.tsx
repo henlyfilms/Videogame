@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { C, Caption, FocusCircle, GameShell, Stage, Twinkles, capture, clamp, svgPoint, useFinish, useIds, useRaf, type KeyInput } from './kit';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { C, Caption, FocusCircle, GameShell, Stage, Twinkles, capture, clamp, svgPoint, tsfx, useFinish, useIds, useRaf, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -49,12 +49,18 @@ export default function AlignDish({ kind, seed, onComplete, reducedMotion }: Min
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir === 'left' || k.dir === 'down') setAngle(angleRef.current - DISH_STEP);
-    else if (k.dir === 'right' || k.dir === 'up') setAngle(angleRef.current + DISH_STEP);
+    if (k.dir === 'left' || k.dir === 'down') (setAngle(angleRef.current - DISH_STEP), tsfx('move'));
+    else if (k.dir === 'right' || k.dir === 'up') (setAngle(angleRef.current + DISH_STEP), tsfx('move'));
   };
 
   const sig = signalOf(angle, g.target);
   const locked = done || Math.abs(angle - g.target) <= TOL;
+  // A soft confirm when the signal comes into range.
+  const wasLocked = useRef(locked);
+  useEffect(() => {
+    if (locked && !wasLocked.current && !done) tsfx('good', 0.8);
+    wasLocked.current = locked;
+  }, [locked, done]);
   const rad = (g.target * Math.PI) / 180;
   const sat = { x: PIVOT.x + Math.sin(rad) * 200, y: PIVOT.y - Math.cos(rad) * 200 };
   // oscilloscope wave
@@ -81,7 +87,9 @@ export default function AlignDish({ kind, seed, onComplete, reducedMotion }: Min
           if (!drag || done) return;
           const p = svgPoint(svg.current, e);
           const a = (Math.atan2(p.x - PIVOT.x, PIVOT.y - p.y) * 180) / Math.PI;
+          const before = Math.round(angleRef.current / DISH_STEP);
           setAngle(a);
+          if (Math.round(angleRef.current / DISH_STEP) !== before) tsfx('move'); // gear detent
         }}
         onPointerUp={() => setDrag(false)}
         onPointerDown={(e) => {
@@ -89,6 +97,7 @@ export default function AlignDish({ kind, seed, onComplete, reducedMotion }: Min
           const p = svgPoint(svg.current, e);
           if (p.x > 330) return;
           capture(e);
+          tsfx('grab');
           setDrag(true);
           setAngle((Math.atan2(p.x - PIVOT.x, PIVOT.y - p.y) * 180) / Math.PI);
         }}

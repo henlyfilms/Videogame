@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Burst, C, Caption, FocusRing, GameShell, Stage, Toast, gridMove, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusRing, GameShell, Stage, Toast, gridMove, tsfx, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -35,6 +35,7 @@ export default function UnlockManifold({ kind, seed, onComplete, reducedMotion }
     const x = X0 + (i % MANIFOLD_COLS) * (BW + GAP) + BW / 2;
     const y = Y0 + Math.floor(i / MANIFOLD_COLS) * (BW + GAP) + BW / 2;
     if (n !== next) {
+      tsfx('bad');
       setNext(1);
       bumpErr();
       setFlash(true);
@@ -42,13 +43,18 @@ export default function UnlockManifold({ kind, seed, onComplete, reducedMotion }
       return;
     }
     setBurst((b) => ({ k: b.k + 1, x, y }));
+    tsfx('good', n / 10);
     setNext(n + 1);
     if (n === 10) finish(600);
   };
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir) setCursor((c) => gridMove(c, k.dir!, MANIFOLD_COLS, 10));
+    if (k.dir) {
+      const n = gridMove(cursor, k.dir, MANIFOLD_COLS, 10);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action && !k.repeat) press(cursor);
     else if (/^[0-9]$/.test(k.key) && !k.repeat) {
       const n = k.key === '0' ? 10 : Number(k.key);

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusCircle, GameShell, Stage, capture, clamp, now, svgPoint, useFinish, useHold, useIds, useRaf, type BerryKind, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusCircle, GameShell, Stage, capture, clamp, now, svgPoint, tsfx, useFinish, useHold, useHoldSound, useIds, useRaf, type BerryKind, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -34,7 +34,8 @@ export default function JuicePress({ kind, seed, onComplete, reducedMotion }: Mi
   const [flowing, setFlowing] = useState(false);
   const [burst, setBurst] = useState(0);
   const drag = useRef<{ a: number } | null>(null);
-  const hold = useHold(!done);
+  const hold = useHold(!done, [], 'crank');
+  useHoldSound(flowing && !done, 'pour');
 
   const add = (v: number, spin: number) => {
     if (done) return;
@@ -58,11 +59,11 @@ export default function JuicePress({ kind, seed, onComplete, reducedMotion }: Mi
   const onKey = (k: KeyInput) => {
     if (done) return;
     if (k.action) {
-      if (k.down && !k.repeat) add(PUMP, 90);
+      if (k.down && !k.repeat) (add(PUMP, 90), tsfx('drop'));
       hold.key(k);
       return true;
     }
-    if (k.down && !k.repeat && (k.dir === 'left' || k.dir === 'right' || k.dir === 'down')) add(PUMP * 0.75, k.dir === 'left' ? -70 : 70);
+    if (k.down && !k.repeat && (k.dir === 'left' || k.dir === 'right' || k.dir === 'down')) (add(PUMP * 0.75, k.dir === 'left' ? -70 : 70), tsfx('drop'));
   };
 
   const plateY = 96 + fill * 52;

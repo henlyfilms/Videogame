@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { BERRY_COLORS, Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, svgPoint, useBump, useFinish, useIds, useTimers, type BerryKind, type KeyInput } from './kit';
+import { BERRY_COLORS, Berry, Burst, C, Caption, FocusRing, GameShell, Stage, Toast, capture, svgPoint, tsfx, useBump, useFinish, useIds, useTimers, type BerryKind, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -63,12 +63,14 @@ export default function SortBerries({ kind, seed, onComplete, reducedMotion }: M
     setDrag(null);
     if (binOf(item.ripe) !== bin) {
       setAnim('bounce');
+      tsfx('bad');
       setToast((t) => ({ k: t.k + 1, text: item.ripe === 2 ? 'This one is ripe and ready!' : item.ripe === 1 ? 'Almost there — not ripe yet' : 'Way too green for that bin' }));
       later(() => setAnim(null), 520);
       return;
     }
     setAnim('drop');
     later(() => {
+      tsfx('good', (idx + 1) / items.length);
       setCounts((c) => c.map((v, i) => (i === bin ? v + 1 : v)));
       setBurst((b) => ({ k: b.k + 1, x: BINS[bin]!.x }));
     }, 260);
@@ -83,8 +85,11 @@ export default function SortBerries({ kind, seed, onComplete, reducedMotion }: M
 
   const onKey = (k: KeyInput) => {
     if (!k.down || busy) return;
-    if (k.dir === 'left') setPos((p) => Math.max(0, p - 1));
-    else if (k.dir === 'right') setPos((p) => Math.min(2, p + 1));
+    if (k.dir === 'left' || k.dir === 'right') {
+      const n = k.dir === 'left' ? Math.max(0, pos - 1) : Math.min(2, pos + 1);
+      if (n !== pos) tsfx('move');
+      setPos(n);
+    }
     else if ((k.action || k.dir === 'down') && !k.repeat) drop(pos);
   };
 

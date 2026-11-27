@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Burst, C, Caption, FocusCircle, FocusRing, GameShell, Stage, Toast, capture, clamp, svgPoint, useBump, useFinish, useHold, useIds, useRaf, useTimers, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusCircle, FocusRing, GameShell, Stage, Toast, capture, clamp, svgPoint, tsfx, useBump, useFinish, useHold, useHoldSound, useIds, useRaf, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -49,19 +49,23 @@ export default function DistillReel({ kind, seed, onComplete, reducedMotion }: M
   const [toast, bumpToast] = useBump();
   const [burst, bumpBurst] = useBump();
   const [cards, setCards] = useState(0);
-  const hold = useHold(phase === 'lever', ['down']);
+  const hold = useHold(phase === 'lever', ['down'], 'lever');
   const target = g.reels[g.target] as Reel;
+  useHoldSound(phase === 'lever' && dragPull !== null, 'lever');
 
   const tryDrop = (i: number) => {
     if (phase !== 'pick') return;
     setCursor(i);
     if (i !== g.target) {
+      tsfx('bad');
       setShake((s) => ({ k: s.k + 1, i }));
       bumpToast();
       return;
     }
     setPhase('drop');
+    tsfx('grab');
     later(() => {
+      tsfx('drop');
       bumpBurst();
       setPhase('lever');
     }, 620);
@@ -71,9 +75,10 @@ export default function DistillReel({ kind, seed, onComplete, reducedMotion }: M
     if (phaseRef.current !== 'lever') return;
     phaseRef.current = 'distill';
     setPhase('distill');
-    later(() => setCards(1), 380);
-    later(() => setCards(2), 700);
-    later(() => setCards(3), 1020);
+    tsfx('drop');
+    later(() => (setCards(1), tsfx('good', 0.4)), 380);
+    later(() => (setCards(2), tsfx('good', 0.7)), 700);
+    later(() => (setCards(3), tsfx('good', 1)), 1020);
     later(() => {
       setPhase('done');
       finish(300);
@@ -96,8 +101,11 @@ export default function DistillReel({ kind, seed, onComplete, reducedMotion }: M
   const onKey = (k: KeyInput) => {
     if (phase === 'pick') {
       if (!k.down) return;
-      if (k.dir === 'left') setCursor((c) => Math.max(0, c - 1));
-      else if (k.dir === 'right') setCursor((c) => Math.min(2, c + 1));
+      if (k.dir === 'left' || k.dir === 'right') {
+        const n = k.dir === 'left' ? Math.max(0, cursor - 1) : Math.min(2, cursor + 1);
+        if (n !== cursor) tsfx('move');
+        setCursor(n);
+      }
       else if (k.action && !k.repeat) tryDrop(cursor);
       return;
     }

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Burst, C, Caption, FocusCircle, GameShell, Stage, capture, spatialMove, svgPoint, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusCircle, GameShell, Stage, capture, spatialMove, svgPoint, tsfx, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -49,6 +49,7 @@ export default function CleanFilter({ kind, seed, onComplete, reducedMotion }: M
     setPos((p) => p.map((q, j) => (j === i ? to : q)));
     const g2 = goneRef.current.map((v, j) => (j === i ? true : v));
     goneRef.current = g2;
+    tsfx('good', g2.filter(Boolean).length / g2.length);
     later(() => {
       setGone(g2);
       setFlying(null);
@@ -82,7 +83,11 @@ export default function CleanFilter({ kind, seed, onComplete, reducedMotion }: M
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir) setCursor((c) => spatialMove(pos, c, k.dir!, (j) => goneRef.current[j] === true));
+    if (k.dir) {
+      const n = spatialMove(pos, cursor, k.dir, (j) => goneRef.current[j] === true);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action && !k.repeat && flying === null) {
       if (goneRef.current[cursor]) return;
       flick(cursor);
@@ -162,6 +167,7 @@ export default function CleanFilter({ kind, seed, onComplete, reducedMotion }: M
                 const q = svgPoint(svg.current, e);
                 setCursor(i);
                 setDrag({ i, dx: q.x - p.x, dy: q.y - p.y });
+                tsfx('grab');
               }}
             >
               <circle r={30} fill="transparent" />

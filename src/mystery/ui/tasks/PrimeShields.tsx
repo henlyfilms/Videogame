@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Burst, C, Caption, GameShell, Stage, spatialMove, useFinish, useIds, useShell, type KeyInput } from './kit';
+import { Burst, C, Caption, GameShell, Stage, spatialMove, tsfx, useFinish, useIds, useShell, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -38,18 +38,24 @@ export default function PrimeShields({ kind, seed, onComplete, reducedMotion }: 
     if (done) return;
     setCursor(i);
     if (!red[i]) {
+      tsfx('bad');
       setWob((w) => ({ ...w, [i]: (w[i] ?? 0) + 1 }));
       return;
     }
     const next = red.map((v, j) => (j === i ? false : v));
     setRed(next);
+    tsfx('good', 1 - next.filter(Boolean).length / Math.max(1, start.filter(Boolean).length));
     setBursts((b) => ({ ...b, [i]: (b[i] ?? 0) + 1 }));
     if (next.every((v) => !v)) finish(550);
   };
 
   const onKey = (k: KeyInput) => {
     if (!k.down || done) return;
-    if (k.dir) setCursor((c) => spatialMove(HEXES, c, k.dir!));
+    if (k.dir) {
+      const n = spatialMove(HEXES, cursor, k.dir);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action && !k.repeat) tap(cursor);
   };
 

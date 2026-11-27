@@ -11,9 +11,11 @@ import type { MatchEvent, Vec2 } from '../core/types';
 import { runtime } from '../client/runtime';
 import { useMystery } from '../client/store';
 import { engine, hz } from './engine';
-import { music, stinger, TRACK_BY_ID } from './music';
+import { music, stinger, TRACK_BY_ID, type Stinger } from './music';
 
 export type Scene = 'menu' | 'lobby' | 'match' | 'night';
+export type TaskSound = 'good' | 'bad' | 'grab' | 'drop' | 'move' | 'solve';
+export type HoldSound = 'pour' | 'crank' | 'scan' | 'lever' | 'charge' | 'burn';
 type CaptionFn = (text: string) => void;
 
 const FLOOR_SOUND: Record<FloorStyle, { freq: number; q: number; dur: number; vol: number; type: BiquadFilterType; tone?: number }> = {
@@ -45,6 +47,15 @@ class Sfx {
   private lastBuzz = 0;
   private lastHover = 0;
   private menuTrack = 'title';
+  /** QA trace (only with ?debug=1): the name of every sound requested, newest last. */
+  trace: string[] | null = null;
+
+  private note(name: string) {
+    const tr = this.trace;
+    if (!tr) return;
+    tr.push(name);
+    if (tr.length > 4000) tr.splice(0, 2000);
+  }
 
   configure(o: { muted: boolean; volume: number; music: number; menuTrack?: string }) {
     this.muted = o.muted;
@@ -98,6 +109,7 @@ class Sfx {
 
   // -------------------------------------------------------------------------
   play(name: string, pos?: Vec2) {
+    this.note(name);
     const b = engine.buses;
     const ctx = engine.ctx;
     if (!b || !ctx) return;
@@ -133,10 +145,16 @@ class Sfx {
         engine.tone(ui, 660, t, 0.12, 0.05, 'sine', 990, 0, 0.2);
         break;
       case 'ui.close':
-        engine.noiseHit(ui, t, 0.14, 0.05, 3000, 'bandpass', 0.8, 0.1, 700);
+        engine.noiseHit(ui, t, 0.14, 0.09, 3000, 'bandpass', 0.8, 0.1, 700);
+        engine.tone(ui, 990, t, 0.07, 0.03, 'sine', 620);
         break;
       case 'ui.type':
-        engine.noiseHit(ui, t, 0.02, 0.05, 4000 + Math.random() * 2000, 'bandpass', 3);
+        engine.noiseHit(ui, t, 0.025, 0.16, 3000 + Math.random() * 2000, 'bandpass', 2);
+        engine.tone(ui, 1800 + Math.random() * 400, t, 0.012, 0.012, 'square');
+        break;
+      case 'ui.denied': // tapped something that isn't available: a dull, short tock
+        engine.tone(ui, 300, t, 0.05, 0.07, 'triangle', 240);
+        engine.noiseHit(ui, t, 0.03, 0.05, 900, 'lowpass');
         break;
       case 'ui.error':
         engine.tone(ui, 220, t, 0.12, 0.1, 'square', 180);
@@ -203,6 +221,34 @@ class Sfx {
         [523, 659, 784, 1047].forEach((f, i) => engine.bell(out, f, t + i * 0.06, 0.28, { kind: 'marimba', rev: 0.25 }));
         engine.noiseHit(out, t + 0.2, 0.4, 0.05, 9000, 'highpass', 0.6, 0.3);
         this.caption('Task complete chime');
+        break;
+      case 'task.stepDone': // one step of a multi-step task credited: two notes, "keep going"
+        engine.bell(out, hz('E5'), t, 0.24, { kind: 'marimba', rev: 0.2 });
+        engine.bell(out, hz('B5'), t + 0.07, 0.24, { kind: 'marimba', rev: 0.25 });
+        this.caption('Task step done — next station');
+        break;
+      // ---- task mini-game steps (see task()) ----
+      case 'task.move': // cursor moved between targets
+        engine.tone(ui, 1900 + Math.random() * 200, t, 0.022, 0.05, 'sine');
+        break;
+      case 'task.grab': // picked something up
+        engine.tone(ui, 300, t, 0.07, 0.11, 'sine', 620);
+        engine.noiseHit(ui, t, 0.03, 0.05, 2500, 'bandpass', 2);
+        break;
+      case 'task.drop': // put something down / slotted in
+        engine.noiseHit(ui, t, 0.05, 0.12, 900, 'bandpass', 1.4);
+        engine.tone(ui, 240, t, 0.08, 0.12, 'sine', 140);
+        break;
+      case 'task.bad': // wrong move: soft, low "nope" (not an alarm)
+        engine.tone(ui, 196, t, 0.11, 0.09, 'square', 165);
+        engine.tone(ui, 147, t + 0.09, 0.14, 0.08, 'square', 123);
+        engine.noiseHit(ui, t, 0.06, 0.04, 700, 'lowpass');
+        this.caption('Wrong — try again');
+        break;
+      case 'task.solve': // the mini-game is solved (local, before the server credits it)
+        engine.noiseHit(ui, t, 0.04, 0.12, 1800, 'bandpass', 2);
+        engine.bell(ui, hz('G6'), t + 0.03, 0.2, { kind: 'glass', rev: 0.3 });
+        engine.bell(ui, hz('D7'), t + 0.1, 0.16, { kind: 'glass', rev: 0.4 });
         break;
       // ---- world ----
       case 'kill':
@@ -284,6 +330,38 @@ class Sfx {
         engine.noiseHit(out, t, 0.05, 0.3, 5000, 'highpass');
         engine.tone(out, 1700, t + 0.05, 0.06, 0.06, 'square');
         break;
+      case 'inspect': // detective: a soft "hmm" and a notebook scribble
+        engine.noiseHit(out, t, 0.18, 0.08, 3500, 'bandpass', 3, 0, 5500);
+        engine.bell(out, hz('D6'), t + 0.05, 0.16, { kind: 'glass', rev: 0.3 });
+        engine.bell(out, hz('A5'), t + 0.17, 0.14, { kind: 'glass', rev: 0.4 });
+        this.caption('Clue noted');
+        break;
+      case 'vitals': // heart-monitor blips
+        engine.tone(out, 1320, t, 0.07, 0.07, 'sine');
+        engine.tone(out, 1320, t + 0.24, 0.07, 0.06, 'sine');
+        this.caption('Vitals monitor');
+        break;
+      case 'gunDrop': // metal clatter on the floor
+        engine.noiseHit(out, t, 0.12, 0.3 * vol, 3200, 'bandpass', 2.5, 0.2, 0, pan);
+        engine.tone(out, 880, t, 0.18, 0.08 * vol, 'triangle', 760, pan);
+        engine.noiseHit(out, t + 0.14, 0.08, 0.18 * vol, 2600, 'bandpass', 2.5, 0.1, 0, pan);
+        this.caption('Something metal clatters');
+        break;
+      case 'flicker': // the lights stutter
+        for (let i = 0; i < 4; i++) engine.noiseHit(out, t + i * 0.07 + Math.random() * 0.03, 0.04, 0.14, 120 + Math.random() * 60, 'lowpass', 1);
+        engine.tone(out, 120, t, 0.3, 0.05, 'sawtooth', 110, 0, 0.2);
+        this.caption('Lights flicker');
+        break;
+      case 'leave': // a player disconnected
+        engine.tone(ui, hz('E5'), t, 0.12, 0.06, 'triangle');
+        engine.tone(ui, hz('B4'), t + 0.12, 0.16, 0.06, 'triangle');
+        this.caption('A player left');
+        break;
+      case 'doorOpen': // sabotaged doors slide back open
+        engine.noiseHit(out, t, 0.45, 0.12, 900, 'bandpass', 1, 0.2, 2600);
+        engine.tone(out, 60, t, 0.25, 0.15, 'sine', 90);
+        this.caption('Doors open');
+        break;
       case 'blackout':
         engine.tone(out, 400, t, 0.7, 0.18, 'sawtooth', 60, 0, 0.3);
         engine.noiseHit(out, t + 0.1, 0.4, 0.2, 2000, 'bandpass', 0.8, 0.3, 200);
@@ -334,10 +412,120 @@ class Sfx {
         break;
       case 'step':
         break;
+      default:
+        this.note(`?unknown:${name}`);
     }
   }
 
+  /**
+   * Mini-game step feedback. `good` climbs a pentatonic ladder with the
+   * game's progress (0..1), so every correct step is heard getting closer.
+   */
+  task(kind: TaskSound, progress = 0) {
+    if (kind !== 'good') return this.play(`task.${kind}`);
+    this.note('task.good');
+    const b = engine.buses;
+    const ctx = engine.ctx;
+    if (!b || !ctx) return;
+    const t = ctx.currentTime + 0.005;
+    const ladder = ['C5', 'D5', 'E5', 'G5', 'A5', 'C6', 'D6', 'E6', 'G6'];
+    const f = hz(ladder[Math.round(Math.max(0, Math.min(1, progress)) * (ladder.length - 1))]!);
+    engine.bell(b.ui, f, t, 0.32, { kind: 'marimba', rev: 0.15 });
+    engine.tone(b.ui, f * 2, t, 0.05, 0.05, 'triangle');
+  }
+
+  /** A sound that loops while a mini-game control is held (pour, crank, scan…). Returns its stopper. */
+  hold(kind: HoldSound): () => void {
+    this.note(`task.hold.${kind}`);
+    const b = engine.buses;
+    const ctx = engine.ctx;
+    if (!b || !ctx) return () => {};
+    const out = b.ui;
+    const stops: (() => void)[] = [];
+    // Continuous filtered-noise layer with a quick fade in/out.
+    const bed = (vol: number, freq: number, type: BiquadFilterType, q = 0.8, wobble = 0) => {
+      const src = ctx.createBufferSource();
+      src.buffer = engine.noise();
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.setTargetAtTime(vol, ctx.currentTime, 0.03);
+      src.connect(f).connect(g).connect(out);
+      let lfo: OscillatorNode | null = null;
+      if (wobble) {
+        lfo = ctx.createOscillator();
+        lfo.frequency.value = wobble;
+        const lg = ctx.createGain();
+        lg.gain.value = freq * 0.35;
+        lfo.connect(lg).connect(f.frequency);
+        lfo.start();
+      }
+      src.start(ctx.currentTime, Math.random());
+      stops.push(() => {
+        g.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.04);
+        setTimeout(() => {
+          try {
+            src.stop();
+            lfo?.stop();
+          } catch {
+            /* already stopped */
+          }
+          g.disconnect();
+        }, 300);
+      });
+    };
+    const every = (ms: number, fn: (n: number, t: number) => void) => {
+      let n = 0;
+      fn(n++, ctx.currentTime + 0.005);
+      const iv = setInterval(() => fn(n++, ctx.currentTime + 0.005), ms);
+      stops.push(() => clearInterval(iv));
+    };
+    switch (kind) {
+      case 'pour': // liquid: wobbling band noise + gurgles
+        bed(0.07, 1100, 'bandpass', 1.2, 7);
+        every(120, () => engine.tone(out, 260 + Math.random() * 380, ctx.currentTime, 0.06, 0.035, 'sine', 700 + Math.random() * 500));
+        break;
+      case 'crank': // ratchet clicks over a low gear grind
+        bed(0.035, 260, 'lowpass', 0.7);
+        every(110, (n, t) => engine.noiseHit(out, t, 0.025, n % 2 ? 0.08 : 0.12, 3200, 'bandpass', 3));
+        break;
+      case 'scan': // scanner hum + a beep each half second
+        bed(0.03, 2400, 'bandpass', 6, 2);
+        every(480, (_n, t) => engine.tone(out, 1250, t, 0.06, 0.05, 'sine'));
+        break;
+      case 'lever': // heavy rumble of a chute emptying
+        bed(0.09, 180, 'lowpass', 0.9, 3);
+        every(160, (_n, t) => engine.noiseHit(out, t, 0.05, 0.05, 500 + Math.random() * 400, 'bandpass', 2));
+        break;
+      case 'charge': // rising electric whine (badge reader, data link)
+        bed(0.02, 3000, 'bandpass', 3);
+        every(90, (n, t) => engine.tone(out, 600 + Math.min(n, 30) * 45, t, 0.05, 0.03, 'triangle'));
+        break;
+      case 'burn': // match on the wick: crackle + hiss
+        bed(0.05, 5000, 'highpass', 0.6);
+        every(70, (_n, t) => Math.random() < 0.5 && engine.noiseHit(out, t, 0.015, 0.06, 2500 + Math.random() * 3000, 'bandpass', 4));
+        break;
+    }
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      stops.forEach((s) => s());
+    };
+  }
+
+  /** Music stinger (logged in the QA trace). */
+  sting(kind: Stinger) {
+    this.note(`stinger.${kind}`);
+    stinger(kind);
+  }
+
   footstep(style: FloorStyle, vol = 1, pan = 0) {
+    this.note(`step.${style}`);
     const b = engine.buses;
     const ctx = engine.ctx;
     if (!b || !ctx) return;
@@ -360,6 +548,7 @@ class Sfx {
     this.alarmTimer = setInterval(() => {
       const ctx = engine.ctx;
       if (!ctx || !engine.buses) return;
+      this.note('alarm');
       engine.tone(engine.buses.sfx, hi ? 740 : 620, ctx.currentTime, 0.32, 0.07, 'square', 0, 0, 0.2);
       hi = !hi;
     }, 420);
@@ -454,7 +643,7 @@ class Sfx {
       switch (ev.type) {
         case 'kill':
           this.play('kill', p);
-          if (ev.target === me) setTimeout(() => stinger('ghost'), 900);
+          if (ev.target === me) setTimeout(() => this.sting('ghost'), 900);
           break;
         case 'shot':
           this.play(ev.data?.weapon === 'throw' ? 'throw' : 'shot', p);
@@ -475,7 +664,7 @@ class Sfx {
           break;
         case 'task':
         case 'visual':
-          if (ev.actor === me) this.play('taskDone');
+          if (ev.actor === me) this.play(ev.data?.done === false ? 'task.stepDone' : 'taskDone');
           break;
         case 'shield.hit':
           this.play('shield', p);
@@ -492,8 +681,20 @@ class Sfx {
         case 'blackout':
           this.play('blackout', p);
           break;
+        case 'inspect':
+          if (ev.actor === me) this.play('inspect');
+          break;
+        case 'gun.drop':
+          this.play('gunDrop', p);
+          break;
+        case 'flicker':
+          this.play('flicker');
+          break;
+        case 'leave':
+          this.play('leave');
+          break;
         case 'final':
-          stinger('final');
+          this.sting('final');
           break;
       }
     });
@@ -502,12 +703,14 @@ class Sfx {
       const a = prev.snap;
       const b = s.snap;
       if (prev.screen !== s.screen || prev.room?.stage !== s.room?.stage || a?.phase !== b?.phase || a?.mode !== b?.mode || !!a?.hns?.final !== !!b?.hns?.final || prev.room?.practice !== s.room?.practice) this.refreshScene();
+      // The first snapshot of a match arrives with no previous one: that's the role reveal.
+      if (b && !a && b.phase === 'intro') this.sting(b.you.team === 'murderers' ? 'reveal-murderer' : b.you.team === 'neutral' ? 'reveal-neutral' : 'reveal-crew');
       if (b && a) {
         if (a.phase !== b.phase) {
-          if (b.phase === 'intro') stinger(b.you.team === 'murderers' ? 'reveal-murderer' : b.you.team === 'neutral' ? 'reveal-neutral' : 'reveal-crew');
-          if (b.phase === 'meeting') stinger(b.meeting?.victimId ? 'report' : 'emergency');
-          if (b.phase === 'eject') stinger('eject');
-          if (b.phase === 'ended' && b.result) stinger(b.result.winners.includes(s.pid) ? 'victory' : 'defeat');
+          if (b.phase === 'intro') this.sting(b.you.team === 'murderers' ? 'reveal-murderer' : b.you.team === 'neutral' ? 'reveal-neutral' : 'reveal-crew');
+          if (b.phase === 'meeting') this.sting(b.meeting?.victimId ? 'report' : 'emergency');
+          if (b.phase === 'eject') this.sting('eject');
+          if (b.phase === 'ended' && b.result) this.sting(b.result.winners.includes(s.pid) ? 'victory' : 'defeat');
         }
         if (a.meeting && b.meeting && a.meeting.voted.length < b.meeting.voted.length) this.play('vote');
         if (a.meeting?.stage === 'vote' && b.meeting?.stage === 'reveal') this.play('drumroll');
@@ -518,6 +721,9 @@ class Sfx {
         if (b.you.battery > a.you.battery + 0.3) this.play('pickup');
         if (b.you.inVent !== a.you.inVent && b.you.inVent && a.you.inVent) this.play('vent');
         if (!a.you.portableCam && b.you.portableCam) this.play('camera');
+        if (!a.you.shieldTarget && b.you.shieldTarget) this.play('shield');
+        if (!a.you.roundAbilityUsed && b.you.roundAbilityUsed && b.you.role === 'medic') this.play('vitals');
+        if (b.phase === 'play' && a.phase === 'play' && a.sabotage.closedDoors.length > b.sabotage.closedDoors.length) this.play('doorOpen');
         if (b.phase === 'meeting' && b.chat.length) this.play('ui.chat');
         if (a.you.activeTask !== b.you.activeTask && b.you.activeTask) this.play('task.open');
         // Someone else's new ping (our own plays on press).
@@ -537,7 +743,8 @@ class Sfx {
         for (let i = Math.ceil(ends) - 1; i >= 0; i--) setTimeout(() => this.play(i === 0 ? 'ui.go' : 'ui.countdown'), (ends - i) * 1000);
       }
       if (s.toasts.length > prev.toasts.length && s.toasts[s.toasts.length - 1]?.tone === 'bad') this.play('ui.error');
-      if (prev.showMap !== s.showMap || prev.showStats !== s.showStats) this.play(s.showMap || s.showStats ? 'ui.open' : 'ui.close');
+      // The tablet slides in and out (the stats sheet is a Modal, which sounds by itself).
+      if (prev.showMap !== s.showMap) this.play(s.showMap ? 'ui.open' : 'ui.close');
       if (prev.taskStation && !s.taskStation) this.play('task.close');
       prev = s;
     });
@@ -545,10 +752,12 @@ class Sfx {
     const onDown = (e: PointerEvent) => {
       const el = (e.target as HTMLElement | null)?.closest?.('button, [role="button"], select, label');
       if (!el || !(el as HTMLElement).closest('.mm-root')) return;
-      if ((el as HTMLButtonElement).disabled) return;
+      if ((el as HTMLElement).closest('.mmg-root')) return; // task mini-games make their own sounds
+      // Not available (yet): a dull tock instead of silence.
+      if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return this.play('ui.denied');
       const cls = (el as HTMLElement).className || '';
       const aria = (el as HTMLElement).getAttribute('aria-label') ?? '';
-      this.play(/primary|gold/.test(cls) ? 'ui.primary' : /back|close|leave/i.test(aria) ? 'ui.back' : 'ui.click');
+      this.play(/primary|gold/.test(cls) ? 'ui.primary' : /back|close|leave|cancel/i.test(aria) ? 'ui.back' : 'ui.click');
     };
     const onOver = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
@@ -572,7 +781,7 @@ class Sfx {
       const el = e.target as HTMLElement | null;
       if (!el || el.tagName !== 'BUTTON' || !el.closest('.mm-root') || (el as HTMLButtonElement).disabled) return;
       const cls = el.className || '';
-      this.play(/primary|gold/.test(cls) ? 'ui.primary' : /back|close|leave/i.test(el.getAttribute('aria-label') ?? '') ? 'ui.back' : 'ui.click');
+      this.play(/primary|gold/.test(cls) ? 'ui.primary' : /back|close|leave|cancel/i.test(el.getAttribute('aria-label') ?? '') ? 'ui.back' : 'ui.click');
     };
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onDown, true);
@@ -643,3 +852,12 @@ class Sfx {
 }
 
 export const sfx = new Sfx();
+
+try {
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')) {
+    sfx.trace = [];
+    (window as unknown as { __mmSfx: Sfx }).__mmSfx = sfx;
+  }
+} catch {
+  /* ignore */
+}

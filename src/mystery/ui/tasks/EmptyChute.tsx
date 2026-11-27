@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Burst, C, Caption, FocusRing, GameShell, Stage, useFinish, useHold, useIds, useRaf, type KeyInput } from './kit';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Burst, C, Caption, FocusRing, GameShell, Stage, tsfx, useFinish, useHold, useIds, useRaf, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -27,7 +27,7 @@ export default function EmptyChute({ kind, seed, onComplete, reducedMotion }: Mi
   const { done, finish } = useFinish(kind, onComplete);
   const [p, setP] = useState(0);
   const pRef = useRef(0);
-  const hold = useHold(!done, ['down']);
+  const hold = useHold(!done, ['down'], 'lever');
   const [burst, setBurst] = useState(0);
 
   useRaf((dt) => {
@@ -43,6 +43,12 @@ export default function EmptyChute({ kind, seed, onComplete, reducedMotion }: Mi
 
   const open = hold.holding && !done;
   const fallen = Math.floor(p * junk.length + 0.0001);
+  // Each piece of junk clatters as it drops out.
+  const fallenRef = useRef(0);
+  useEffect(() => {
+    if (fallen > fallenRef.current) tsfx('drop');
+    fallenRef.current = fallen;
+  }, [fallen]);
 
   return (
     <GameShell kind={kind} label="Empty the chute: hold the lever" reducedMotion={reducedMotion} onKey={(k: KeyInput) => hold.key(k)} status={`${Math.round(p * 100)} percent emptied`}>

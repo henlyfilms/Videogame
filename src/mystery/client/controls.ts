@@ -9,7 +9,7 @@ import { computeContext, type Context } from './context';
 import { Input, type InputAction } from './input';
 import { runtime } from './runtime';
 import { sfx } from '../audio/sfx';
-import { isFixStation, useMystery } from './store';
+import { useMystery } from './store';
 
 export const input = new Input({ ...DEFAULT_KEYS });
 
@@ -103,7 +103,8 @@ export function doAction(a: InputAction): void {
   const snap = st.snap;
   const c = currentContext;
   if (a === 'menu') return ui.openMenu();
-  if (st.taskStation && !isFixStation(st.taskStation) && a !== 'use') return;
+  // A task or fix panel owns the keyboard (its arrows, Enter and Space are game input).
+  if (st.taskStation) return;
   switch (a) {
     case 'use':
       if (st.taskStation) return;
@@ -166,9 +167,12 @@ export function wireInput(): () => void {
   wired = true;
   input.keys = useMystery.getState().prefs.keys;
   input.captureNav = !!useMystery.getState().room;
+  input.typing = !!useMystery.getState().taskStation;
   const unsubPrefs = useMystery.subscribe((s) => {
     input.keys = s.prefs.keys;
     input.captureNav = !!s.room;
+    // No walking while a task / fix panel is open (its arrow keys drive the mini-game).
+    input.typing = !!s.taskStation;
   });
   const detach = input.attach(window);
   const off = input.onAction(doAction);

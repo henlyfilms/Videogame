@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, gridMove, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, FocusRing, GameShell, Stage, gridMove, tsfx, useBump, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -37,10 +37,12 @@ export default function KeypadCode({ kind, seed, onComplete, reducedMotion }: Mi
     later(() => setPressed((p) => (p === i ? null : p)), 120);
     const key = KEYS[i];
     if (key === '⌫') {
+      tsfx('drop');
       setEntry((e) => e.slice(0, -1));
       setState('idle');
     } else if (key === 'OK') submit();
     else if (key) {
+      tsfx('grab');
       setState('idle');
       setEntry((e) => (e.length < 4 ? e + key : e));
     }
@@ -53,6 +55,7 @@ export default function KeypadCode({ kind, seed, onComplete, reducedMotion }: Mi
       finish(600);
     } else {
       setState('denied');
+      tsfx('bad');
       bumpErr();
       later(() => {
         setEntry('');
@@ -71,7 +74,11 @@ export default function KeypadCode({ kind, seed, onComplete, reducedMotion }: Mi
       tap(9);
       return true;
     }
-    if (k.dir) setCursor((c) => gridMove(c, k.dir!, 3, 12));
+    if (k.dir) {
+      const n = gridMove(cursor, k.dir, 3, 12);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action && !k.repeat) tap(cursor);
   };
 

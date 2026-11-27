@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Berry, Burst, C, Caption, GameShell, Meter, Stage, SvgButton, useFinish, useIds, useRaf, useTimers, type KeyInput } from './kit';
+import { Berry, Burst, C, Caption, GameShell, Meter, Stage, SvgButton, tsfx, useFinish, useHoldSound, useIds, useRaf, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -25,6 +25,7 @@ export function TransferGame({ kind, seed, onComplete, reducedMotion, mode }: Mi
   const [burst, setBurst] = useState(0);
   const [pressed, setPressed] = useState(false);
   const later = useTimers();
+  useHoldSound(running && !done, 'charge');
 
   useRaf(
     (dt) => {
@@ -41,6 +42,7 @@ export function TransferGame({ kind, seed, onComplete, reducedMotion, mode }: Mi
   const start = () => {
     if (running || done) return;
     setPressed(true);
+    tsfx('grab');
     later(() => setPressed(false), 140);
     setRunning(true);
   };

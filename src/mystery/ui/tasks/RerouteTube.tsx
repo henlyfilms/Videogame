@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Burst, C, Caption, FocusRing, GameShell, Stage, gridMove, useFinish, useIds, useTimers, type KeyInput } from './kit';
+import { Burst, C, Caption, FocusRing, GameShell, Stage, gridMove, tsfx, useFinish, useIds, useTimers, type KeyInput } from './kit';
 import { makeRng } from './rng';
 import type { MiniGameProps } from './types';
 
@@ -150,16 +150,22 @@ export default function RerouteTube({ kind, seed, onComplete, reducedMotion }: M
     const next = tiles.map((t, j) => (j === i ? { ...t, rot: t.rot + 1 } : t));
     setTiles(next);
     const tr = traceRoute(g, next);
+    tsfx('grab');
     if (tr.ok) {
+      tsfx('good', 1);
       finish(1000);
-      tr.cells.forEach((_, k) => later(() => setShip(k), 260 + k * 70));
+      tr.cells.forEach((_, k) => later(() => (setShip(k), k % 2 === 0 && tsfx('move')), 260 + k * 70));
       later(() => setBurst(1), 260 + tr.cells.length * 70);
     }
   };
 
   const onKey = (k: KeyInput) => {
     if (!k.down) return;
-    if (k.dir) setCursor((c) => gridMove(c, k.dir!, COLS, COLS * g.rows));
+    if (k.dir) {
+      const n = gridMove(cursor, k.dir, COLS, COLS * g.rows);
+      if (n !== cursor) tsfx('move');
+      setCursor(n);
+    }
     else if (k.action) rotate(cursor);
   };
 
