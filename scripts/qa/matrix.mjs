@@ -155,8 +155,8 @@ for (const [i, c] of combos.entries()) {
       }
       const v = def.vents[0];
       if (v) {
-        const p = free(v.x + 0.5, v.y + 0.5);
-        if (p) out.push({ ...p, label: 'vent-' + v.id, vent: v.id });
+        // Stand on the vent itself (its tile is floor): the nearest free tile centre can be out of reach.
+        out.push({ x: v.x, y: v.y, label: 'vent-' + v.id, vent: v.id });
       }
       return out;
     }, STOPS);

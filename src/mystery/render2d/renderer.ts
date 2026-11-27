@@ -10,7 +10,7 @@ import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
 import { lampPool, type VisionShape } from '../core/vision';
 import { hash2, inked, paintProp, paintPropLive, paintStation, paintVent, paintVentShape, paintWorldFloor, rgba, softShadow, stationStyle, WORLD, worldFloorBase } from './paint';
 import { PING_TTL } from '../core/match';
-import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, type TagStyle } from './prompts';
+import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, spreadAngles, type TagStyle } from './prompts';
 
 const tagWidths = new Map<string, number>();
 function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number): number {
@@ -804,10 +804,10 @@ export class Renderer2D {
       const ki = fade(`invent:${v.id}`);
       if (ki <= 0) continue;
       const e = pop(ki);
-      for (const lid of v.links) {
-        const lv = f.map.ventById.get(lid);
-        if (!lv) continue;
-        const a = Math.atan2(lv.y - v.y, lv.x - v.x);
+      const links = v.links.map((lid) => f.map.ventById.get(lid)).filter((lv): lv is NonNullable<typeof lv> => !!lv);
+      const angles = spreadAngles(links.map((lv) => Math.atan2(lv.y - v.y, lv.x - v.x)));
+      for (const [li, lv] of links.entries()) {
+        const a = angles[li]!;
         const pulse = rm ? 0 : Math.sin(f.t * 4) * 0.08;
         const r = (1.3 + pulse) * e;
         const roomId = roomAt(f.map, lv);

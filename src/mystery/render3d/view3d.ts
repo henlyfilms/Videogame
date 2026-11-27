@@ -14,7 +14,7 @@ import type { Prefs } from '../client/prefs';
 import { input } from '../client/controls';
 import { roomAt } from '../core/map';
 import { WORLD } from '../render2d/paint';
-import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader } from '../render2d/prompts';
+import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader, spreadAngles } from '../render2d/prompts';
 import { PING_TTL } from '../core/match';
 import { tagStyleFor, type DrawPlayer, type FrameData } from '../render2d/renderer';
 import type { ViewRenderer } from '../ui/GameView';
@@ -1024,12 +1024,15 @@ export class ThreeDView implements ViewRenderer {
         const v0 = f.map.ventById.get(id);
         if (!v0) continue;
         const o = new THREE.Vector3(v0.x, 0.45, v0.y).project(this.camera);
+        // Links in a similar direction get spread apart so arrows and labels don't stack.
+        const links = v0.links.filter((lid) => f.map.ventById.has(lid));
+        const spread = spreadAngles(links.map((lid) => Math.atan2(f.map.ventById.get(lid)!.y - v0.y, f.map.ventById.get(lid)!.x - v0.x)));
         for (const ch of obj.children) {
-          const lv = f.map.ventById.get(ch.userData.link as string);
-          if (!lv) continue;
-          const dx = lv.x - v0.x;
-          const dz = lv.y - v0.y;
-          const l = Math.hypot(dx, dz) || 1;
+          const li = links.indexOf(ch.userData.link as string);
+          if (li < 0) continue;
+          const dx = Math.cos(spread[li]!);
+          const dz = Math.sin(spread[li]!);
+          const l = 1;
           const r = (1.25 + (rm ? 0 : Math.sin(t * 4) * 0.08)) * e;
           if (ch.userData.kind === 'arrow') {
             ch.position.set(v0.x + (dx / l) * r, 0.45, v0.y + (dz / l) * r);
