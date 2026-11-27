@@ -174,6 +174,12 @@ export const useMystery = create<MysteryState>((set, get) => {
       case 'nack':
         if (['kill', 'shoot', 'report', 'emergency', 'sabotage', 'vote', 'vent.enter', 'shield', 'track', 'poison', 'throw', 'blackout'].includes(m.a))
           get().toast(prettyReason(m.reason), 'bad');
+        // The server refused to open (or credit) the task we're showing: close it and say why,
+        // instead of letting the player finish a mini-game that can't count.
+        if ((m.a === 'task.open' || m.a === 'task.done') && m.reason !== 'not now') {
+          if (m.a === 'task.open' && get().taskStation && !isFixStation(get().taskStation)) set({ taskStation: null });
+          get().toast(m.a === 'task.open' ? `Can't start that task: ${prettyReason(m.reason).toLowerCase()}` : `That didn't count: ${prettyReason(m.reason).toLowerCase()}`, 'bad');
+        }
         break;
       case 'error':
         set({ error: m.msg });
@@ -351,6 +357,8 @@ function prettyReason(r: string): string {
     'emergency in progress': 'Fix the emergency first!',
     teammate: 'That’s your teammate',
     'sabotage already active': 'A sabotage is already running',
+    'too fast': 'Too quick — take a moment',
+    'task not open': 'The task closed',
   };
   return map[r] ?? r.charAt(0).toUpperCase() + r.slice(1);
 }
