@@ -4,7 +4,7 @@
  */
 import type { Point } from './world';
 
-export const MIN_ZOOM = 0.35;
+export const MIN_ZOOM = 0.26;
 export const MAX_ZOOM = 2.5;
 
 export class Camera {

@@ -213,7 +213,7 @@ function makeStore() {
     selectedBot: null,
     selectedRoom: null,
     paletteOpen: false,
-    feedOpen: typeof window === 'undefined' || !window.matchMedia ? true : !window.matchMedia('(max-width: 639px)').matches,
+    feedOpen: typeof window === 'undefined' || !window.matchMedia ? true : !window.matchMedia('(max-width: 639px), (max-height: 500px)').matches,
     helpOpen: false,
     turntable: p.turntable ?? true,
     bridgeDictating: false,

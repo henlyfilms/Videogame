@@ -17,7 +17,7 @@ import type { HQ } from '../game/hq';
 import { nightFactor } from '../render/daylight';
 import { useGame, type GameState } from '../store/gameStore';
 import { seasonFor, type Season } from '../theme/environment';
-import { audio as legacy } from './audio';
+import { audio as legacy, audioGestureSeen } from './audio';
 
 /** The HQ music track for a season and time of day. */
 export function hqTrackFor(season: Season, night: boolean): string {
@@ -125,17 +125,20 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
     state.active = active;
   };
 
-  // First gesture unlocks audio (iOS / autoplay policies).
+  // First gesture unlocks audio (iOS / autoplay policies). iOS only counts
+  // touchend / click as a gesture, so keep listening until the context runs.
   const unlock = () => {
-    if (unlocked) return;
+    if (unlocked && engine.ctx?.state === 'running') return;
+    if (!audioGestureSeen()) return;
     if (!engine.unlock()) return;
-    unlocked = true;
     legacy.resume();
+    if (unlocked) return;
+    unlocked = true;
     sync();
   };
   const onGesture = () => unlock();
-  window.addEventListener('pointerdown', onGesture, true);
-  window.addEventListener('keydown', onGesture, true);
+  const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+  for (const g of GESTURES) window.addEventListener(g, onGesture, true);
 
   // UI sounds for HQ controls (Marion Mystery has its own inside .mm-root).
   const outsideMystery = (el: Element | null) => !!el && !el.closest('.mm-root');
@@ -148,6 +151,7 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
     const cls = el!.className?.toString?.() ?? '';
     const role = el!.getAttribute('role');
     if (role === 'radio' || role === 'tab' || el!.hasAttribute('aria-pressed')) sfx.play('ui.toggle');
+    else if (el!.hasAttribute('aria-expanded')) sfx.play(el!.getAttribute('aria-expanded') === 'true' ? 'ui.close' : 'ui.open');
     else if (/close|back|cancel/i.test(aria)) sfx.play('ui.back');
     else if (/primary/.test(cls)) sfx.play('ui.primary');
     else sfx.play('ui.click');
@@ -199,8 +203,7 @@ export function wireHqSound(hq: HQ, store = useGame): () => void {
   const clock = setInterval(sync, 5000);
 
   return () => {
-    window.removeEventListener('pointerdown', onGesture, true);
-    window.removeEventListener('keydown', onGesture, true);
+    for (const g of GESTURES) window.removeEventListener(g, onGesture, true);
     document.removeEventListener('pointerdown', onDown, true);
     document.removeEventListener('pointerover', onOver, true);
     document.removeEventListener('input', onInput, true);

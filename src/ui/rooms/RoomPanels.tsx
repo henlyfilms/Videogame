@@ -325,7 +325,7 @@ function LifePanel() {
             setTitle('');
           }}
         >
-          <select className="hq-input w-16" value={lane} onChange={(e) => setLane(e.target.value as 'work' | 'ai')} aria-label="Lane">
+          <select className="hq-input w-[84px] shrink-0" value={lane} onChange={(e) => setLane(e.target.value as 'work' | 'ai')} aria-label="Lane">
             <option value="work">Work</option>
             <option value="ai">AI</option>
           </select>

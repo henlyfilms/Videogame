@@ -13,6 +13,7 @@ import { SKILL_LABELS } from '../render/view';
 import { SPEEDS, useGame } from '../store/gameStore';
 import { THEME_ORDER, THEMES } from '../theme/tokens';
 import { Icon } from './Icon';
+import { closingAttr, usePresence } from './motion';
 
 export interface PaletteCommand {
   id: string;
@@ -151,7 +152,8 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
     setActive(0);
   };
 
-  const commands = useMemo(() => (open ? buildCommands(toast) : []), [open, toast]);
+  const shown = usePresence(open);
+  const commands = useMemo(() => (shown.mounted ? buildCommands(toast) : []), [shown.mounted, toast]);
 
   const jsonMode = q.trim().startsWith('{') || q.trim().startsWith('[');
   const parsed = jsonMode ? parseMarionEvent(q.trim()) : null;
@@ -172,7 +174,7 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
   }, [open]);
   useEffect(() => setActive(0), [q]);
 
-  if (!open) return null;
+  if (!shown.mounted) return null;
 
   const runAt = (i: number) => {
     const c = results[i];
@@ -205,8 +207,8 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
 
   let lastGroup = '';
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-3 pt-[12vh] backdrop-blur-[2px]" onPointerDown={close} role="presentation">
-      <div className="hq-card w-full max-w-[560px] overflow-hidden" role="dialog" aria-modal="true" aria-label="Command palette" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="hq-anim-fade fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-3 pt-[min(12vh,96px)] backdrop-blur-[2px]" onPointerDown={close} role="presentation" {...closingAttr(shown.closing)}>
+      <div className="hq-card hq-anim-dialog flex max-h-[calc(100dvh-min(12vh,96px)-12px)] w-full max-w-[560px] flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Command palette" onPointerDown={(e) => e.stopPropagation()} {...closingAttr(shown.closing)}>
         <div className="flex items-center gap-2 border-b border-line px-3">
           <Icon name="command" size={14} className="text-muted" />
           <input
@@ -234,7 +236,7 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
             )}
           </div>
         ) : (
-          <ul className="hq-scroll max-h-[52vh] overflow-y-auto py-1" role="listbox">
+          <ul className="hq-scroll max-h-[52vh] min-h-0 overflow-y-auto py-1" role="listbox">
             {results.length === 0 && <li className="px-4 py-3 text-xs text-muted">No matches.</li>}
             {results.map((c, i) => {
               const header = c.group !== lastGroup ? c.group : null;

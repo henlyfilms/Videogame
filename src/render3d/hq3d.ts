@@ -18,7 +18,7 @@ import type { Camera } from '../engine/camera';
 import { bubbleAlpha } from '../engine/bubbles';
 import type { Simulation, SimBot } from '../engine/sim';
 import { offsetPoly, pointInPoly, type Pt } from '../engine/geometry';
-import { MAP_H, MAP_W, ROOMS, TILE, Tile, buildGrid, doorSegment, isTerrace, pointAlong, roomLabelAnchor, type PropKind, type RoomDef } from '../engine/world';
+import { MAP_H, MAP_W, ROOMS, ROOM_BY_ID, TILE, Tile, buildGrid, doorSegment, isTerrace, pointAlong, propRect, roomLabelAnchor, type PropKind, type RoomDef } from '../engine/world';
 import { createBerry, type BerryRig } from '../mystery/characters/rig3d';
 import { toon } from '../mystery/render3d/scene';
 import { LAMPS, WINDOWS, nightFactor } from '../render/daylight';
@@ -141,8 +141,11 @@ export class HQ3DRenderer {
   private packets: THREE.Mesh[] = [];
   private packetMat = new Map<string, THREE.MeshBasicMaterial>();
   private selRing: THREE.Mesh;
-  private roomHighlight: THREE.LineLoop;
+  /** Wall-top rims in the room accent: selected (pulsing) and hovered rooms. */
+  private selRim = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: '#6ea1ff', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+  private hoverRim = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: '#6ea1ff', transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
   private highlighted: string | null = null;
+  private hovered: string | null = null;
   private lastT = -1;
   private disposed = false;
   readonly raycaster = new THREE.Raycaster();
@@ -199,9 +202,11 @@ export class HQ3DRenderer {
     this.selRing.rotation.x = -Math.PI / 2;
     this.selRing.visible = false;
     this.scene.add(this.selRing);
-    this.roomHighlight = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#6ea1ff' }));
-    this.roomHighlight.visible = false;
-    this.scene.add(this.roomHighlight);
+    for (const rim of [this.selRim, this.hoverRim]) {
+      rim.visible = false;
+      rim.renderOrder = 2;
+      this.scene.add(rim);
+    }
 
     // 2D overlay for names / bubbles.
     const parent = canvas.parentElement;
@@ -745,16 +750,26 @@ export class HQ3DRenderer {
     }
     this.stats.bots = this.bots.size;
 
+    // Selected room: a pulsing accent rim on its wall tops; hovered room: a fainter one.
     const room = opts.selectedRoom ? ROOMS.find((r) => r.id === opts.selectedRoom) : null;
-    this.roomHighlight.visible = !!room;
+    this.selRim.visible = !!room;
     if (room && this.highlighted !== room.id) {
       this.highlighted = room.id;
-      const ring = offsetPoly(room.outline, -0.08).map((q) => new THREE.Vector3(room.x + q.x, WALL_H + 0.1, room.y + q.y));
-      this.roomHighlight.geometry.dispose();
-      this.roomHighlight.geometry = new THREE.BufferGeometry().setFromPoints(ring);
-      (this.roomHighlight.material as THREE.LineBasicMaterial).color.set(ROOM_ACCENT[room.id]);
+      this.selRim.geometry.dispose();
+      this.selRim.geometry = rimGeometry(room, WALL_H + 0.03);
+      (this.selRim.material as THREE.MeshBasicMaterial).color.set(ROOM_ACCENT[room.id]);
     }
     if (!room) this.highlighted = null;
+    else (this.selRim.material as THREE.MeshBasicMaterial).opacity = 0.75 + Math.sin(sim.time * 4) * 0.2;
+    const hover = opts.hoverRoom && opts.hoverRoom !== opts.selectedRoom ? ROOMS.find((r) => r.id === opts.hoverRoom) : null;
+    this.hoverRim.visible = !!hover;
+    if (hover && this.hovered !== hover.id) {
+      this.hovered = hover.id;
+      this.hoverRim.geometry.dispose();
+      this.hoverRim.geometry = rimGeometry(hover, WALL_H + 0.025);
+      (this.hoverRim.material as THREE.MeshBasicMaterial).color.set(ROOM_ACCENT[hover.id]);
+    }
+    if (!hover) this.hovered = null;
   }
 
   private updatePackets(sim: Simulation): void {
@@ -793,7 +808,19 @@ export class HQ3DRenderer {
     g.clearRect(0, 0, this.cssW, this.cssH);
     const scale = this.labelScale();
 
-    // Room labels (chips above each room's top wall).
+    // Where speech bubbles will land, so room chips under them step back.
+    const bubbleRects: { x: number; y: number; w: number; h: number }[] = [];
+    g.font = '600 12px ui-sans-serif, system-ui, sans-serif';
+    for (const bub of sim.bubbles.items) {
+      const b = sim.bots.get(bub.botId);
+      if (!b) continue;
+      const p = this.project(b.prevX + (b.x - b.prevX) * alpha, b.prevY + (b.y - b.prevY) * alpha, 1.8 + 0.45);
+      if (!p.ok) continue;
+      const w = Math.min(260, g.measureText(bub.text).width + 20);
+      bubbleRects.push({ x: p.x - w / 2, y: p.y - 34, w, h: 32 });
+    }
+
+    // Room labels (chips above each room's top wall); short names, as in the 2D overview.
     if (scale > 0.22) {
       g.font = `700 ${Math.round(Math.max(10, 11 * Math.min(1.2, scale * 1.6)))}px ui-sans-serif, system-ui, sans-serif`;
       g.textBaseline = 'middle';
@@ -801,13 +828,16 @@ export class HQ3DRenderer {
         const r = roomLabelAnchor(room);
         const p = this.project(r.x + 8, r.y - 2, WALL_H + 0.2);
         if (!p.ok) continue;
-        const text = room.name;
+        const text = room.short;
         const w = g.measureText(text).width + 22;
+        const sel = room.id === opts.selectedRoom;
+        const under = bubbleRects.some((q) => q.x < p.x + w && q.x + q.w > p.x && q.y < p.y + 10 && q.y + q.h > p.y - 10);
+        g.globalAlpha = under ? 0.35 : 1;
         g.fillStyle = night > 0.5 ? 'rgba(18,24,48,0.88)' : 'rgba(255,255,255,0.94)';
         roundRect(g, p.x, p.y - 10, w, 20, 10);
         g.fill();
         g.strokeStyle = ROOM_ACCENT[room.id];
-        g.lineWidth = 1.5;
+        g.lineWidth = sel ? 2.5 : 1.5;
         g.stroke();
         g.fillStyle = ROOM_ACCENT[room.id];
         g.beginPath();
@@ -816,6 +846,35 @@ export class HQ3DRenderer {
         g.fillStyle = night > 0.5 ? '#e6ebff' : '#1e2340';
         g.textAlign = 'left';
         g.fillText(text, p.x + 16, p.y + 0.5);
+      }
+      g.globalAlpha = 1;
+    }
+
+    // Hovered playable prop: a marching dashed outline on the floor around it (as in 2D).
+    if (opts.hoverHotspot) {
+      const hr = ROOM_BY_ID[opts.hoverHotspot.roomId];
+      const prop = hr.props.find((q) => q.id === opts.hoverHotspot!.propId);
+      if (prop) {
+        const r = propRect(hr, prop);
+        const pad = 4;
+        const pts = [
+          this.project(r.x - pad, r.y - pad, 0.06),
+          this.project(r.x + r.w + pad, r.y - pad, 0.06),
+          this.project(r.x + r.w + pad, r.y + r.h + pad, 0.06),
+          this.project(r.x - pad, r.y + r.h + pad, 0.06),
+        ];
+        if (pts.every((q) => q.ok)) {
+          g.save();
+          g.strokeStyle = ROOM_ACCENT[hr.id];
+          g.lineWidth = 2;
+          g.setLineDash([5, 4]);
+          g.lineDashOffset = -sim.time * 20;
+          g.beginPath();
+          pts.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
+          g.closePath();
+          g.stroke();
+          g.restore();
+        }
       }
     }
 
@@ -920,6 +979,17 @@ export class HQ3DRenderer {
 }
 
 // ------------------------------------------------------------------ helpers
+
+/** A flat band over a room's wall tops (its outline grown and shrunk), at height y. */
+function rimGeometry(room: RoomDef, y: number): THREE.BufferGeometry {
+  const v = (q: Pt) => new THREE.Vector2(room.x + q.x, -(room.y + q.y));
+  const shape = new THREE.Shape(offsetPoly(room.outline, -WALL_T * 0.62).map(v));
+  shape.holes.push(new THREE.Path(offsetPoly(room.outline, WALL_T * 0.62).map(v)));
+  const geo = new THREE.ShapeGeometry(shape);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, y, 0);
+  return geo;
+}
 
 export type Run = { x: number; y: number; w: number; h: number };
 

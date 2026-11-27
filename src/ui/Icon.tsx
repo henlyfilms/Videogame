@@ -20,6 +20,8 @@ const PATHS: Record<string, string> = {
   home: 'M3 11l9-8 9 8 M5 10v10h14V10',
   chevron: 'M6 9l6 6 6-6',
   restart: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5',
+  more: 'M4 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z M10.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z M17 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z',
+  sliders: 'M4 6h10 M18 6h2 M16 4v4 M4 12h4 M12 12h8 M10 10v4 M4 18h12 M18 16v4 M18 18h2',
 };
 
 export function Icon({ name, size = 14, className = '' }: { name: keyof typeof PATHS | string; size?: number; className?: string }) {

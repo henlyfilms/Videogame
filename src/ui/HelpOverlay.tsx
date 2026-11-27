@@ -2,6 +2,7 @@ import { CORE_BOTS } from '../data/bots';
 import { useGame } from '../store/gameStore';
 import { Kbd } from './common';
 import { Icon } from './Icon';
+import { closingAttr, usePresence } from './motion';
 
 const ROWS: [string, string][] = [
   ['Drag / WASD / Arrows', 'Pan the HQ'],
@@ -19,10 +20,11 @@ const ROWS: [string, string][] = [
 export function HelpOverlay() {
   const open = useGame((s) => s.helpOpen);
   const setHelp = useGame((s) => s.setHelp);
-  if (!open) return null;
+  const shown = usePresence(open);
+  if (!shown.mounted) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 backdrop-blur-[2px]" onPointerDown={() => setHelp(false)} role="presentation">
-      <div className="hq-card w-full max-w-[520px] p-4" role="dialog" aria-modal="true" aria-label="Controls" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="hq-anim-fade fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 backdrop-blur-[2px]" onPointerDown={() => setHelp(false)} role="presentation" {...closingAttr(shown.closing)}>
+      <div className="hq-card hq-anim-dialog hq-scroll max-h-full w-full max-w-[520px] overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Controls" onPointerDown={(e) => e.stopPropagation()} {...closingAttr(shown.closing)}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Controls</h2>
           <button className="hq-btn h-7 w-7 p-0" onClick={() => setHelp(false)} aria-label="Close help">

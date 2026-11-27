@@ -4,6 +4,7 @@ import { hotspotAt, roomAtWorld, type HotspotAction } from '../engine/world';
 import { hq, type HqRenderer } from '../game/hq';
 import { pickBot, Renderer } from '../render/renderer';
 import { useGame } from '../store/gameStore';
+import { topInset } from './layout';
 
 export interface GameCanvasProps {
   onSelectBot: (id: string | null) => void;
@@ -34,9 +35,9 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       };
       renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
       hq.camera.setViewport(rect.width, rect.height);
-      // Keep the overview clear of the top bar and (on wide screens) the activity feed.
-      const phone = rect.width < 640;
-      hq.camera.insets = phone ? { top: 112, right: 0, bottom: 56, left: 0 } : { top: 56, right: 0, bottom: 0, left: rect.width >= 1100 ? 330 : 0 };
+      // Keep the overview clear of the top bar (measured) and the activity feed.
+      const phone = rect.width < 640 || rect.height < 500;
+      hq.camera.insets = phone ? { top: topInset(), right: 0, bottom: 56, left: 0 } : { top: topInset(), right: 0, bottom: 0, left: rect.width >= 1100 ? 330 : 0 };
     };
     const firstAttach = !hq.renderer && !attachedOnce;
     const start = (r: HqRenderer) => {
@@ -55,7 +56,9 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
     };
     if (view === '3d') {
       import('../render3d/hq3d')
-        .then((m) => start(new m.HQ3DRenderer(canvas)))
+        // Don't build a renderer for an effect that was already torn down (StrictMode, fast 2D/3D toggles):
+        // a second WebGLRenderer on the same canvas inherits stale GL state.
+        .then((m) => !cancelled && start(new m.HQ3DRenderer(canvas)))
         .catch((err) => {
           // No WebGL (or the chunk failed to load): fall back to the floorplan.
           console.warn('3D HQ unavailable, using 2D', err);
@@ -123,6 +126,7 @@ export function GameCanvas({ onSelectBot, onSelectRoom, onHotspot }: GameCanvasP
       const p = local(e);
       pointers.delete(e.pointerId);
       if (pointers.size > 0) return;
+      if (e.type === 'pointercancel') dragged = true;
       if (!dragged && downAt) {
         const w = hq.screenToWorld(p.x, p.y);
         const bot = pick(p.x, p.y, w);

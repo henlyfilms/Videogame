@@ -153,10 +153,19 @@ export class HQ {
 
   // ---------------------------------------------------------------- camera helpers
 
-  /** Horizontal world offset so a target centers in the area left of a side panel. */
-  private panelOffset(zoom: number, panelWidth?: number): number {
-    const w = panelWidth ?? (this.camera.vw > 720 ? 370 : 0);
-    return w / 2 / zoom;
+  /**
+   * Screen area (CSS px) an open room panel / bot inspector covers: a side
+   * panel on the right from 640 px wide, a bottom sheet on narrower screens.
+   */
+  panelCover(): { right: number; bottom: number } {
+    const c = this.camera;
+    return c.vw >= 640 ? { right: Math.min(384, c.vw * 0.48), bottom: 0 } : { right: 0, bottom: Math.round(c.vh * 0.55) };
+  }
+
+  /** Camera offset (world px) so a target centers in the area the top bar and a panel leave free. */
+  private coverOffset(zoom: number, cover = this.panelCover()): { x: number; y: number } {
+    const top = this.camera.insets.top;
+    return { x: cover.right / 2 / zoom, y: -(top - cover.bottom) / 2 / zoom };
   }
 
   focusBot(id: string, follow = true): void {
@@ -164,29 +173,35 @@ export class HQ {
     if (!bot) return;
     this.ui.selectedBot = id;
     const zoom = Math.max(this.camera.targetZoom, 1.4);
-    const off = () => this.panelOffset(this.camera.targetZoom);
-    this.camera.focus({ x: bot.x + this.panelOffset(zoom), y: bot.y }, zoom);
+    const at = (b: { x: number; y: number }, z: number) => {
+      const o = this.coverOffset(z);
+      return { x: b.x + o.x, y: b.y + o.y };
+    };
+    this.camera.focus(at(bot, zoom), zoom);
     this.camera.follow = follow
       ? () => {
           const b = this.sim.getBot(id);
-          return b ? { x: b.x + off(), y: b.y } : null;
+          return b ? at(b, this.camera.targetZoom) : null;
         }
       : null;
   }
 
-  /** Move the camera to frame a room without selecting it. */
-  frameRoom(id: RoomId, panelWidth = 0): void {
+  /** Frame a room in the area left free by the top bar and `cover` (a panel). */
+  frameRoom(id: RoomId, cover: { right: number; bottom: number } = { right: 0, bottom: 0 }): void {
     const r = roomRect(ROOM_BY_ID[id]);
     this.camera.follow = null;
-    const availW = this.camera.vw - panelWidth;
-    const fit = Math.min(availW / (r.w + 120), this.camera.vh / (r.h + 200));
+    const availW = Math.max(120, this.camera.vw - cover.right);
+    const availH = Math.max(120, this.camera.vh - cover.bottom - this.camera.insets.top);
+    const fit = Math.min(availW / (r.w + 96), availH / (r.h + 96));
     const zoom = Math.max(0.35, Math.min(1.6, fit));
-    this.camera.focus({ x: r.x + r.w / 2 + panelWidth / 2 / zoom, y: r.y + r.h / 2 }, zoom);
+    const o = this.coverOffset(zoom, cover);
+    this.camera.focus({ x: r.x + r.w / 2 + o.x, y: r.y + r.h / 2 + o.y }, zoom);
   }
 
-  focusRoom(id: RoomId, panelWidth = this.camera.vw > 720 ? 390 : 0): void {
+  /** Select a room and frame it beside (or above) its panel. */
+  focusRoom(id: RoomId, cover = this.panelCover()): void {
     this.ui.selectedRoom = id;
-    this.frameRoom(id, panelWidth);
+    this.frameRoom(id, cover);
   }
 
   overview(): void {
