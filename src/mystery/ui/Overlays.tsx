@@ -3,6 +3,7 @@
  * sequences (per-map style) and the end-of-round board. All have reduced-motion
  * fallbacks; 3D players get the same moments framed for their view.
  */
+import { sfx } from '../audio/sfx';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { StageActor, StagePose } from './Stage3D';
 
@@ -451,6 +452,8 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
     const t = setInterval(() => {
       i++;
       setTyped(msg.slice(0, i));
+      // A soft key tick per letter (spaces stay quiet; reduced motion types it all at once).
+      if (!prefs.reducedMotion && msg[i - 1] && msg[i - 1] !== ' ') sfx.play('ui.type');
       if (i >= msg.length) clearInterval(t);
     }, prefs.reducedMotion ? 1 : 45);
     return () => clearInterval(t);

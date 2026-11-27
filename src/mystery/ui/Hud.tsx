@@ -370,7 +370,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
         <button className="mmh-collapse" onClick={() => setTasksOpen((x) => !x)} aria-expanded={tasksOpen} aria-label={tasksOpen ? 'Hide task list' : 'Show task list'}>
           <MIcon name={tasksOpen ? 'chevronUp' : 'chevronDown'} size={16} />
           <span>
-            {you.team === 'crew' ? `Tasks ${myTasksDone}/${you.tasks.length}` : killerTeam ? 'Cover tasks' : 'Goal'}
+            {you.team === 'crew' ? `Tasks ${myTasksDone}/${you.tasks.length}` : you.role === 'seeker' ? 'The hunt' : killerTeam ? 'Cover tasks' : 'Goal'}
           </span>
         </button>
         <Presence show={tasksOpen} anim="drop" exitMs={200} className="mmh-tasks-wrap">
@@ -378,7 +378,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
             <div className="mmh-commsdown" role="status">
               <MIcon name="wifi" size={18} /> Comms jammed — task list offline
             </div>
-          ) : (
+          ) : you.role === 'seeker' ? null : (
             <ul className="mmh-tasks" aria-label="Task checklist">
               {you.tasks.map((t, i) => {
                 const def = TASK_BY_ID[t.taskId];
@@ -403,9 +403,15 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
           )}
           {killerTeam && mm && (
             <div className="mmh-intel">
-              <div>
-                Crew left <b>{mm.crewAlive}</b> · Team <b>{mm.murderersAlive}</b> · Kills to win <b>{mm.killsToWin}</b>
-              </div>
+              {you.role === 'seeker' && snap.stats.hns ? (
+                <div>
+                  Hiders left <b>{snap.stats.hns.hidersLeft}</b> · find them all before time runs out
+                </div>
+              ) : (
+                <div>
+                  Crew left <b>{mm.crewAlive}</b> · Team <b>{mm.murderersAlive}</b> · Kills to win <b>{mm.killsToWin}</b>
+                </div>
+              )}
               {mm.teammates.length > 0 && (
                 <div className="mm-nocase">
                   {mm.teammates.map((t) => (

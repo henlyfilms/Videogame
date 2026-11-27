@@ -6,8 +6,8 @@ next. Read it fully before changing anything.
 
 - **Working branch:** `claude/optimistic-carson-j24o57` (all work below is committed and pushed
   there). Don't push to `main` without the owner's say-so.
-- **State at handoff:** typecheck clean, `npx vitest run` 448/448 passing, `npm run build` OK,
-  Marion Mystery e2e 12/12 passing.
+- **State at handoff:** typecheck clean, `npx vitest run` 512/512 passing, `npm run build` OK,
+  Marion Mystery e2e 12/12 passing (iPhone in landscape).
 
 ## What the project is
 
@@ -117,6 +117,14 @@ Other: `server/index.ts` (Node HTTP + WS), `server/llm.ts` and `server/agent-sdk
 
 ## What was just done (most recent first)
 
+-1. **Readiness pass** (four QA passes, merged): HQ polish (top bar fits phones, panels animate,
+   audio waits for a real gesture, 3D room highlights); every Mystery screen at desktop and
+   iPhone landscape (keyboard nav in menus, modal focus, compact lobby/title/join/freeplay);
+   in-world polish across modes × maps × views (TP camera collision and see-through occluders,
+   softer flashlight beams, outdoor dressing, stacked name tags, sharper tags); every task
+   mini-game by keyboard, mouse and touch with step sounds, no walking while a task is open,
+   and many new sounds. Rerunnable QA scripts are in `scripts/qa/` (`matrix.mjs`, `probe.mjs`,
+   `tasks.mjs`, `interactions.mjs`, `shop.mjs`, `levels.mjs`, …).
 0. **iPhone plays sideways, Shop, balance** (commits `ee04855`, `fbb1df6`, `26dfe6b`, `d21302b`):
    portrait phones get a rotate card (`RotateGate` in `ui/MysteryApp.tsx`; iOS can't lock
    orientation), the manifest asks for landscape, and every screen has compact two-column rules
