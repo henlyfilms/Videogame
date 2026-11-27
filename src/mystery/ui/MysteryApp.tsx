@@ -357,8 +357,9 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       )}
       {inRoom && (stage === 'lobby' || stage === 'countdown') && <WaitingRoom />}
       {inRoom && (stage === 'match' || stage === 'results') && <MatchScreen />}
-      {onExit && !inRoom && (
-        <button className="mm-btn mm-exit" onClick={onExit}>
+      {/* Back to the HQ (Arcade launches only). Title screen only: the other screens have their own back button there. */}
+      {onExit && !inRoom && screen === 'title' && (
+        <button className="mm-btn mm-pill mm-exit mm-in-left" onClick={onExit} aria-label="Back to Marion HQ">
           <MIcon name="back" /> Marion HQ
         </button>
       )}

@@ -165,7 +165,11 @@ export function wireInput(): () => void {
   if (wired) return () => {};
   wired = true;
   input.keys = useMystery.getState().prefs.keys;
-  const unsubPrefs = useMystery.subscribe((s) => (input.keys = s.prefs.keys));
+  input.captureNav = !!useMystery.getState().room;
+  const unsubPrefs = useMystery.subscribe((s) => {
+    input.keys = s.prefs.keys;
+    input.captureNav = !!s.room;
+  });
   const detach = input.attach(window);
   const off = input.onAction(doAction);
   const keyup = (e: KeyboardEvent) => {

@@ -22,6 +22,11 @@ export class Input {
   enabled = true;
   /** When a text field / modal has focus, movement is ignored. */
   typing = false;
+  /**
+   * In a room Tab / Space / arrows are game keys (map, use, move). On the menus
+   * they keep their browser meaning so keyboard players can move focus and press buttons.
+   */
+  captureNav = true;
 
   constructor(keys: Keybinds) {
     this.keys = keys;
@@ -32,6 +37,8 @@ export class Input {
       const el = e.target as HTMLElement | null;
       const inField = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       if (inField) return;
+      // Inside a menu dialog (settings, wardrobe, buy confirm) keys drive the dialog, not the game.
+      if (el?.closest?.('.mm-modal, .mmsh-confirm')) return;
       if (e.repeat && this.down.has(e.code)) return;
       this.down.add(e.code);
       const map: [string, InputAction][] = (Object.entries(this.keys) as [keyof Keybinds, string][]).map(([k, code]) => [code, k]);
@@ -42,8 +49,7 @@ export class Input {
       if (e.code === 'Digit2') this.fire('emote2');
       if (e.code === 'Digit3') this.fire('emote3');
       if (e.code === 'Digit4') this.fire('emote4');
-      if (e.code === 'Tab') e.preventDefault();
-      if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+      if (this.captureNav && (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow'))) e.preventDefault();
     };
     const ku = (e: KeyboardEvent) => this.down.delete(e.code);
     const blur = () => this.down.clear();

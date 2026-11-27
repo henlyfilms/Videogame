@@ -249,10 +249,28 @@ export function Modal({ children, onClose, wide = false, title }: { children: Re
       if (prev && prev.isConnected && prev !== document.body) prev.focus({ preventScroll: true });
     };
   }, []);
+  // Tab cycles inside the dialog instead of wandering into the game behind it.
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const box = boxRef.current;
+    if (!box) return;
+    const items = [...box.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const at = document.activeElement;
+    if (e.shiftKey && (at === first || at === box)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && at === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   const st = closing ? 'out' : 'in';
   return (
     <div className="mm-modal-back mm-safe" data-state={st} onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div ref={boxRef} tabIndex={-1} className={`mm-modal${wide ? ' wide' : ''}`} data-state={st} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
+      <div ref={boxRef} tabIndex={-1} onKeyDown={trap} className={`mm-modal${wide ? ' wide' : ''}`} data-state={st} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
         {(title || onClose) && (
           <div className="mm-modal-head">
             <div className="mm-modal-title">{title}</div>

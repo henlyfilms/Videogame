@@ -372,7 +372,6 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
           <span>
             {you.team === 'crew' ? `Tasks ${myTasksDone}/${you.tasks.length}` : killerTeam ? 'Cover tasks' : 'Goal'}
           </span>
-          <Kbd k="tasks" />
         </button>
         <Presence show={tasksOpen} anim="drop" exitMs={200} className="mmh-tasks-wrap">
           {commsDown ? (

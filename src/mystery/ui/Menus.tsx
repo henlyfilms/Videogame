@@ -515,7 +515,7 @@ export function ProfileScreen() {
   const tc = teamColors(prefs.colorblind !== 'none');
   return (
     <Modal title={`${prefs.name || 'Berry'}’s stats`} onClose={() => setScreen('title')} wide>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
           ['Games', st.games],
           ['Wins', `${st.wins} (${pct(st.wins, st.games)})`],
