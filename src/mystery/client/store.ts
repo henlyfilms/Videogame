@@ -13,6 +13,7 @@ import { addSeeds, matchEarnings } from '../characters/shop';
 import { loadPrefs, savePrefs, type Prefs } from './prefs';
 import { runtime } from './runtime';
 import { defaultServerUrl, LocalTransport, WsTransport, type ConnState, type Transport } from './transport';
+import { useLiveStatus } from '../../agents/liveStatus';
 
 export type Screen = 'title' | 'play' | 'join' | 'browse' | 'settings' | 'profile' | 'wardrobe' | 'room' | 'howto' | 'freeplay';
 
@@ -333,6 +334,7 @@ export function installDebugHook(): void {
     (window as unknown as { __mm: unknown }).__mm = {
       store: useMystery,
       runtime,
+      liveStatus: useLiveStatus,
       get server() {
         return transport && transport.kind === 'local' ? (transport as LocalTransport).srv : null;
       },

@@ -26,6 +26,7 @@ import { FreeplayScreen, TutorialCoach } from './Freeplay';
 import { CustomizeEditor } from './CustomizeEditor';
 import { SeedCounter, ShopPanel } from './Shop';
 import './mystery.css';
+import { startLiveStatus } from '../../agents/liveStatus';
 
 const MenuBackdrop3D = lazy(() => import('../render3d/backdrop3d').then((m) => ({ default: m.MenuBackdrop3D })));
 
@@ -284,6 +285,8 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
 
   useEffect(() => wireInput(), []);
   useEffect(() => installDebugHook(), []);
+  // Live "what each Marion agent is working on" (name tags + crew list).
+  useEffect(() => startLiveStatus(), []);
   // Invite links: ?room=CODE jumps straight into the room.
   useEffect(() => {
     try {

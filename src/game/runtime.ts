@@ -8,6 +8,7 @@ import { hq } from './hq';
 import { populateSim, wire } from './wire';
 import { wireAudio } from './wireAudio';
 import { wireHqSound } from '../audio/hqSound';
+import { useLiveStatus } from '../agents/liveStatus';
 
 export const manager = new AdapterManager(hq);
 let booted = false;
@@ -28,6 +29,6 @@ export function boot(): void {
   }
   if (typeof window !== 'undefined') {
     // Handy for debugging and headless smoke tests.
-    (window as unknown as { __hq: unknown }).__hq = { hq, manager, store: useGame };
+    (window as unknown as { __hq: unknown }).__hq = { hq, manager, store: useGame, liveStatus: useLiveStatus };
   }
 }

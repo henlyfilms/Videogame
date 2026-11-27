@@ -14,7 +14,7 @@ import type { Prefs } from '../client/prefs';
 import { input } from '../client/controls';
 import { roomAt } from '../core/map';
 import { WORLD } from '../render2d/paint';
-import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader, spreadAngles } from '../render2d/prompts';
+import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawStatusPill, drawStatusSpinner, drawVentArrow, easeOutBack, measureStatus, measureTag, pingPop, PromptFader, spinnerAngle, spreadAngles, statusIconX, statusText } from '../render2d/prompts';
 import { PING_TTL } from '../core/match';
 import { tagStyleFor, type DrawPlayer, type FrameData } from '../render2d/renderer';
 import type { ViewRenderer } from '../ui/GameView';
@@ -59,6 +59,70 @@ interface Actor {
   killOn: boolean;
   /** Eased screen-space lift of the name tag (in tag heights) so crowded tags stack. */
   tagLift: number;
+  /** Live agent status pill hanging under the name tag (null when the player has none). */
+  status: StatusSprite | null;
+}
+
+/*
+ * Status pill sprite geometry, in name-tag canvas pixels (the tag canvas is TAG_CH
+ * px tall for 0.3 world units, its pill TAG_H px, centred 6 px above the middle).
+ */
+const TAG_H = 112;
+const TAG_CH = TAG_H + 32;
+const ST_H = Math.round(TAG_H * 0.8);
+const ST_CH = ST_H + 24;
+/** Pill top, in px below the tag sprite's anchor (tag pill bottom + a small gap). */
+const ST_TOP = TAG_H / 2 - 6 + 10;
+/** Extra screen height the status row adds below a tag, in tag-sprite heights (for stacking). */
+const ST_EXT = (ST_TOP + ST_H - TAG_CH * 0.42) / TAG_CH;
+/** Transparent margin above the pill inside the status canvas. */
+const ST_PAD = (ST_CH - ST_H) / 2 - 4;
+/** Status sprite anchor (center.y) for a tag lifted by `lift` tag heights. */
+const statusCenterY = (lift: number): number => 1 + (ST_TOP - ST_PAD) / ST_CH - (lift * TAG_CH) / ST_CH;
+
+interface StatusSprite {
+  sprite: THREE.Sprite;
+  key: string;
+  canvas: HTMLCanvasElement;
+  /** Pill body without the spinner (redrawn only when the text changes). */
+  body: HTMLCanvasElement;
+  tex: THREE.CanvasTexture;
+  busy: boolean;
+  pillW: number;
+  /** performance.now() of the next spinner redraw. */
+  next: number;
+}
+
+function makeStatusSprite(text: string, busy: boolean): StatusSprite {
+  const probe = document.createElement('canvas').getContext('2d')!;
+  const pillW = Math.ceil(measureStatus(probe, text, ST_H));
+  const w = pillW + 24;
+  const body = document.createElement('canvas');
+  body.width = w;
+  body.height = ST_CH;
+  drawStatusPill(body.getContext('2d')!, w / 2, ST_CH / 2 - 4, ST_H, text, busy, pillW);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = ST_CH;
+  canvas.getContext('2d')!.drawImage(body, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true, fog: false }));
+  const worldH = (0.3 * ST_CH) / TAG_CH;
+  sprite.scale.set((worldH * w) / ST_CH, worldH, 1);
+  sprite.userData.baseScale = sprite.scale.clone();
+  sprite.center.set(0.5, statusCenterY(0));
+  sprite.renderOrder = 20;
+  return { sprite, key: `${text}|${busy ? 1 : 0}`, canvas, body, tex, busy, pillW, next: 0 };
+}
+
+/** Repaint the spinner (body + arc at angle `a`) into the sprite's texture. */
+function paintStatusSpinner(st: StatusSprite, a: number): void {
+  const g = st.canvas.getContext('2d')!;
+  g.clearRect(0, 0, st.canvas.width, st.canvas.height);
+  g.drawImage(st.body, 0, 0);
+  drawStatusSpinner(g, st.canvas.width / 2 + statusIconX(st.pillW, ST_H), ST_CH / 2 - 4, ST_H * 0.22, a);
+  st.tex.needsUpdate = true;
 }
 
 /** Canvas → sprite with a fixed world height. */
@@ -89,7 +153,7 @@ function disposeSprite(s: THREE.Object3D): void {
 
 function tagSprite(p: Pick<DrawPlayer, 'name' | 'cosmetics' | 'nameColor' | 'local' | 'ghost'>): THREE.Sprite {
   // Baked at 2× so tags stay crisp on 2–3× phone screens and up close in first person.
-  const H = 112;
+  const H = TAG_H;
   const probe = document.createElement('canvas').getContext('2d')!;
   const w = Math.ceil(measureTag(probe, p.name.slice(0, 20), H) + 32);
   return canvasSprite(w, H + 32, 0.3, (g) => drawNameTag(g, w / 2, (H + 32) / 2 - 6, H, tagStyleFor(p)));
@@ -383,7 +447,7 @@ export class ThreeDView implements ViewRenderer {
       this.scene.add(rig.group);
       const label = tagSprite(p);
       this.scene.add(label);
-      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false, tagLift: 0 };
+      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false, tagLift: 0, status: null };
       this.actors.set(p.id, a);
     }
     if (a.labelKey !== labelKey) {
@@ -393,12 +457,34 @@ export class ThreeDView implements ViewRenderer {
       a.labelKey = labelKey;
       this.scene.add(a.label);
     }
+    this.syncStatus(a, p);
     if (!a.pet && cos.pet && cos.pet !== 'none') {
       a.pet = createPet(cos.pet);
       if (this.quality !== 'low') attachInkHulls(a.pet.group, this.inkMats, [], 'thin');
       this.scene.add(a.pet.group);
     }
     return a;
+  }
+
+  /** Create / replace / drop the actor's status pill sprite to match the player's status. */
+  private syncStatus(a: Actor, p: DrawPlayer): void {
+    const text = p.status?.text ? statusText(p.status.text) : '';
+    const key = text ? `${text}|${p.status!.busy ? 1 : 0}` : '';
+    if ((a.status?.key ?? '') === key) return;
+    if (a.status) this.dropStatus(a);
+    if (!key) return;
+    a.status = makeStatusSprite(text, !!p.status!.busy);
+    a.status.sprite.center.y = statusCenterY(a.tagLift);
+    if (a.status.busy) paintStatusSpinner(a.status, -Math.PI / 2);
+    this.scene.add(a.status.sprite);
+  }
+
+  private dropStatus(a: Actor): void {
+    if (!a.status) return;
+    this.scene.remove(a.status.sprite);
+    a.status.tex.dispose();
+    a.status.sprite.material.dispose();
+    a.status = null;
   }
 
   /** Ink outline (inverted hulls) on every part of a rig; skipped on low quality. */
@@ -468,8 +554,24 @@ export class ThreeDView implements ViewRenderer {
       });
       a.label.visible = !(p.local && this.mode === 'fp') && (!p.ghost || !!localPlayer?.ghost);
       a.label.position.set(p.pos.x, (a.rig.height ?? 1.05) + 0.42 + g.position.y, p.pos.y);
+      const ds = this.distScale(a.label.position);
+      // With a status row under it, the tag steps up a little so the row clears the head.
+      if (a.status) a.label.position.y += 0.1 * ds;
       const lb = a.label.userData.baseScale as THREE.Vector3 | undefined;
-      if (lb) a.label.scale.copy(lb).multiplyScalar(this.distScale(a.label.position));
+      if (lb) a.label.scale.copy(lb).multiplyScalar(ds);
+      if (a.status) {
+        const st = a.status;
+        st.sprite.visible = a.label.visible;
+        st.sprite.position.copy(a.label.position);
+        const sb = st.sprite.userData.baseScale as THREE.Vector3;
+        st.sprite.scale.copy(sb).multiplyScalar(ds);
+        (st.sprite.material as THREE.SpriteMaterial).opacity = p.ghost ? 0.6 : 1;
+        // Spinner: ~20 fps texture repaint while busy and on screen; a still arc with reduced motion.
+        if (st.busy && st.sprite.visible && !f.reducedMotion && now >= st.next) {
+          st.next = now + 50;
+          paintStatusSpinner(st, spinnerAngle(now / 1000, false));
+        }
+      }
       // Ink outline on the whole character; the kill target gets a pulsing red one.
       this.syncHulls(a);
       const killK = this.fader.get(`kill:${p.id}`);
@@ -489,10 +591,12 @@ export class ThreeDView implements ViewRenderer {
       if (a.seen === now) continue;
       a.rig.group.visible = false;
       a.label.visible = false;
+      if (a.status) a.status.sprite.visible = false;
       if (a.pet) a.pet.group.visible = false;
       if (now - a.seen > 30000) {
         this.scene.remove(a.rig.group, a.label);
         disposeSprite(a.label);
+        this.dropStatus(a);
         if (a.pet) this.scene.remove(a.pet.group);
         a.rig.dispose();
         this.actors.delete(id);
@@ -733,7 +837,7 @@ export class ThreeDView implements ViewRenderer {
     const W = this.canvas.clientWidth || 1;
     const k = 2 * Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
     this.camera.updateMatrixWorld();
-    const tags: { a: Actor; x: number; y: number; w: number; h: number; d: number }[] = [];
+    const tags: { a: Actor; x: number; y: number; w: number; h: number; d: number; ext: number }[] = [];
     for (const a of this.actors.values()) {
       if (!a.label.visible) continue;
       const v = this.tmpV.copy(a.label.position).applyMatrix4(this.camera.matrixWorldInverse);
@@ -741,19 +845,27 @@ export class ThreeDView implements ViewRenderer {
       if (d <= 0.05) continue;
       const h = (a.label.scale.y / (d * k)) * H;
       const p = this.tmpV.copy(a.label.position).project(this.camera);
-      tags.push({ a, x: ((p.x + 1) / 2) * W, y: ((1 - p.y) / 2) * H, w: h * (a.label.scale.x / a.label.scale.y), h, d });
+      const st = a.status;
+      const w = Math.max(h * (a.label.scale.x / a.label.scale.y), st ? h * (st.sprite.scale.x / a.label.scale.y) : 0);
+      tags.push({ a, x: ((p.x + 1) / 2) * W, y: ((1 - p.y) / 2) * H, w, h, d, ext: st ? h * ST_EXT : 0 });
     }
     tags.sort((p, q) => p.d - q.d);
     const ease = rm ? 1 : 1 - Math.exp(-dt * 14);
-    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    // Each tag spans [y - 0.42h, y + 0.42h + ext] on screen (ext: its status row).
+    const placed: { x: number; y: number; w: number; h: number; ext: number }[] = [];
     for (const t of tags) {
       let want = t.y;
       for (let pass = 0; pass < 3; pass++)
-        for (const o of placed) if (Math.abs(o.x - t.x) < (o.w + t.w) / 2 && Math.abs(o.y - want) < (o.h + t.h) * 0.42) want = o.y - (o.h + t.h) * 0.42;
+        for (const o of placed) {
+          if (Math.abs(o.x - t.x) >= (o.w + t.w) / 2) continue;
+          if (want - t.h * 0.42 < o.y + o.h * 0.42 + o.ext && want + t.h * 0.42 + t.ext > o.y - o.h * 0.42) want = o.y - (o.h + t.h) * 0.42 - t.ext;
+        }
       const lift = Math.min(3, (t.y - want) / Math.max(1, t.h));
       t.a.tagLift += (lift - t.a.tagLift) * ease;
       t.a.label.center.y = 0.5 - t.a.tagLift;
-      placed.push({ x: t.x, y: t.y - t.a.tagLift * t.h, w: t.w, h: t.h });
+      // The status sprite hangs under the tag (center.y > 1) and rises with it.
+      if (t.a.status) t.a.status.sprite.center.y = statusCenterY(t.a.tagLift);
+      placed.push({ x: t.x, y: t.y - t.a.tagLift * t.h, w: t.w, h: t.h, ext: t.ext });
     }
   }
 
@@ -1070,7 +1182,10 @@ export class ThreeDView implements ViewRenderer {
     runtime.cameraYaw = null;
     this.canvas.removeEventListener('webglcontextlost', this.onLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
-    for (const a of this.actors.values()) a.rig.dispose();
+    for (const a of this.actors.values()) {
+      a.rig.dispose();
+      this.dropStatus(a);
+    }
     this.actors.clear();
     this.mapScene?.dispose();
     this.glowTex.dispose();

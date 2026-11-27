@@ -5,6 +5,7 @@ import type { HotspotAction } from '../engine/world';
 import { actions } from '../game/actions';
 import { hq } from '../game/hq';
 import { boot } from '../game/runtime';
+import { startLiveStatus } from '../agents/liveStatus';
 import { useGame } from '../store/gameStore';
 import { ActivityFeed } from './ActivityFeed';
 import { BotInspector } from './BotInspector';
@@ -34,6 +35,7 @@ export function App() {
 
   useEffect(() => {
     boot();
+    startLiveStatus();
     try {
       if (!localStorage.getItem(HINT_KEY)) setHint(true);
     } catch {

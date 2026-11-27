@@ -117,6 +117,12 @@ Other: `server/index.ts` (Node HTTP + WS), `server/llm.ts` and `server/agent-sdk
 
 ## What was just done (most recent first)
 
+-2. **Real Marion agents: MCP game controls + live status** (see `docs/mystery/MCP.md`):
+   - `server/mcp/*`: an MCP server (stdio `server/mcp/stdio.ts`, and Streamable HTTP at `/mcp?agent=<id>` on the game server) with 11 tools (`join_game`, `start_game`, `wait_for_turn`, `look`, `go`, `act`, `say`, `vote`, `set_status`, `how_to_play`, `leave_game`). Each session is one seat (`Pilot`): it runs `BotBrain` on its own snapshot as an autopilot and wakes the model only at decision points. `server/mcp/guide.ts` has rules, controls and a playbook per role. `npm run agents` (`server/mcp/agents.ts`) seats several agents with Claude deciding (fresh short context per decision, cached system/tools, call caps); without credentials they play on autopilot.
+   - `BotBrain` hooks: `directive` (goto/follow/hunt/stay), `controlled` (the controller talks and votes; the brain votes only in the last 3 s), `autoKill`, `evidence()`, `suggestVote()`. Bots now weigh typed chat too (`inferQuick`).
+   - Live status: `AgentHub` (`src/mystery/server/agentHub.ts`), `status` protocol frame and `hello.agent`, `LobbyPlayer.status`, `GET /api/agents`, `POST /api/agents/status`, `POST /api/hq/events`, ws `/marion` for the HQ (`server/hqBridge.ts`). Client polling in `src/agents/liveStatus.ts`; pills with a spinner under name tags in Mystery 2D/3D/waiting room and HQ 2D/3D.
+   - Tests: `tests/mystery/agents-mcp.test.ts`, `tests/liveStatus.test.ts`.
+
 -1. **Readiness pass** (four QA passes, merged): HQ polish (top bar fits phones, panels animate,
    audio waits for a real gesture, 3D room highlights); every Mystery screen at desktop and
    iPhone landscape (keyboard nav in menus, modal focus, compact lobby/title/join/freeplay);

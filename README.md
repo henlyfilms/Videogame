@@ -15,6 +15,17 @@ npm install && npm run dev      # http://localhost:5173
 | `npm run preview` | Serve the production build |
 | `npm test` | Vitest (jsdom + canvas mock): HQ, Arcade and Marion Mystery suites |
 | `npm run typecheck` | Strict TypeScript check |
+| `npm run start:server` | Game server on :8787: Marion Mystery online rooms, live agent statuses, the HQ event stream (`/marion`) and the MCP game controls (`/mcp`) |
+| `npm run agents -- --create kanye moose daniel` | Seat real Marion agents at a Mystery table (Claude decides, an autopilot plays; see below) |
+
+## Real Marion agents: play Mystery and show live status
+
+Real agents connect to the game server (`npm run start:server`) and:
+
+- **play Marion Mystery through MCP game controls**, each in its own seat with only its own view: `claude mcp add --transport http marion-kanye "http://localhost:8787/mcp?agent=kanye"` (or `npm run agents` to seat several at once). An autopilot walks, does tasks and fixes sabotages; the model only decides at meetings, votes and other key moments, which keeps usage low.
+- **show what they are working on** under their name tag in Mystery and in the HQ, with a loading ring while they work: the MCP tool `set_status`, or `POST /api/agents/status {"agent":"kanye","state":"working","title":"…"}`. The HQ **Socket** source (`ws://localhost:8787/marion`) also walks the bot to its room with the task.
+
+Full guide: [`docs/mystery/MCP.md`](docs/mystery/MCP.md).
 
 ## Mac app
 
@@ -183,7 +194,7 @@ Arcade events are validated like the rest; `results` rows are checked field by f
 
 Bot IDs: `daniel moose kanye barry greek quill sift builder` (plus `you` on the arcade leaderboard).
 
-A minimal test server:
+The game server (`npm run start:server`) serves this stream at `ws://localhost:8787/marion`: real agents' live statuses become `task.created` / `bot.status` / `task.completed` events, and `POST /api/hq/events` relays any events you send (see [`docs/mystery/MCP.md`](docs/mystery/MCP.md)). A minimal stand-alone test server:
 
 ```js
 // node server.mjs  (npm i ws)

@@ -34,6 +34,10 @@ Mystery game server: run `npm run start:server` on this Mac, and the app connect
 `ws://localhost:8787/mystery`. iPhones on the same Wi-Fi join through the LAN address that
 command prints (see `docs/mystery/HOSTING.md`).
 
+The same server lets your real Marion agents join and play (MCP game controls at
+`http://localhost:8787/mcp?agent=kanye`, or `npm run agents`) and publish what they are working
+on; the app shows it under their name tags in the HQ and in Mystery. See `docs/mystery/MCP.md`.
+
 ## How it works
 
 The `.app` is a small Electron shell that rarely changes. The game itself (the Vite

@@ -515,3 +515,84 @@ export function drawPing(g: CanvasRenderingContext2D, from: { x: number; y: numb
   drawPingPin(g, to.x, to.y - s * 0.25 + bob, s * 0.95, color, pop);
   g.restore();
 }
+
+/** Live agent status pill (under a name tag): spinner slot on the left, one line of text. */
+export const STATUS_TEXT_MAX = 34;
+export const STATUS_SPIN = '#5eead4';
+
+export function statusText(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  return t.length > STATUS_TEXT_MAX ? `${t.slice(0, STATUS_TEXT_MAX - 1).trimEnd()}…` : t;
+}
+
+const STATUS_FONT = (h: number) => `600 ${h * 0.56}px Inter, ui-sans-serif, system-ui, sans-serif`;
+
+/** Width of a status pill of height `h` for `text` (already clipped with `statusText`). */
+export function measureStatus(g: CanvasRenderingContext2D, text: string, h: number): number {
+  g.save();
+  g.font = STATUS_FONT(h);
+  const w = g.measureText(text).width;
+  g.restore();
+  return w + h * 1.45;
+}
+
+/** X offset (from the pill centre) of the spinner / idle dot centre. */
+export function statusIconX(w: number, h: number): number {
+  return -w / 2 + h * 0.52;
+}
+
+/**
+ * The pill body (cacheable): dark rounded pill, faint outline, text. The
+ * spinner is drawn on top each frame with `drawStatusSpinner`; idle pills get
+ * a static hollow dot here instead.
+ */
+export function drawStatusPill(g: CanvasRenderingContext2D, x: number, y: number, h: number, text: string, busy: boolean, w = measureStatus(g, text, h)): void {
+  const x0 = x - w / 2;
+  const y0 = y - h / 2;
+  g.save();
+  g.beginPath();
+  g.roundRect(x0, y0 + h * 0.08, w, h, h / 2);
+  g.fillStyle = 'rgba(5,7,14,0.3)';
+  g.fill();
+  g.beginPath();
+  g.roundRect(x0, y0, w, h, h / 2);
+  g.fillStyle = 'rgba(17,21,32,0.9)';
+  g.fill();
+  g.lineWidth = h * 0.07;
+  g.strokeStyle = busy ? 'rgba(94,234,212,0.38)' : 'rgba(255,255,255,0.14)';
+  g.stroke();
+  if (!busy) {
+    g.beginPath();
+    g.arc(x + statusIconX(w, h), y, h * 0.2, 0, Math.PI * 2);
+    g.lineWidth = h * 0.09;
+    g.strokeStyle = 'rgba(203,213,225,0.6)';
+    g.stroke();
+  }
+  g.font = STATUS_FONT(h);
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillStyle = busy ? 'rgba(241,245,249,0.96)' : 'rgba(203,213,225,0.7)';
+  g.fillText(text, x0 + h * 0.95, y + h * 0.03);
+  g.restore();
+}
+
+/** Loading ring: faint white track + a bright arc at angle `a` (radians). */
+export function drawStatusSpinner(g: CanvasRenderingContext2D, x: number, y: number, r: number, a: number, color = STATUS_SPIN, track = 'rgba(255,255,255,0.18)'): void {
+  g.save();
+  g.lineWidth = Math.max(1.2, r * 0.42);
+  g.lineCap = 'round';
+  g.beginPath();
+  g.arc(x, y, r, 0, Math.PI * 2);
+  g.strokeStyle = track;
+  g.stroke();
+  g.beginPath();
+  g.arc(x, y, r, a, a + Math.PI * 1.25);
+  g.strokeStyle = color;
+  g.stroke();
+  g.restore();
+}
+
+/** Spinner angle at time `t` seconds (~1 rev/s); a fixed angle with reduced motion. */
+export function spinnerAngle(t: number, reduced: boolean): number {
+  return reduced ? -Math.PI / 2 : (t % 1) * Math.PI * 2;
+}

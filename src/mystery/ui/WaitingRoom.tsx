@@ -23,6 +23,24 @@ import { Hazard, Kbd, Presence, useViewport } from './kit';
 import { MatchSettingsPanel } from './MatchSettingsPanel';
 import { SettingsMenu } from './Menus';
 import { Joystick, useCoarsePointer } from './TouchControls';
+import { useLiveStatus } from '../../agents/liveStatus';
+import { statusLine } from '../server/agentHub';
+import type { LobbyPlayer } from '../net/protocol';
+
+/** Live "what I'm working on" row under a Marion agent's name (spinner while working). */
+function AgentStatusRow({ player }: { player: LobbyPlayer }) {
+  const live = useLiveStatus((s) => (player.look ? s.agents[player.look] : undefined));
+  const st = player.status ?? live ?? null;
+  const text = statusLine(st);
+  if (!st || !text) return null;
+  const busy = st.state === 'working';
+  return (
+    <div className="mml-status" data-busy={busy} title={st.detail || text}>
+      <span className={busy ? 'mml-status-spin' : 'mml-status-dot'} role="img" aria-label={busy ? 'Working' : 'Idle'} />
+      <span className="mml-status-txt">{text}</span>
+    </div>
+  );
+}
 
 function inviteLink(code: string): string {
   if (typeof location === 'undefined') return code;
@@ -208,6 +226,7 @@ export function WaitingRoom() {
                     <span className="mml-swatch" style={{ background: colorHex(p.cosmetics.color) }} />
                     {!p.connected && <span style={{ color: 'var(--mm-yellow)' }}>reconnecting…</span>}
                   </div>
+                  <AgentStatusRow player={p} />
                 </div>
                 <span className="mml-ready" data-on={p.ready} style={{ color: p.ready ? tc.good : undefined }}>
                   {p.ready ? '✓ Ready' : '…'}

@@ -10,8 +10,26 @@ import type { Cosmetics, MapId, ModeId, Platform, PlayerKind, RoleId, ViewMode }
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * Live "what am I working on" line a real Marion agent publishes (MCP
+ * `set_status`, or POST /api/agents/status). Public to every player: it shows
+ * under the agent's name tag with a loading ring while `state` is 'working'.
+ */
+export type AgentState = 'idle' | 'working';
+export interface AgentStatus {
+  state: AgentState;
+  /** Task title or one-line summary ("Refactoring the billing export"). Empty = just the state. */
+  title: string;
+  /** Optional second line (shown in lists, not in-world). */
+  detail?: string;
+  /** Server time (ms since epoch) of the last update. */
+  at: number;
+}
+export const STATUS_TITLE_MAX = 60;
+export const STATUS_DETAIL_MAX = 140;
+
 export type ClientMsg =
-  | { t: 'hello'; v: number; name: string; platform: Platform; kind: 'human' | 'agent'; token?: string; cosmetics?: Cosmetics; view?: ViewMode; resume?: { code: string; pid: string; secret: string } }
+  | { t: 'hello'; v: number; name: string; platform: Platform; kind: 'human' | 'agent'; token?: string; cosmetics?: Cosmetics; view?: ViewMode; resume?: { code: string; pid: string; secret: string }; agent?: string }
   | { t: 'create'; settings?: Partial<Settings>; practice?: { role: RoleId } }
   | { t: 'join'; code: string }
   | { t: 'list' }
@@ -31,6 +49,7 @@ export type ClientMsg =
   | { t: 'host.removeBot'; pid: string }
   | { t: 'host.lobby' }
   | { t: 'act'; action: Action }
+  | { t: 'status'; status: { state: AgentState; title?: string; detail?: string } | null }
   | { t: 'ping'; n: number };
 
 export interface LobbyPlayer {
@@ -44,8 +63,10 @@ export interface LobbyPlayer {
   host: boolean;
   ping: number;
   view: ViewMode | null;
-  /** Marion bot id when this is a Marion agent bot. */
+  /** Marion bot id when this is a Marion agent bot (or the agent id an external agent declared). */
   look?: string;
+  /** Live work status of the real agent behind this seat (see AgentStatus). */
+  status?: AgentStatus | null;
 }
 
 export interface LobbyChat {
@@ -143,7 +164,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   const num = (k: string) => typeof m[k] === 'number' && Number.isFinite(m[k]);
   switch (m.t) {
     case 'hello':
-      return str('name', 64) && typeof m.platform === 'string' ? (m as unknown as ClientMsg) : null;
+      return str('name', 64) && typeof m.platform === 'string' && (m.agent === undefined || str('agent', 32)) ? (m as unknown as ClientMsg) : null;
     case 'create':
     case 'list':
     case 'leave':
@@ -180,6 +201,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'ping':
       return num('n') ? (m as unknown as ClientMsg) : null;
+    case 'status': {
+      if (m.status === null) return m as unknown as ClientMsg;
+      const st = m.status as Record<string, unknown> | undefined;
+      if (!st || typeof st !== 'object' || (st.state !== 'idle' && st.state !== 'working')) return null;
+      if (st.title !== undefined && (typeof st.title !== 'string' || st.title.length > 400)) return null;
+      if (st.detail !== undefined && (typeof st.detail !== 'string' || st.detail.length > 1000)) return null;
+      return m as unknown as ClientMsg;
+    }
     default:
       return null;
   }

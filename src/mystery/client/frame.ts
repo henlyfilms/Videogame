@@ -11,7 +11,9 @@ import { PING_TTL } from '../core/match';
 import { PALETTE } from '../characters/catalog';
 import type { Vec2 } from '../core/types';
 import type { VisionShape } from '../core/vision';
-import type { RoomInfo } from '../net/protocol';
+import type { LobbyPlayer, RoomInfo } from '../net/protocol';
+import { statusLine } from '../server/agentHub';
+import { liveStatusFor } from '../../agents/liveStatus';
 import { keyLabel } from '../render2d/prompts';
 import type { DrawPlayer, FrameData, PingDraw } from '../render2d/renderer';
 import type { Context } from './context';
@@ -67,6 +69,7 @@ export function buildFrame(opts: {
         emote: runtime.lobbyEmotes.get(p.id) ?? null,
         local: isMe,
         nameColor: p.host ? '#fbbf24' : undefined,
+        status: playerStatus(p),
       });
     }
     return {
@@ -130,6 +133,7 @@ export function buildFrame(opts: {
       nameColor,
       local: isMe,
       scared: isMe && me.dread > 0.5,
+      status: playerStatus(room.players.find((q) => q.id === p.id)),
     });
   }
   const cosOf = (id: string) => s.players.find((p) => p.id === id)?.cosmetics ?? room.players.find((p) => p.id === id)?.cosmetics;
@@ -182,6 +186,19 @@ export function buildFrame(opts: {
       keys: promptKeys(prefs),
     },
   };
+}
+
+/**
+ * The live work status line under a seat's name tag: the room's status for the
+ * seat (filled by the server), else the agent board polled from the local game
+ * server (in-browser solo games against the built-in Marion bots).
+ */
+export function playerStatus(lp: Pick<LobbyPlayer, 'look' | 'status'> | undefined): DrawPlayer['status'] {
+  if (!lp) return null;
+  const st = lp.status ?? liveStatusFor(lp.look);
+  if (!st) return null;
+  const text = statusLine(st);
+  return text ? { text, busy: st.state === 'working' } : null;
 }
 
 /** Client clock start per live ping (key: pinger + spot), so ages advance smoothly between snapshots. */

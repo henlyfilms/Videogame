@@ -27,6 +27,7 @@ import {
   type ServerMsg,
 } from '../net/protocol';
 import { BOT_LOOKS, fallbackCosmetics, sanitizeCosmeticsSafe } from './looks';
+import { normalizeAgentId, type AgentHub } from './agentHub';
 
 export const TICK_HZ = 30;
 export const SNAPSHOT_INTERVAL = 0.05; // 20 Hz
@@ -76,6 +77,8 @@ export interface ServerOptions {
   agentToken?: string;
   /** Optional LLM-backed meeting chat for bots (server only). */
   chatProvider?: ChatProvider;
+  /** Live agent work statuses shown under name tags (keyed by Marion agent id). */
+  hub?: AgentHub;
   /** Is the server reachable on a LAN (affects listings). */
   lan?: boolean;
   seed?: number;
@@ -235,6 +238,11 @@ export class Room {
     m.conn = null;
     m.disconnectedAt = this.time;
     if (this.match?.players[pid]) this.match.players[pid]!.connected = false;
+    this.dirty = true;
+  }
+
+  /** Re-broadcast the room (e.g. a member's live status changed). */
+  touch(): void {
     this.dirty = true;
   }
 
@@ -560,6 +568,7 @@ export class Room {
           ping: m.ping,
           view: m.view,
           look: m.look,
+          status: this.opts.hub?.get(m.look) ?? null,
         };
       }),
       validation: v,
@@ -611,6 +620,8 @@ interface ConnState {
   tokens: number;
   last: number;
   strikes: number;
+  /** Last live-status frame (rate limit). */
+  statusAt: number;
 }
 
 /** Owns rooms and routes connection traffic. */
@@ -622,10 +633,14 @@ export class GameServer {
 
   constructor(readonly opts: ServerOptions = {}) {
     this.rng = new Rng(opts.seed ?? (Date.now() & 0xffffffff));
+    // A status change re-broadcasts every room that seats that agent (or its built-in stand-in).
+    opts.hub?.subscribe((id) => {
+      for (const r of this.rooms.values()) if ([...r.members.values()].some((m) => m.look === id)) r.touch();
+    });
   }
 
   connect(conn: Conn): void {
-    this.conns.set(conn.id, { conn, hello: null, room: null, pid: null, tokens: 120, last: this.time, strikes: 0 });
+    this.conns.set(conn.id, { conn, hello: null, room: null, pid: null, tokens: 120, last: this.time, strikes: 0, statusAt: -1 });
   }
 
   disconnect(connId: string): void {
@@ -693,6 +708,14 @@ export class GameServer {
       return;
     }
     switch (msg.t) {
+      case 'status': {
+        // Real agents publish what they are working on (in or out of a room), at most twice a second.
+        const id = cs.hello.kind === 'agent' ? normalizeAgentId(cs.hello.agent ?? cs.hello.name) : '';
+        if (!id || !this.opts.hub || this.time - cs.statusAt < 0.5) return;
+        cs.statusAt = this.time;
+        this.opts.hub.set(id, msg.status);
+        return;
+      }
       case 'list':
         cs.conn.send({
           t: 'list',
@@ -735,12 +758,16 @@ export class GameServer {
 
   private enter(cs: ConnState, room: Room): void {
     const h = cs.hello!;
+    // A real Marion agent (hello.agent = 'kanye', …) wears its Marion look unless it brought its own.
+    const agentId = h.kind === 'agent' ? normalizeAgentId(h.agent ?? h.name) : '';
+    const preset = agentId ? BOT_LOOKS[agentId] : undefined;
     const r = room.addMember(cs.conn, {
       name: h.name,
       kind: h.kind === 'agent' ? 'agent' : 'human',
       platform: h.kind === 'agent' ? 'agent' : h.platform,
-      cosmetics: h.cosmetics,
+      cosmetics: h.cosmetics ?? preset?.cosmetics,
       view: h.view ?? null,
+      look: agentId || undefined,
     });
     if (typeof r === 'string') {
       cs.conn.send({ t: 'error', code: 'nojoin', msg: r });

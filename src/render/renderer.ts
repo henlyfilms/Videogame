@@ -20,6 +20,7 @@ import { drawPropDynamic, drawPropStatic, ROOM_ACCENT, waveform } from './props'
 import { drawGlow, hexA, roundRect } from './sprites';
 import { MODEL_COLORS, type RenderView } from './view';
 import type { RelayModel } from '../adapters/events';
+import { drawHqStatus } from './statusPill';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -413,7 +414,19 @@ export class Renderer {
       if (!inView(p.x, p.y)) continue;
       drawBerryBot(ctx, bot, p.x, p.y, radius, t, spriteOpts(bot, theme, t, opts, radius));
       this.stats.botsDrawn++;
-      if ((opts.showNames && namesOn) || bot.def.id === opts.selectedBot) drawNameTag(ctx, bot.def.name, p.x, p.y + radius + 12, theme, bot.def.id === opts.selectedBot);
+      if ((opts.showNames && namesOn) || bot.def.id === opts.selectedBot) {
+        drawNameTag(ctx, bot.def.name, p.x, p.y + radius + 12, theme, bot.def.id === opts.selectedBot);
+        // Live "what I'm working on" pill under the tag (real agents only).
+        drawHqStatus(ctx, bot.def.id, p.x, p.y + radius + 12 + 7.5, {
+          size: 7.5,
+          bg: hexA(theme.world.bubbleBg, theme.name === 'dark' ? 0.86 : 0.92),
+          ink: theme.world.bubbleInk,
+          muted: hexA(theme.world.bubbleInk, 0.6),
+          track: hexA(theme.world.bubbleInk, 0.16),
+          spin: theme.teal,
+          reduced: this.reducedMotion,
+        });
+      }
     }
 
     // Particles.

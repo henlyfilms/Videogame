@@ -4099,6 +4099,56 @@
   font-size: 0.72em;
   color: var(--mm-muted);
 }
+/* live agent status under a crew-list name: spinner while working, hollow dot when idle */
+.mml-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 0.72em;
+  line-height: 1.2;
+  color: rgba(203, 213, 225, 0.72);
+  min-width: 0;
+}
+.mml-status[data-busy='true'] {
+  color: #e6fffa;
+}
+.mml-status-txt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mml-status-spin,
+.mml-status-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.mml-status-spin {
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #5eead4;
+  border-right-color: #5eead4;
+  animation: mml-status-spin 1s linear infinite;
+}
+.mml-status-dot {
+  border: 2px solid rgba(203, 213, 225, 0.6);
+}
+@keyframes mml-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mm-reduced .mml-status-spin {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mml-status-spin {
+    animation: none !important;
+  }
+}
 .mml-swatch {
   width: 10px;
   height: 10px;

@@ -49,6 +49,49 @@ const DIFF: Record<BotDifficulty, { reaction: number; killBold: number; reportCh
 
 const MURDER_TEAM = new Set(['murderer', 'poisoner', 'accomplice']);
 
+/**
+ * The quick-chat intent of a typed line ("I saw Moose kill Quill!" → saw-kill),
+ * so bots weigh typed accusations and alibis like quick-chat ones. Undefined
+ * when the line is small talk.
+ */
+export function inferQuick(text: string): string | undefined {
+  const t = text.toLowerCase();
+  if (/\b(saw|watched|seen)\b[^.!?]*\b(kill|stab|murder|knife|attack)/.test(t)) return 'saw-kill';
+  if (/\b(saw|watched|seen)\b[^.!?]*\bvent/.test(t) || /\bvented\b/.test(t)) return 'saw-vent';
+  if (/\b(with me|i was with|vouch|is clear|is innocent|cleared|trust)\b/.test(t)) return 'with';
+  if (/\bfak(e|ed|ing)\b/.test(t)) return 'fake-task';
+  if (/\b(near|by|next to|over) the body\b/.test(t)) return 'near-body';
+  if (/\b(vote|voting)\b(?! skip)/.test(t) && !/\bskip\b/.test(t)) return 'vote';
+  if (/\b(sus|suspicious|sketchy|lying|liar|it was|did it|killer|murderer)\b/.test(t)) return 'sus';
+  return undefined;
+}
+
+/**
+ * High-level orders from an outside controller (an LLM playing through the
+ * MCP game controls). The brain keeps doing the low-level work (pathing,
+ * tasks, sabotage fixes, noticing things); a directive only changes where it
+ * goes and who it goes after. Cleared when done; `directiveNote` says why.
+ */
+export type Directive =
+  /** Walk to a spot, then linger there for `hold` seconds (default 8). */
+  | { kind: 'goto'; pos: Vec2; label: string; hold?: number }
+  /** Stay close to a player (keeps an eye on them / stays safe with them). */
+  | { kind: 'follow'; target: string; label: string }
+  /** Go after a player: murderers strike when nobody else can see, an armed sheriff/hero shoots in range, others shadow them. */
+  | { kind: 'hunt'; target: string; label: string; witnesses?: boolean }
+  /** Stand still. */
+  | { kind: 'stay' };
+
+/** One entry of the brain's own evidence board (built only from what this seat saw/heard). */
+export interface EvidenceRow {
+  id: string;
+  score: number;
+  /** First-hand part of the score. */
+  own: number;
+  reasons: string[];
+  sawKill: boolean;
+}
+
 export class BotBrain {
   readonly id: string;
   private rng: Rng;
@@ -109,6 +152,19 @@ export class BotBrain {
   private faked = new Map<string, number>();
   persona = 'friendly berry';
   chatProvider: ChatProvider | null = null;
+  /** Outside controller's current order (see Directive). */
+  directive: Directive | null = null;
+  /** Why the last directive ended ("arrived at Kitchen", "struck Moose", "lost Moose"). Read and clear it. */
+  directiveNote: string | null = null;
+  /** Murderers: strike on their own when an unwitnessed chance comes up (off = only directed targets). */
+  autoKill = true;
+  /**
+   * The controller speaks and votes in meetings. The brain stays quiet and only
+   * casts its own vote as a fallback in the last few seconds of voting.
+   */
+  controlled = false;
+  private directiveSince = 0;
+  private holdUntil = -1;
 
   constructor(
     id: string,
@@ -302,6 +358,7 @@ export class BotBrain {
       for (const b of snap.batteries) if (dist(b.pos, this.pos) < 1.4) out.push({ a: 'battery.pickup', id: b.id });
     }
     if (snap.gunDrop && you.team === 'crew' && !you.hasGun && dist(snap.gunDrop, this.pos) < 1.5) out.push({ a: 'gun.pickup' });
+    if (this.directive && this.followDirective(snap, map, settings, out)) return;
 
     if (mode === 'hideseek') return this.decideHns(snap, map, out);
     // Lights Out dread: something is close. Suspect whoever is nearby and run for company.
@@ -460,7 +517,7 @@ export class BotBrain {
     const others = this.visibleOthers(snap).filter((p) => !p.role || (p.role !== 'murderer' && p.role !== 'poisoner' && p.role !== 'accomplice'));
     // A teammate standing by is not a witness.
     const witnesses = others.length;
-    const canKill = (you.role === 'murderer' || you.role === 'poisoner') && you.killCd <= 0;
+    const canKill = (you.role === 'murderer' || you.role === 'poisoner') && you.killCd <= 0 && this.autoKill;
     if (canKill && others.length > 0) {
       const range = KILL_RANGE[settings.killDistance];
       const target = others.find((p) => p.pos && dist(p.pos, this.pos) <= range);
@@ -484,7 +541,7 @@ export class BotBrain {
       }
     }
     // Knife throw at a lone target in a line.
-    if (you.role === 'murderer' && settings.knifeThrow && you.killCd <= 0 && witnesses === 1 && others[0]?.pos) {
+    if (you.role === 'murderer' && settings.knifeThrow && this.autoKill && you.killCd <= 0 && witnesses === 1 && others[0]?.pos) {
       const t = others[0];
       const dd = dist(t.pos!, this.pos);
       if (dd > KILL_RANGE[settings.killDistance] && dd < 7 && this.rng.next() < 0.15 * d.killBold) {
@@ -781,7 +838,7 @@ export class BotBrain {
       this.goal = null;
     }
     // Opportunistic actions while walking.
-    if (you.team === 'murderers' && this.goalKind === 'hunt' && (you.role === 'murderer' || you.role === 'seeker') && you.killCd <= 0) {
+    if (you.team === 'murderers' && this.goalKind === 'hunt' && (you.role === 'murderer' || you.role === 'seeker') && you.killCd <= 0 && (this.autoKill || snap.mode === 'hideseek')) {
       const range = snap.mode === 'hideseek' ? 1.3 : KILL_RANGE[settings.killDistance];
       const prey = this.visibleOthers(snap).filter((p) => !MURDER_TEAM.has(p.role ?? '') && p.role !== 'seeker');
       const t = prey.find((p) => p.pos && dist(p.pos, this.pos) <= range);
@@ -820,6 +877,11 @@ export class BotBrain {
     }
     this.lastMeetingT = m.stageEnds;
     if (!you.alive) return;
+    if (this.controlled) {
+      // The controller talks and votes; vote for it only if it runs out of time.
+      if (m.stage === 'vote' && !m.myVote && snap.t >= m.stageEnds - 3) out.push({ a: 'vote', target: this.chooseVote(snap, settings) });
+      return;
+    }
     // Say something (1–2 lines per meeting).
     if (this.meetingSaid < 2 && this.rng.next() < 0.02 && (settings.chat || settings.quickChat)) {
       this.meetingSaid++;
@@ -887,7 +949,9 @@ export class BotBrain {
       if (this.knownKillers.has(c.from)) continue;
       const speakerSus = this.sus.get(c.from)?.score ?? 0;
       const trust = speakerSus > 4 ? 0.3 : 1;
-      const named = snap.players.filter((p) => p.id !== c.from && c.text.includes(p.name));
+      const named = snap.players.filter((p) => p.id !== c.from && c.text.toLowerCase().includes(p.name.toLowerCase()));
+      // Typed lines (people, LLM-driven agents) carry no quick-chat id: read their intent from the words.
+      const quick = c.quick ?? inferQuick(c.text);
       for (const p of named) {
         // "Bot 1" is inside "Bot 10": keep only the longest names mentioned.
         if (named.some((o) => o !== p && o.name.length > p.name.length && o.name.includes(p.name))) continue;
@@ -896,12 +960,12 @@ export class BotBrain {
         this.heardPairs.add(key);
         if (p.id === this.id) {
           // First-hand: this bot knows its own innocence.
-          if (snap.you.team === 'crew' && c.quick !== 'with' && c.quick !== 'clear') this.bump(c.from, 2, 'accused me');
+          if (snap.you.team === 'crew' && quick && quick !== 'with' && quick !== 'clear') this.bump(c.from, 2, 'accused me');
           continue;
         }
-        if (c.quick === 'saw-kill' || c.quick === 'saw-vent') this.bump(p.id, 4 * trust, 'was called out', false);
-        else if (c.quick === 'sus' || c.quick === 'near-body' || c.quick === 'vote' || c.quick === 'fake-task') this.bump(p.id, 1.5 * trust, 'was called sus', false);
-        else if (c.quick === 'with' || c.quick === 'clear') this.bump(p.id, -1.5 * trust, 'was vouched for', false);
+        if (quick === 'saw-kill' || quick === 'saw-vent') this.bump(p.id, 4 * trust, 'was called out', false);
+        else if (quick === 'sus' || quick === 'near-body' || quick === 'vote' || quick === 'fake-task') this.bump(p.id, 1.5 * trust, 'was called sus', false);
+        else if (quick === 'with' || quick === 'clear') this.bump(p.id, -1.5 * trust, 'was vouched for', false);
       }
     }
   }
@@ -1006,4 +1070,136 @@ export class BotBrain {
 
   /** Lines produced asynchronously by the chat provider, drained by the host. */
   pendingChat: string[] = [];
+
+  // -------------------------------------------------------------------------
+  // Outside controller (MCP pilots).
+
+  /** Give an order (replaces any current one). */
+  setDirective(d: Directive | null, now = 0): void {
+    this.directive = d;
+    this.directiveSince = now;
+    this.holdUntil = -1;
+    this.directiveNote = null;
+    if (d) {
+      this.goal = null;
+      this.goalKind = null;
+      this.path = [];
+    }
+  }
+
+  private endDirective(note: string): void {
+    this.directive = null;
+    this.directiveNote = note;
+    this.holdUntil = -1;
+  }
+
+  /** Carry out the current directive. Returns true when it decided this tick. */
+  private followDirective(snap: Snapshot, map: CompiledMap, settings: Settings, out: Action[]): boolean {
+    const d = this.directive!;
+    const you = snap.you;
+    // Things a real player drops everything for: a body in view (crew report it) and a critical countdown.
+    const critical = snap.sabotage.active === 'meltdown' || snap.sabotage.active === 'pressure';
+    if (you.team === 'crew' && you.alive && snap.mode !== 'hideseek' && d.kind !== 'hunt') {
+      if (snap.bodies.length) {
+        this.endDirective('spotted a body');
+        return false;
+      }
+      if (critical) {
+        this.endDirective(`answered the ${snap.sabotage.active} alarm`);
+        return false;
+      }
+    }
+    const nameOf = (id: string) => snap.players.find((p) => p.id === id)?.name ?? 'them';
+    switch (d.kind) {
+      case 'stay':
+        this.goal = null;
+        this.goalKind = null;
+        this.path = [];
+        return true;
+      case 'goto': {
+        if (dist(d.pos, this.pos) <= 1.4 || (this.holdUntil >= 0 && !this.path.length)) {
+          if (this.holdUntil < 0) this.holdUntil = snap.t + (d.hold ?? 8);
+          if (snap.t >= this.holdUntil) {
+            this.endDirective(`arrived at ${d.label}`);
+            return false;
+          }
+          this.goal = null;
+          this.path = [];
+          return true;
+        }
+        if (snap.t - this.directiveSince > 90) {
+          this.endDirective(`couldn't reach ${d.label}`);
+          return false;
+        }
+        this.setGoal(map, snap, d.pos, 'investigate');
+        return true;
+      }
+      case 'follow':
+      case 'hunt': {
+        const p = snap.players.find((x) => x.id === d.target);
+        if (!p || !p.alive) {
+          this.endDirective(`${nameOf(d.target)} is gone`);
+          return false;
+        }
+        if (p.pos) {
+          const dd = dist(p.pos, this.pos);
+          if (d.kind === 'hunt' && you.alive) {
+            const killer = (you.role === 'murderer' || you.role === 'poisoner') && you.team === 'murderers';
+            const range = KILL_RANGE[settings.killDistance];
+            if (killer && you.killCd <= 0 && dd <= range) {
+              const witnesses = this.visibleOthers(snap).filter((o) => o.id !== p.id && !MURDER_TEAM.has(o.role ?? '')).length;
+              if (witnesses === 0 || d.witnesses) {
+                out.push(you.role === 'poisoner' ? { a: 'poison', target: p.id } : { a: 'kill', target: p.id });
+                this.endDirective(`struck ${p.name}`);
+                const v = map.def.vents.find((x) => dist(x, this.pos) < VENT_RANGE * 2.5);
+                if (v && you.role === 'murderer') this.setGoal(map, snap, v, 'vent', v.id);
+                else this.wander(snap, map);
+                return true;
+              }
+            }
+            if (you.hasGun && you.gunCd <= 0 && dd <= GUN_RANGE * 0.9) {
+              out.push({ a: 'shoot', target: p.id });
+              this.endDirective(`fired at ${p.name}`);
+              return true;
+            }
+          }
+          if (dd > (d.kind === 'hunt' ? 0.9 : 2.2)) this.setGoal(map, snap, p.pos, 'investigate');
+          else {
+            this.goal = null;
+            this.path = [];
+          }
+          return true;
+        }
+        const ls = this.lastSeen.get(d.target);
+        if (!ls || snap.t - ls.t > 25 || snap.t - this.directiveSince > 120) {
+          this.endDirective(`lost track of ${p.name}`);
+          return false;
+        }
+        if (dist(ls.pos, this.pos) > 1) this.setGoal(map, snap, ls.pos, 'investigate');
+        else {
+          this.endDirective(`lost track of ${p.name}`);
+          return false;
+        }
+        return true;
+      }
+    }
+  }
+
+  /** This seat's own suspicion board (what it saw and heard), most suspicious first. */
+  evidence(snap: Snapshot): EvidenceRow[] {
+    return [...this.sus.entries()]
+      .filter(([id]) => snap.players.some((p) => p.id === id))
+      .map(([id, s]) => ({ id, score: Math.round(s.score * 10) / 10, own: Math.round(s.own * 10) / 10, reasons: s.reasons.slice(-4), sawKill: this.knownKillers.has(id) }))
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /** Who the autopilot would vote for right now ('skip' or a player id). */
+  suggestVote(snap: Snapshot, settings: Settings): string {
+    return this.chooseVote(snap, settings);
+  }
+
+  /** Where a player was last seen by this seat (and when). */
+  lastSighting(id: string): { pos: Vec2; t: number } | null {
+    return this.lastSeen.get(id) ?? null;
+  }
 }

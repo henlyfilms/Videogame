@@ -25,6 +25,7 @@ import { LAMPS, WINDOWS, nightFactor } from '../render/daylight';
 import { terraceBeds } from '../render/ground';
 import { ROOM_ACCENT } from '../render/props';
 import type { RenderOptions } from '../render/renderer';
+import { drawHqStatus, hqStatus } from '../render/statusPill';
 import { TREES, groundCanvas, lookFor, roomFloorTexture } from '../render/seasonal';
 import type { RenderView } from '../render/view';
 import { SEASON_STYLE, scatter, type Season } from '../theme/environment';
@@ -121,6 +122,7 @@ export class HQ3DRenderer {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 400);
   private overlay: HTMLCanvasElement | null = null;
+  private reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   private octx: CanvasRenderingContext2D | null = null;
   private cssW = 1;
   private cssH = 1;
@@ -888,18 +890,33 @@ export class HQ3DRenderer {
       const y = b.prevY + (b.y - b.prevY) * alpha;
       const p = this.project(x, y, head);
       if (!p.ok) continue;
-      if (opts.showNames && scale > 0.3) {
+      // A bot with a live status: the tag steps up so its status pill clears the berry.
+      const named = opts.showNames && scale > 0.3;
+      const stSize = Math.round(Math.max(9, 9.5 * Math.min(1.3, scale)));
+      const lift = named && hqStatus(b.def.id) ? Math.round(stSize * 1.45) + 2 : 0;
+      if (named) {
         g.font = `700 ${Math.round(Math.max(10, 11 * Math.min(1.3, scale)))}px ui-sans-serif, system-ui, sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         const w = g.measureText(b.def.name).width + 12;
         g.fillStyle = 'rgba(17,22,44,0.78)';
-        roundRect(g, p.x - w / 2, p.y - 9, w, 18, 9);
+        roundRect(g, p.x - w / 2, p.y - lift - 9, w, 18, 9);
         g.fill();
         g.fillStyle = '#ffffff';
-        g.fillText(b.def.name, p.x, p.y + 0.5);
+        g.fillText(b.def.name, p.x, p.y - lift + 0.5);
+        // Live "what I'm working on" pill under the tag (real agents only).
+        if (lift)
+          drawHqStatus(g, b.def.id, p.x, p.y - lift + 11, {
+            size: stSize,
+            bg: 'rgba(17,22,44,0.82)',
+            ink: '#f1f5f9',
+            muted: 'rgba(203,213,225,0.72)',
+            track: 'rgba(255,255,255,0.18)',
+            spin: '#5eead4',
+            reduced: this.reducedMotion,
+          });
       }
-      badge(g, b, p.x + 18, p.y - 14, sim.time);
+      badge(g, b, p.x + 18, p.y - lift - 14, sim.time);
     }
     for (const bub of sim.bubbles.items) {
       const b = sim.bots.get(bub.botId);

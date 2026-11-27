@@ -10,7 +10,7 @@ import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
 import { lampPool, type VisionShape } from '../core/vision';
 import { hash2, inked, paintProp, paintPropLive, paintStation, paintVent, paintVentShape, paintWorldFloor, rgba, softShadow, stationStyle, WORLD, worldFloorBase } from './paint';
 import { PING_TTL } from '../core/match';
-import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, spreadAngles, type TagStyle } from './prompts';
+import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawStatusPill, drawStatusSpinner, drawTaskArrow, drawVentArrow, easeOutBack, measureStatus, measureTag, PromptFader, spinnerAngle, spreadAngles, statusIconX, statusText, type TagStyle } from './prompts';
 
 const tagWidths = new Map<string, number>();
 function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number): number {
@@ -20,6 +20,17 @@ function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number):
     w = measureTag(g, name.slice(0, 20), h);
     if (tagWidths.size > 400) tagWidths.clear();
     tagWidths.set(k, w);
+  }
+  return w;
+}
+const statusWidths = new Map<string, number>();
+function measureStatusCached(g: CanvasRenderingContext2D, text: string, h: number): number {
+  const k = `${text}|${Math.round(h)}`;
+  let w = statusWidths.get(k);
+  if (w === undefined) {
+    w = measureStatus(g, text, h);
+    if (statusWidths.size > 400) statusWidths.clear();
+    statusWidths.set(k, w);
   }
   return w;
 }
@@ -40,6 +51,8 @@ export interface DrawPlayer {
   nameColor?: string;
   local?: boolean;
   scared?: boolean;
+  /** Live work status of the real agent behind this player (shown under the name tag). */
+  status?: { text: string; busy: boolean } | null;
 }
 
 export interface FrameData {
@@ -702,20 +715,30 @@ export class Renderer2D {
     const keys = f.prompts?.keys;
     const fade = (k: string) => this.fader.get(k);
     const pop = (k: number) => (rm ? Math.min(1, k) : easeOutBack(k));
-    // Name tags (dark pill, avatar dot, local player outlined green).
+    // Name tags (dark pill, avatar dot, local player outlined green), each with an
+    // optional live agent status pill hanging under it.
     const tagH = Math.max(13, s * 0.34);
+    const stH = Math.round(tagH * 0.8);
+    const stGap = 2;
     const localGhost = !!f.players.find((q) => q.local)?.ghost;
-    const tags: { id: string; st: TagStyle; tw: number; x: number; y: number }[] = [];
+    const tags: { id: string; st: TagStyle; tw: number; x: number; y: number; ghost: boolean; status: { text: string; busy: boolean; w: number } | null; ext: number }[] = [];
     for (const p of f.players) {
       if (!inView(p.pos, 3) || (p.ghost && !p.local && !localGhost)) continue;
       const lift = p.emote ? 1.95 : 1.5;
       const st = tagStyleFor(p);
-      tags.push({ id: p.id, st, tw: measureTagCached(ctx, st.name, tagH) + 8, x: p.pos.x * s, y: p.pos.y * s - s * lift });
+      const status = p.status?.text ? { text: statusText(p.status.text), busy: p.status.busy, w: 0 } : null;
+      if (status) status.w = measureStatusCached(ctx, status.text, stH) + 6;
+      const ext = status ? stH + stGap : 0;
+      // A tag with a status steps up so its status pill sits about where the tag alone
+      // would (all the way over an emote bubble, which must stay readable).
+      const tw = Math.max(measureTagCached(ctx, st.name, tagH) + 8, status?.w ?? 0);
+      tags.push({ id: p.id, st, tw, x: p.pos.x * s, y: p.pos.y * s - s * lift - ext * (p.emote ? 1 : 0.75), ghost: p.ghost, status, ext });
     }
     // Berries standing close together: stack their tags (the one in front keeps its
-    // place, the ones behind step up) and ease the shift so nothing jumps.
+    // place, the ones behind step up) and ease the shift so nothing jumps. Each tag
+    // spans [y - tagH/2, y + tagH/2 + ext] (ext = its status row).
     tags.sort((a, b) => b.y - a.y);
-    const gap = tagH + 5;
+    const pad = 5;
     const k = rm ? 1 : 1 - Math.exp(-this.lastDt * 14);
     for (let i = 0; i < tags.length; i++) {
       const t = tags[i]!;
@@ -723,14 +746,29 @@ export class Renderer2D {
       for (let pass = 0; pass < 3; pass++)
         for (let j = 0; j < i; j++) {
           const o = tags[j]!;
-          if (Math.abs(o.x - t.x) < (o.tw + t.tw) / 2 + 2 && Math.abs(o.y - want) < gap) want = o.y - gap;
+          if (Math.abs(o.x - t.x) >= (o.tw + t.tw) / 2 + 2) continue;
+          const overlap = want - tagH / 2 < o.y + tagH / 2 + o.ext + pad && want + tagH / 2 + t.ext + pad > o.y - tagH / 2;
+          if (overlap) want = o.y - tagH - pad - t.ext;
         }
       const prev = this.tagShift.get(t.id) ?? 0;
       const shift = prev + (want - t.y - prev) * k;
       this.tagShift.set(t.id, shift);
       t.y += shift;
     }
-    for (const t of tags) this.blit(`tag|${t.st.name}|${t.st.color}|${t.st.avatar}|${t.st.ring.join()}|${t.st.local ? 1 : 0}|${t.st.ghost ? 1 : 0}`, t.x, t.y, t.tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, t.st));
+    const spin = spinnerAngle(f.t, rm);
+    for (const t of tags) {
+      const tw = measureTagCached(ctx, t.st.name, tagH) + 8;
+      this.blit(`tag|${t.st.name}|${t.st.color}|${t.st.avatar}|${t.st.ring.join()}|${t.st.local ? 1 : 0}|${t.st.ghost ? 1 : 0}`, t.x, t.y, tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, t.st));
+      const sv = t.status;
+      if (!sv) continue;
+      const sy = Math.round(t.y + tagH / 2 + stGap + stH / 2 - 2);
+      const pw = sv.w - 6;
+      ctx.save();
+      if (t.ghost) ctx.globalAlpha *= 0.6;
+      this.blit(`status|${sv.text}|${sv.busy ? 1 : 0}`, t.x, sy + 1, sv.w, stH + 6, 1, (g) => drawStatusPill(g, 0, -1, stH, sv.text, sv.busy, pw));
+      if (sv.busy) drawStatusSpinner(ctx, t.x + statusIconX(pw, stH), sy, stH * 0.22, spin);
+      ctx.restore();
+    }
     if (this.tagShift.size > 64) this.tagShift.clear();
     // Task arrows (bob over the dotted ring) + "use" key hint on the station in reach.
     for (const st of f.map.def.stations) {

@@ -1,5 +1,7 @@
 # Marion Mystery — Agent Player Protocol
 
+> **Easiest path for LLM agents:** use the MCP game controls (`/mcp` on the game server, or `server/mcp/stdio.ts`), which wrap this protocol with an autopilot and short decision reports. See [MCP.md](MCP.md).
+
 Any agent (an LLM-driven Marion agent, a script, a bot from another project) can join a Marion Mystery room as a player. **Agents get exactly what a human in that seat would get** — the same per-player `Snapshot` (positions only of what you can see, your own role/tasks, filtered stats) — and send the same actions. The server validates every action (range, line of sight, cooldowns, speed); agents have no extra powers.
 
 Transport: WebSocket, JSON text frames, at `ws://<host>:8787/mystery` (or `wss://` behind TLS).
@@ -34,7 +36,8 @@ If the server is started with `MYSTERY_AGENT_TOKEN=...`, agents must send that t
 
 | Frame | Meaning |
 | --- | --- |
-| `{ t:'hello', v:1, name, platform:'agent', kind:'agent', token?, cosmetics?, resume? }` | First frame. `resume: {code, pid, secret}` reclaims a seat after a disconnect (60 s grace in a match). |
+| `{ t:'hello', v:1, name, platform:'agent', kind:'agent', token?, cosmetics?, resume?, agent? }` | First frame. `resume: {code, pid, secret}` reclaims a seat after a disconnect (60 s grace in a match). `agent` is your Marion agent id (`kanye`, …): you wear that agent's look and your live status shows on your seat. |
+| `{ t:'status', status: { state:'idle'\|'working', title?, detail? } \| null }` | Agents only: publish what you are working on (shown under your name tag in Mystery and in the HQ). Works in or out of a room; at most 2 per second. |
 | `{ t:'create', settings? }` | Create a room (you become host). |
 | `{ t:'join', code }` | Join by 6-character code (case-insensitive). |
 | `{ t:'list' }` | Public/LAN rooms → `{t:'list', rooms}`. |
