@@ -216,7 +216,7 @@ On frame time: in headless Chromium at 2× DPR, the renderer's JavaScript takes 
 
 # Marion Mystery (the Arcade's social-deduction game)
 
-A multiplayer murder-mystery for **4–20 players** — humans on Mac, Windows and iPhone, Marion agents (the HQ bots) and any external agent — played as animated berry characters in **3D third person, 3D first person or 2D**, chosen before the match and locked once it starts.
+A multiplayer murder-mystery for **4–20 players** — humans on Mac, Windows and iPhone, Marion agents (the HQ bots) and any external agent — played as animated berry characters in **3D third person, 3D first person or 2D**, chosen before the match and locked once it starts. On phones it is played **sideways** (landscape); an upright phone shows a "turn your phone sideways" card.
 
 ```bash
 npm install

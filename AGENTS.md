@@ -117,7 +117,15 @@ Other: `server/index.ts` (Node HTTP + WS), `server/llm.ts` and `server/agent-sdk
 
 ## What was just done (most recent first)
 
-0. **Pings** (commit `4510f20`): a `ping` match action (Z, middle-click in 2D, or the HUD Ping
+0. **iPhone plays sideways, Shop, balance** (commits `ee04855`, `fbb1df6`, `26dfe6b`, `d21302b`):
+   portrait phones get a rotate card (`RotateGate` in `ui/MysteryApp.tsx`; iOS can't lock
+   orientation), the manifest asks for landscape, and every screen has compact two-column rules
+   under `@media (orientation: landscape) and (max-height: 500px)` in `mystery.css`. The e2e's
+   iPhone is now `devices['iPhone 13 landscape']`. The Shop (`characters/shop.ts`,
+   `ui/Shop.tsx`) sells cosmetics for Seeds earned per match (prices, bundles and earnings are
+   all in `shop.ts`). Bot balance work is in `ai/bot.ts` with `scripts/balance.ts` to measure.
+   Crew bots ping kills and vents they witness.
+1. **Pings** (commit `4510f20`): a `ping` match action (Z, middle-click in 2D, or the HUD Ping
    button) drops a short-lived "!" marker with a pointer line. Rules and constants
    (`PING_TTL`, `PING_COOLDOWN`, `PING_RANGE`, `pingSpot`) are in `core/match.ts`, projection
    in `core/project.ts`, painters in `render2d/prompts.ts` (`drawPing`, `drawPingPin`) and
@@ -166,8 +174,13 @@ HQ 3D overview frames the whole station; HQ tube ports sit on hall-facing walls 
 2. **Performance on real devices is unverified.** Headless 3D runs on software GL at 1–6 fps.
    2D first-time chunk bakes can hitch (about 130 ms). Test on Mac, Windows and iPhone.
 3. **Audio on real devices**: check the iPhone first-tap unlock and the levels on real speakers.
-4. **Map balance**: the all-bot sims show murderers winning most games, on both the old and new
-   layouts. The tuning knobs are in `ai/bot.ts` and `core/settings.ts`.
+4. **Balance by lobby size**: all-bot win rates are now in range overall (Classic crew 49%,
+   Lights Out 42%, Hide & Seek hiders 42%; see `docs/mystery/PROGRESS.md`), but 8-player
+   lobbies favour the murderers and 12-player lobbies the crew, because defaults are always 2
+   murderers / 1 seeker. Fixing that changes defaults players see (size-based role counts or a
+   lobby hint). Measure with `npx tsx scripts/balance.ts`.
+5. **Real iPhone landscape check**: notch safe areas (`env(safe-area-inset-*)`) can't be
+   simulated in Playwright. Shop ownership is enforced on the device only (localStorage).
 
 ## Gotchas
 

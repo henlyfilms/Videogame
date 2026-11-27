@@ -42,6 +42,8 @@ no real money, no ads. They are stored on this device (all numbers live in `src/
 
 ## Controls
 
+On iPhone the game is played **sideways**: hold the phone in landscape. If the screen doesn't turn, switch off Portrait Orientation Lock in Control Center.
+
 | | Keyboard & mouse | Touch (iPhone) | Controller |
 | --- | --- | --- | --- |
 | Move | WASD / arrows | left-thumb joystick | left stick |

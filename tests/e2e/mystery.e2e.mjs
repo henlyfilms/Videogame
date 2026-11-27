@@ -50,7 +50,7 @@ try {
   check('host creates a room with a 6-char code', /^[A-Z0-9]{6}$/.test(code ?? ''), code);
 
   // --- iPhone guest via invite link (3D third person) ---
-  const phoneCtx = await browser.newContext({ ...devices['iPhone 13'] });
+  const phoneCtx = await browser.newContext({ ...devices['iPhone 13 landscape'] });
   await phoneCtx.addInitScript(lowQuality(), { q: 'low', view: '3d-tp', name: 'Phone' });
   const phone = await phoneCtx.newPage();
   const phoneErrs = errorsOf(phone, 'phone');
