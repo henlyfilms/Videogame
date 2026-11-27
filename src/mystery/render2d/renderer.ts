@@ -10,7 +10,7 @@ import type { Cosmetics, MatchEvent, RoleId, Vec2 } from '../core/types';
 import { lampPool, type VisionShape } from '../core/vision';
 import { hash2, inked, paintProp, paintPropLive, paintStation, paintVent, paintVentShape, paintWorldFloor, rgba, softShadow, stationStyle, WORLD, worldFloorBase } from './paint';
 import { PING_TTL } from '../core/match';
-import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, type TagStyle } from './prompts';
+import { drawDottedRing, drawKeyHint, drawKillBadge, drawPing, drawNameTag, drawReportBadge, drawTaskArrow, drawVentArrow, easeOutBack, measureTag, PromptFader, spreadAngles, type TagStyle } from './prompts';
 
 const tagWidths = new Map<string, number>();
 function measureTagCached(g: CanvasRenderingContext2D, name: string, h: number): number {
@@ -128,6 +128,42 @@ interface Particle {
 
 const CHUNK = 16;
 
+/**
+ * Wall runs whose lifted cap hangs over the floor to their north: a berry
+ * standing against such a wall must be drawn behind its cap (2.5D depth),
+ * so these runs are y-sorted with the entities and re-blitted from the baked
+ * chunks. One entry per horizontal run of straight wall tiles.
+ */
+interface CapRun {
+  y: number;
+  x0: number;
+  x1: number; // exclusive
+}
+const capRunCache = new WeakMap<CompiledMap, CapRun[]>();
+function capRuns(map: CompiledMap): CapRun[] {
+  let runs = capRunCache.get(map);
+  if (runs) return runs;
+  runs = [];
+  const info = worldInfo(map);
+  const { w, h, cells } = map;
+  for (let ty = 1; ty < h; ty++) {
+    let start = -1;
+    for (let tx = 0; tx <= w; tx++) {
+      const i = ty * w + tx;
+      const on = tx < w && info.wall[i] === 1 && !info.diag[i] && cells[(ty - 1) * w + tx] !== Cell.Void;
+      if (on && start < 0) start = tx;
+      if (!on && start >= 0) {
+        // Corner tiles at either end (the wall turning north) overlap the berry too.
+        const wallAt = (x: number) => x >= 0 && x < w && info.wall[ty * w + x] === 1;
+        runs.push({ y: ty, x0: wallAt(start - 1) ? start - 1 : start, x1: wallAt(tx) ? tx + 1 : tx });
+        start = -1;
+      }
+    }
+  }
+  capRunCache.set(map, runs);
+  return runs;
+}
+
 export class Renderer2D {
   private ctx: CanvasRenderingContext2D;
   private fog: HTMLCanvasElement;
@@ -146,6 +182,10 @@ export class Renderer2D {
   private fader = new PromptFader();
   private bitmaps = new Map<string, { c: HTMLCanvasElement | OffscreenCanvas; used: number }>();
   private frameNo = 0;
+  private lastDt = 0;
+  private vignette: { w: number; h: number; g: CanvasGradient } | null = null;
+  /** Eased vertical offset per name tag (crowd de-overlap). */
+  private tagShift = new Map<string, number>();
   private w = 0;
   private h = 0;
   private dpr = 1;
@@ -317,6 +357,7 @@ export class Renderer2D {
   render(f: FrameData, dt: number): void {
     const t0 = performance.now();
     this.frameNo++;
+    this.lastDt = dt;
     const ctx = this.ctx;
     const s = this.scale(f.zoom);
     // Camera: smooth follow + look-ahead.
@@ -533,6 +574,7 @@ export class Renderer2D {
             ghost: p.ghost,
             hold: p.hasGun ? ('gun' as const) : p.flashlight !== undefined && f.night ? ('flashlight' as const) : null,
             flashlightOn: !!p.flashlight,
+            aimY: Math.sin(p.facing),
             scared: p.scared,
           };
           const kk = fade(`kill:${p.id}`);
@@ -563,6 +605,14 @@ export class Renderer2D {
           ctx.restore();
         },
       });
+    // Wall caps in front of anyone standing just north of a wall.
+    const petPos = [...this.pets.values()];
+    for (const run of capRuns(f.map)) {
+      if (run.x1 < view.x0 || run.x0 > view.x1 || run.y < view.y0 || run.y > view.y1 + 1) continue;
+      const near = (p: Vec2) => p.y > run.y - 1.6 && p.y < run.y && p.x > run.x0 - 1 && p.x < run.x1 + 1;
+      if (!f.players.some((p) => near(p.pos)) && !f.bodies.some((b) => near(b.pos)) && !petPos.some(near)) continue;
+      ents.push({ y: run.y - 0.01, draw: () => this.blitCapRun(run, s) });
+    }
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
     // Pings sit over the scene (they are callouts, not props).
@@ -616,14 +666,19 @@ export class Renderer2D {
     if (f.vision && !f.vision.all) this.drawFog(f, s, cx, cy);
     else if (f.night && f.mode === 'match') this.drawNightTint(0.25);
     {
-      const v = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.72);
-      v.addColorStop(0, 'rgba(5,8,22,0)');
-      v.addColorStop(1, 'rgba(5,8,22,0.38)');
-      ctx.fillStyle = v;
+      // Vignette gradient is rebuilt only when the view size changes.
+      if (!this.vignette || this.vignette.w !== this.w || this.vignette.h !== this.h) {
+        const v = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.72);
+        v.addColorStop(0, 'rgba(5,8,22,0)');
+        v.addColorStop(1, 'rgba(5,8,22,0.38)');
+        this.vignette = { w: this.w, h: this.h, g: v };
+      }
+      ctx.fillStyle = this.vignette.g;
       ctx.fillRect(0, 0, this.w, this.h);
     }
-    if (f.critical && !f.reducedMotion) {
-      const a = 0.12 + 0.1 * Math.sin(f.t * 6);
+    if (f.critical) {
+      // Red alert edge: pulses, or holds steady with reduced motion (never hidden).
+      const a = f.reducedMotion ? 0.18 : 0.12 + 0.1 * Math.sin(f.t * 6);
       const g = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.3, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
       g.addColorStop(0, 'rgba(239,68,68,0)');
       g.addColorStop(1, `rgba(239,68,68,${a})`);
@@ -649,13 +704,34 @@ export class Renderer2D {
     const pop = (k: number) => (rm ? Math.min(1, k) : easeOutBack(k));
     // Name tags (dark pill, avatar dot, local player outlined green).
     const tagH = Math.max(13, s * 0.34);
+    const localGhost = !!f.players.find((q) => q.local)?.ghost;
+    const tags: { id: string; st: TagStyle; tw: number; x: number; y: number }[] = [];
     for (const p of f.players) {
-      if (!inView(p.pos, 3) || (p.ghost && !p.local && !f.players.find((q) => q.local)?.ghost)) continue;
+      if (!inView(p.pos, 3) || (p.ghost && !p.local && !localGhost)) continue;
       const lift = p.emote ? 1.95 : 1.5;
       const st = tagStyleFor(p);
-      const tw = measureTagCached(ctx, st.name, tagH) + 8;
-      this.blit(`tag|${st.name}|${st.color}|${st.avatar}|${st.ring.join()}|${st.local ? 1 : 0}|${st.ghost ? 1 : 0}`, p.pos.x * s, p.pos.y * s - s * lift, tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, st));
+      tags.push({ id: p.id, st, tw: measureTagCached(ctx, st.name, tagH) + 8, x: p.pos.x * s, y: p.pos.y * s - s * lift });
     }
+    // Berries standing close together: stack their tags (the one in front keeps its
+    // place, the ones behind step up) and ease the shift so nothing jumps.
+    tags.sort((a, b) => b.y - a.y);
+    const gap = tagH + 5;
+    const k = rm ? 1 : 1 - Math.exp(-this.lastDt * 14);
+    for (let i = 0; i < tags.length; i++) {
+      const t = tags[i]!;
+      let want = t.y;
+      for (let pass = 0; pass < 3; pass++)
+        for (let j = 0; j < i; j++) {
+          const o = tags[j]!;
+          if (Math.abs(o.x - t.x) < (o.tw + t.tw) / 2 + 2 && Math.abs(o.y - want) < gap) want = o.y - gap;
+        }
+      const prev = this.tagShift.get(t.id) ?? 0;
+      const shift = prev + (want - t.y - prev) * k;
+      this.tagShift.set(t.id, shift);
+      t.y += shift;
+    }
+    for (const t of tags) this.blit(`tag|${t.st.name}|${t.st.color}|${t.st.avatar}|${t.st.ring.join()}|${t.st.local ? 1 : 0}|${t.st.ghost ? 1 : 0}`, t.x, t.y, t.tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, t.st));
+    if (this.tagShift.size > 64) this.tagShift.clear();
     // Task arrows (bob over the dotted ring) + "use" key hint on the station in reach.
     for (const st of f.map.def.stations) {
       if (!inView(st)) continue;
@@ -689,7 +765,12 @@ export class Renderer2D {
       ctx.globalAlpha = Math.min(1, k * 1.4);
       const e = pop(k);
       const bob = rm ? 0 : Math.sin(f.t * 4) * s * 0.05;
-      ctx.translate(b.pos.x * s, b.pos.y * s - s * 1.05 + bob);
+      // Someone standing on the body: lift the badge over their name tag instead of their face.
+      const covered = f.players.some((p) => !p.ghost && Math.abs(p.pos.x - b.pos.x) < 0.6 && Math.abs(p.pos.y - b.pos.y) < 0.6);
+      const liftKey = `body:${b.id}`;
+      const lift = (this.tagShift.get(liftKey) ?? 1.05) + ((covered ? 2.25 : 1.05) - (this.tagShift.get(liftKey) ?? 1.05)) * (rm ? 1 : 1 - Math.exp(-this.lastDt * 10));
+      this.tagShift.set(liftKey, lift);
+      ctx.translate(b.pos.x * s, b.pos.y * s - s * lift + bob);
       ctx.scale(e, e);
       const rk = keys?.report ?? '';
       this.blit(`report|${rk}`, 0, 0, s * 1.1, s * 1.1, 1, (g) => drawReportBadge(g, 0, 0, s * 0.42, 0, rk, true));
@@ -723,10 +804,10 @@ export class Renderer2D {
       const ki = fade(`invent:${v.id}`);
       if (ki <= 0) continue;
       const e = pop(ki);
-      for (const lid of v.links) {
-        const lv = f.map.ventById.get(lid);
-        if (!lv) continue;
-        const a = Math.atan2(lv.y - v.y, lv.x - v.x);
+      const links = v.links.map((lid) => f.map.ventById.get(lid)).filter((lv): lv is NonNullable<typeof lv> => !!lv);
+      const angles = spreadAngles(links.map((lv) => Math.atan2(lv.y - v.y, lv.x - v.x)));
+      for (const [li, lv] of links.entries()) {
+        const a = angles[li]!;
         const pulse = rm ? 0 : Math.sin(f.t * 4) * 0.08;
         const r = (1.3 + pulse) * e;
         const roomId = roomAt(f.map, lv);
@@ -769,6 +850,31 @@ export class Renderer2D {
     const sh = h * scale;
     if (sw < 0.5 || sh < 0.5) return;
     this.ctx.drawImage(e.c as CanvasImageSource, x - sw / 2, y - sh / 2, sw, sh);
+  }
+
+  /** Re-draw a wall run's cap (and its top ink edge) from the baked chunks. */
+  private blitCapRun(run: CapRun, s: number): void {
+    const ink = Math.max(1.5, s * 0.075) / 2 / s; // half the wall ink width, in tiles
+    // Slightly see-through, so whoever stands behind still reads as a silhouette.
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.8;
+    const wy0 = run.y - WALL_H - ink;
+    const wy1 = run.y + 1 - WALL_H + ink;
+    for (let cy = Math.floor(wy0 / CHUNK); cy <= Math.floor(wy1 / CHUNK); cy++)
+      for (let cx = Math.floor(run.x0 / CHUNK); cx <= Math.floor((run.x1 - 0.001) / CHUNK); cx++) {
+        const c = this.chunks.get(`${cx},${cy}`);
+        if (!c) continue;
+        const ox = cx * CHUNK;
+        const oy = cy * CHUNK;
+        const ax = Math.max(run.x0, ox);
+        const bx = Math.min(run.x1, ox + CHUNK);
+        const ay = Math.max(wy0, oy);
+        const by = Math.min(wy1, oy + CHUNK);
+        if (bx <= ax || by <= ay) continue;
+        const k = c.canvas.width / CHUNK; // chunk px per tile
+        this.ctx.drawImage(c.canvas as CanvasImageSource, (ax - ox) * k, (ay - oy) * k, (bx - ax) * k, (by - ay) * k, ax * s, ay * s, (bx - ax) * s, (by - ay) * s);
+      }
+    this.ctx.restore();
   }
 
   private drawNightTint(a: number): void {
@@ -840,9 +946,19 @@ export class Renderer2D {
       fg.fill();
     };
     if (v.radius > 0.05) cut(poly(v.radius, 0, Math.PI * 2, 120), v.radius);
+    // Flashlight: three nested cuts (the outer ones fainter) feather the beam's edges.
+    let beam: Vec2[] | null = null;
     if (v.cone) {
-      const pts = poly(v.cone.range, v.cone.dir - v.cone.halfAngle, v.cone.dir + v.cone.halfAngle, 40);
-      cut(pts, v.cone.range);
+      const { dir, halfAngle, range } = v.cone;
+      for (const [k, a] of [
+        [1, 0.45],
+        [0.8, 0.6],
+        [0.6, 1],
+      ] as const) {
+        const pts = poly(range, dir - halfAngle * k, dir + halfAngle * k, Math.round(44 * k));
+        if (k === 0.8) beam = pts;
+        cut(pts, range, o, a);
+      }
     }
     // World light pools (Lights Out): lamps, lanterns, recharge stations.
     if (f.night) {
@@ -867,7 +983,8 @@ export class Renderer2D {
     fg.globalCompositeOperation = 'source-over';
     this.ctx.drawImage(this.fog, 0, 0, this.w, this.h);
     // Warm additive glow for flashlight beam.
-    if (v.cone && f.night) {
+    // Warm additive glow for the flashlight beam, clipped by the same rays (never through walls).
+    if (v.cone && f.night && beam) {
       const ctx = this.ctx;
       const ox = this.w / 2 + (origin.x - cx) * s;
       const oy = this.h / 2 + (origin.y - cy) * s;
@@ -879,7 +996,7 @@ export class Renderer2D {
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(ox, oy);
-      ctx.arc(ox, oy, v.cone.range * s, v.cone.dir - v.cone.halfAngle, v.cone.dir + v.cone.halfAngle);
+      for (const p of beam) ctx.lineTo(p.x / fs, p.y / fs);
       ctx.closePath();
       ctx.fill();
       ctx.restore();

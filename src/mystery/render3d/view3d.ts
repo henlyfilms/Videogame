@@ -8,18 +8,40 @@ import * as THREE from 'three';
 import { runtime } from '../client/runtime';
 import { attachInkHulls, setHullMats, type HullMats } from '../characters/outline3d';
 import { createBerry, createBody, createPet, type BerryRig } from '../characters/rig3d';
-import { castRay, type CompiledMap } from '../core/map';
+import { Cell, type CompiledMap } from '../core/map';
 import type { MatchEvent, Vec2 } from '../core/types';
 import type { Prefs } from '../client/prefs';
 import { input } from '../client/controls';
 import { roomAt } from '../core/map';
 import { WORLD } from '../render2d/paint';
-import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader } from '../render2d/prompts';
+import { drawKeyHint, drawKillBadge, drawNameTag, drawPingPin, drawReportBadge, drawVentArrow, easeOutBack, measureTag, pingPop, PromptFader, spreadAngles } from '../render2d/prompts';
 import { PING_TTL } from '../core/match';
 import { tagStyleFor, type DrawPlayer, type FrameData } from '../render2d/renderer';
 import type { ViewRenderer } from '../ui/GameView';
 import { buildMapScene, radialTexture, toon, type MapScene, type Quality } from './scene';
-import { addHull, dottedRingTexture, hullMaterial } from './worldkit';
+import { addHull, dottedRingTexture, hullMaterial, OCCLUDER } from './worldkit';
+
+/**
+ * Camera boom ray: stops at walls and shut doors only. Tall props (trees,
+ * hedges, shelves) block sight lines but not the camera: they fade instead.
+ */
+function boomRay(m: CompiledMap, o: Vec2, angle: number, maxDist: number, closed: ReadonlySet<string>): number {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const step = 0.1;
+  for (let t = 0; t < maxDist; t += step) {
+    const x = Math.floor(o.x + dx * t);
+    const y = Math.floor(o.y + dy * t);
+    if (x < 0 || y < 0 || x >= m.w || y >= m.h) return t;
+    const i = y * m.w + x;
+    if (m.cells[i] === Cell.Void) return t;
+    if (closed.size) {
+      const d = m.doorAt.get(i);
+      if (d && closed.has(d)) return t;
+    }
+  }
+  return maxDist;
+}
 
 interface Actor {
   rig: BerryRig;
@@ -35,6 +57,8 @@ interface Actor {
   hullRev: number;
   /** Kill-target outline currently applied (red silhouette). */
   killOn: boolean;
+  /** Eased screen-space lift of the name tag (in tag heights) so crowded tags stack. */
+  tagLift: number;
 }
 
 /** Canvas → sprite with a fixed world height. */
@@ -64,10 +88,11 @@ function disposeSprite(s: THREE.Object3D): void {
 }
 
 function tagSprite(p: Pick<DrawPlayer, 'name' | 'cosmetics' | 'nameColor' | 'local' | 'ghost'>): THREE.Sprite {
-  const H = 56;
+  // Baked at 2× so tags stay crisp on 2–3× phone screens and up close in first person.
+  const H = 112;
   const probe = document.createElement('canvas').getContext('2d')!;
-  const w = Math.ceil(measureTag(probe, p.name.slice(0, 20), H) + 16);
-  return canvasSprite(w, H + 16, 0.3, (g) => drawNameTag(g, w / 2, (H + 16) / 2 - 3, H, tagStyleFor(p)));
+  const w = Math.ceil(measureTag(probe, p.name.slice(0, 20), H) + 32);
+  return canvasSprite(w, H + 32, 0.3, (g) => drawNameTag(g, w / 2, (H + 32) / 2 - 6, H, tagStyleFor(p)));
 }
 
 interface Fx {
@@ -95,6 +120,8 @@ export class ThreeDView implements ViewRenderer {
   private sun: THREE.DirectionalLight;
   private flash: THREE.SpotLight;
   private flashTarget = new THREE.Object3D();
+  /** Lights Out: a faint personal glow (the 2D view's small sight circle), so your own berry and feet read in the dark. */
+  private selfLight = new THREE.PointLight('#c9d4ff', 0, 3.2, 1.4);
   private lampLights: THREE.PointLight[] = [];
   private mapScene: MapScene | null = null;
   private mapKey = '';
@@ -138,6 +165,15 @@ export class ThreeDView implements ViewRenderer {
   private arrowInk = hullMaterial(WORLD.ink, 0.02, false);
   private camDistGoal = 5.2;
   private tmpV = new THREE.Vector3();
+  private tmpCam = new THREE.Vector3();
+  private lastDt = 0;
+  /** One fog object, retuned every frame (no per-frame allocation). */
+  private fog = new THREE.Fog('#141a33', 10, 40);
+  private static readonly LAMP_WARM = new THREE.Color('#ffd89a');
+  private static readonly ALERT_HEMI = new THREE.Color('#ff3b3b');
+  private static readonly ALERT_SUN = new THREE.Color('#ff5a4a');
+  private static readonly ALERT_FOG = new THREE.Color('#3a0508');
+  private lampOrder: number[] = [];
   frameMs = 0;
 
   constructor(
@@ -166,9 +202,11 @@ export class ThreeDView implements ViewRenderer {
     this.sun.shadow.camera.top = 18;
     this.sun.shadow.camera.bottom = -18;
     this.sun.shadow.bias = -0.0008;
-    this.flash = new THREE.SpotLight('#fff1c4', 0, 12, Math.PI / 7, 0.45, 1.2);
+    // Soft-edged warm beam with a gentle falloff: the floor pool at your feet must not
+    // blow out to white while walls a few metres ahead still catch the light.
+    this.flash = new THREE.SpotLight('#ffe7b0', 0, 12, Math.PI / 7, 0.65, 0.6);
     this.flash.target = this.flashTarget;
-    this.scene.add(this.hemi, this.sun, this.sun.target, this.flash, this.flashTarget, this.extras);
+    this.scene.add(this.hemi, this.sun, this.sun.target, this.flash, this.flashTarget, this.selfLight, this.extras);
     for (let i = 0; i < (this.quality === 'low' ? 2 : 4); i++) {
       const l = new THREE.PointLight('#ffd89a', 0, 7, 1.6);
       this.lampLights.push(l);
@@ -345,7 +383,7 @@ export class ThreeDView implements ViewRenderer {
       this.scene.add(rig.group);
       const label = tagSprite(p);
       this.scene.add(label);
-      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false };
+      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false, tagLift: 0 };
       this.actors.set(p.id, a);
     }
     if (a.labelKey !== labelKey) {
@@ -385,6 +423,7 @@ export class ThreeDView implements ViewRenderer {
   render(f: FrameData, dt: number): void {
     if (this.lost) return;
     const t0 = performance.now();
+    this.lastDt = dt;
     this.ensureMap(f.map, f.night);
     const ms = this.mapScene!;
     // Camera look input (touch / right stick).
@@ -591,27 +630,36 @@ export class ThreeDView implements ViewRenderer {
     const ghostView = !!localPlayer?.ghost;
     if (f.night && f.mode === 'match' && !ghostView) {
       const hv = f.highVisibility ? 1.8 : 1;
-      this.hemi.intensity = (this.mode === 'fp' ? 0.34 : 0.24) * hv * flick;
-      this.hemi.color.set('#6b7bb8');
-      this.sun.intensity = 0.05 * hv;
       const cone = f.vision?.cone;
-      this.flash.intensity = cone ? 55 * flick : 0;
+      // Murderers' dark vision (no flashlight, wider sight radius, like the 2D view's cut-out):
+      // a cold moonlit ambient that fades out at the edge of that radius.
+      const darkVision = !cone && (f.vision?.radius ?? 0) > 1.6 ? f.vision!.radius : 0;
+      this.hemi.intensity = (darkVision ? 0.85 : this.mode === 'fp' ? 0.34 : 0.24) * hv * flick;
+      this.hemi.color.set(darkVision ? '#8a98d8' : '#6b7bb8');
+      this.sun.intensity = 0.05 * hv;
+      this.flash.intensity = cone ? 16 * flick : 0;
       if (cone) {
         this.flash.angle = Math.min(Math.PI / 2.2, cone.halfAngle * 1.1);
-        this.flash.distance = cone.range * 1.25;
+        this.flash.distance = cone.range * 1.6;
         this.flash.position.set(f.focus.x, this.mode === 'fp' ? 0.85 : 1.0, f.focus.y);
         const dir = this.mode === 'fp' ? this.yaw : cone.dir;
         this.flashTarget.position.set(f.focus.x + Math.cos(dir) * 4, this.mode === 'fp' ? 0.85 + Math.sin(this.pitch) * 4 : 0.3, f.focus.y + Math.sin(dir) * 4);
       }
-      this.scene.fog = new THREE.Fog('#04060d', 1, (f.vision?.cone?.range ?? 3) + 6);
-      // Nearest lamps become real lights.
-      const sorted = [...ms.lamps].sort((a, b) => a.pos.distanceToSquared(focus) - b.pos.distanceToSquared(focus));
+      if (darkVision) this.setFog('#04060d', darkVision * 0.45, darkVision * 1.35 + 1);
+      else this.setFog('#04060d', 1, (f.vision?.cone?.range ?? 3) + 6);
+      this.selfLight.intensity = 2.6 * hv * flick;
+      this.selfLight.position.set(f.focus.x, 1.7, f.focus.y);
+      // Nearest lamps become real lights (index sort, reused array).
+      const order = this.lampOrder;
+      order.length = ms.lamps.length;
+      for (let i = 0; i < order.length; i++) order[i] = i;
+      order.sort((a, b) => ms.lamps[a]!.pos.distanceToSquared(focus) - ms.lamps[b]!.pos.distanceToSquared(focus));
       this.lampLights.forEach((l, i) => {
-        const lamp = sorted[i];
+        const lamp = i < order.length ? ms.lamps[order[i]!] : undefined;
         l.intensity = lamp ? 11 * flick : 0;
         if (lamp) {
           l.position.copy(lamp.pos);
-          l.color.copy(lamp.color).lerp(new THREE.Color('#ffd89a'), 0.6);
+          l.color.copy(lamp.color).lerp(ThreeDView.LAMP_WARM, 0.6);
           l.distance = Math.max(4, lamp.r * 0.8);
         }
       });
@@ -622,16 +670,18 @@ export class ThreeDView implements ViewRenderer {
       this.hemi.intensity = (sab ? 0.35 : 1.5) * flick;
       this.sun.intensity = sab ? 0.15 : 1.5;
       this.flash.intensity = 0;
+      this.selfLight.intensity = 0;
       for (const l of this.lampLights) l.intensity = 0;
       const fogCol = sab ? '#05070f' : f.mode === 'lobby' ? '#0b1020' : '#141a33';
-      this.scene.fog = f.mode === 'lobby' ? new THREE.Fog(fogCol, 25, 60) : new THREE.Fog(fogCol, Math.max(1, vis * 0.6), vis * 1.35 + 2);
+      if (f.mode === 'lobby') this.setFog(fogCol, 25, 60);
+      else this.setFog(fogCol, Math.max(1, vis * 0.6), vis * 1.35 + 2);
     }
     // Critical sabotage: red alert lighting (pulsing unless reduced motion).
     if (f.critical && f.mode === 'match') {
       const pulse = f.reducedMotion ? 0.6 : 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(f.t * 6));
-      this.hemi.color.lerp(new THREE.Color('#ff3b3b'), 0.55 * pulse);
-      this.sun.color.set('#ffd0c8').lerp(new THREE.Color('#ff5a4a'), 0.5 * pulse);
-      if (this.scene.fog instanceof THREE.Fog) this.scene.fog.color.lerp(new THREE.Color('#3a0508'), 0.6 * pulse);
+      this.hemi.color.lerp(ThreeDView.ALERT_HEMI, 0.55 * pulse);
+      this.sun.color.set('#ffd0c8').lerp(ThreeDView.ALERT_SUN, 0.5 * pulse);
+      this.fog.color.lerp(ThreeDView.ALERT_FOG, 0.6 * pulse);
     } else this.sun.color.set('#fff4e0');
     this.sun.position.set(f.focus.x + 8, 16, f.focus.y + 6);
     this.sun.target.position.set(f.focus.x, 0, f.focus.y);
@@ -648,10 +698,14 @@ export class ThreeDView implements ViewRenderer {
       // Collide the camera boom with walls (grid ray in the map plane).
       const back = this.yaw + Math.PI;
       const flatDist = this.camDist * Math.cos(this.pitch);
-      const hit = castRay(f.map, f.focus, back, flatDist, f.closedDoors);
-      const d = Math.max(0.6, Math.min(flatDist, hit - 0.35));
-      const height = 1.0 + this.camDist * Math.sin(this.pitch) * (d / Math.max(0.01, flatDist));
-      const desired = new THREE.Vector3(f.focus.x + Math.cos(back) * d, height + (d < flatDist ? (flatDist - d) * 0.6 : 0), f.focus.y + Math.sin(back) * d);
+      const hit = boomRay(f.map, f.focus, back, flatDist, f.closedDoors);
+      // A wall close behind swings the boom up (steeper pitch, same length) instead of
+      // shortening it into the berry or poking it through the wall: the camera rises over
+      // the wall and looks down, the way a crane shot would.
+      const room = Math.max(0.12, hit - 0.3);
+      const pitch = room < flatDist ? Math.min(1.5, Math.acos(Math.min(1, room / this.camDist))) : this.pitch;
+      const d = this.camDist * Math.cos(pitch);
+      const desired = this.tmpCam.set(f.focus.x + Math.cos(back) * d, 1.0 + this.camDist * Math.sin(pitch), f.focus.y + Math.sin(back) * d);
       if (!this.camInit) {
         this.camPos.copy(desired);
         this.camInit = true;
@@ -660,9 +714,54 @@ export class ThreeDView implements ViewRenderer {
       this.camera.position.copy(this.camPos).add(new THREE.Vector3((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, 0));
       this.camera.lookAt(target);
     }
+    this.stackLabels(dt, f.reducedMotion);
     runtime.cameraYaw = this.yaw;
+    // Props between the camera and your berry dissolve (third person only).
+    OCCLUDER.uOccOn.value = !localPlayer ? 0 : this.mode === 'tp' ? (ghostView ? 0 : 1) : 2;
+    OCCLUDER.uOccA.value.copy(this.camera.position);
+    OCCLUDER.uOccB.value.set(f.focus.x, 0.7, f.focus.y);
     this.renderer.render(this.scene, this.camera);
     this.frameMs = performance.now() - t0;
+  }
+
+  /**
+   * Name tags of berries standing close together overlap on screen: the nearest
+   * keeps its place, the ones behind step up (sprite anchor shift, eased).
+   */
+  private stackLabels(dt: number, rm: boolean): void {
+    const H = this.canvas.clientHeight || 1;
+    const W = this.canvas.clientWidth || 1;
+    const k = 2 * Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
+    this.camera.updateMatrixWorld();
+    const tags: { a: Actor; x: number; y: number; w: number; h: number; d: number }[] = [];
+    for (const a of this.actors.values()) {
+      if (!a.label.visible) continue;
+      const v = this.tmpV.copy(a.label.position).applyMatrix4(this.camera.matrixWorldInverse);
+      const d = -v.z;
+      if (d <= 0.05) continue;
+      const h = (a.label.scale.y / (d * k)) * H;
+      const p = this.tmpV.copy(a.label.position).project(this.camera);
+      tags.push({ a, x: ((p.x + 1) / 2) * W, y: ((1 - p.y) / 2) * H, w: h * (a.label.scale.x / a.label.scale.y), h, d });
+    }
+    tags.sort((p, q) => p.d - q.d);
+    const ease = rm ? 1 : 1 - Math.exp(-dt * 14);
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const t of tags) {
+      let want = t.y;
+      for (let pass = 0; pass < 3; pass++)
+        for (const o of placed) if (Math.abs(o.x - t.x) < (o.w + t.w) / 2 && Math.abs(o.y - want) < (o.h + t.h) * 0.42) want = o.y - (o.h + t.h) * 0.42;
+      const lift = Math.min(3, (t.y - want) / Math.max(1, t.h));
+      t.a.tagLift += (lift - t.a.tagLift) * ease;
+      t.a.label.center.y = 0.5 - t.a.tagLift;
+      placed.push({ x: t.x, y: t.y - t.a.tagLift * t.h, w: t.w, h: t.h });
+    }
+  }
+
+  private setFog(color: string, near: number, far: number): void {
+    this.fog.color.set(color);
+    this.fog.near = near;
+    this.fog.far = far;
+    this.scene.fog = this.fog;
   }
 
   /** Screen-friendly sprite scale: smaller up close (first person), capped far away. */
@@ -840,7 +939,8 @@ export class ThreeDView implements ViewRenderer {
       o.ripple.visible = !rm;
       o.ripple.scale.setScalar(1 + w * 2.2);
       (o.ripple.material as THREE.MeshBasicMaterial).opacity = (1 - w) * fade * 0.7;
-      if (pg.from) {
+      // Your own pointer beam in first person would start under the lens: pin + rings only.
+      if (pg.from && !(pg.local && this.mode === 'fp')) {
         const a = this.actors.get(pg.id);
         const hand = this.tmpV.set(pg.from.x, (a?.rig.height ?? 1.05) * 0.62, pg.from.y);
         const tip = new THREE.Vector3(pg.to.x, 0.06, pg.to.y);
@@ -911,24 +1011,38 @@ export class ThreeDView implements ViewRenderer {
         setSprite(obj, e, alpha);
       } else if (type === 'report') {
         const b = f.bodies.find((q) => q.id === id);
-        if (b) obj.position.set(b.pos.x, 0.95 + (rm ? 0 : Math.sin(t * 4) * 0.04), b.pos.y);
+        if (b) {
+          // Someone standing on the body: ease the badge up over their name tag.
+          const covered = f.players.some((p) => !p.ghost && Math.abs(p.pos.x - b.pos.x) < 0.6 && Math.abs(p.pos.y - b.pos.y) < 0.6);
+          const prev = (obj.userData.lift as number | undefined) ?? 0.95;
+          const lift = prev + ((covered ? 2.05 : 0.95) - prev) * (rm ? 1 : Math.min(1, this.lastDt * 10));
+          obj.userData.lift = lift;
+          obj.position.set(b.pos.x, lift + (rm ? 0 : Math.sin(t * 4) * 0.04), b.pos.y);
+        }
         setSprite(obj, e, alpha);
       } else if (type === 'invent') {
         const v0 = f.map.ventById.get(id);
         if (!v0) continue;
         const o = new THREE.Vector3(v0.x, 0.45, v0.y).project(this.camera);
+        // Links in a similar direction get spread apart so arrows and labels don't stack.
+        const links = v0.links.filter((lid) => f.map.ventById.has(lid));
+        const spread = spreadAngles(links.map((lid) => Math.atan2(f.map.ventById.get(lid)!.y - v0.y, f.map.ventById.get(lid)!.x - v0.x)));
         for (const ch of obj.children) {
-          const lv = f.map.ventById.get(ch.userData.link as string);
-          if (!lv) continue;
-          const dx = lv.x - v0.x;
-          const dz = lv.y - v0.y;
-          const l = Math.hypot(dx, dz) || 1;
+          const li = links.indexOf(ch.userData.link as string);
+          if (li < 0) continue;
+          const dx = Math.cos(spread[li]!);
+          const dz = Math.sin(spread[li]!);
+          const l = 1;
           const r = (1.25 + (rm ? 0 : Math.sin(t * 4) * 0.08)) * e;
           if (ch.userData.kind === 'arrow') {
             ch.position.set(v0.x + (dx / l) * r, 0.45, v0.y + (dz / l) * r);
             const sp = new THREE.Vector3(ch.position.x, 0.45, ch.position.z).project(this.camera);
             (ch as THREE.Sprite).material.rotation = Math.atan2(sp.y - o.y, (sp.x - o.x) * this.camera.aspect);
-          } else ch.position.set(v0.x + (dx / l) * r, 0.12, v0.y + (dz / l) * r);
+          } else {
+            // The room label sits past the arrow tip (they used to overlap on screen).
+            const rl = r + 0.62 * e;
+            ch.position.set(v0.x + (dx / l) * rl, 0.2, v0.y + (dz / l) * rl);
+          }
           setSprite(ch, e, alpha);
         }
       }
@@ -952,6 +1066,8 @@ export class ThreeDView implements ViewRenderer {
   }
 
   dispose(): void {
+    // The 2D view has no camera yaw: drop ours so pings / arrows there use the berry's facing.
+    runtime.cameraYaw = null;
     this.canvas.removeEventListener('webglcontextlost', this.onLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
     for (const a of this.actors.values()) a.rig.dispose();

@@ -264,10 +264,12 @@ export function drawVentArrow(g: CanvasRenderingContext2D, x: number, y: number,
   g.lineJoin = 'round';
   g.save();
   g.rotate(angle);
+  // Notched arrowhead: longer than wide so the direction reads at any rotation.
   g.beginPath();
-  g.moveTo(size * 1.1, 0);
-  g.lineTo(-size * 0.2, -size * 0.75);
-  g.lineTo(-size * 0.2, size * 0.75);
+  g.moveTo(size * 1.25, 0);
+  g.lineTo(-size * 0.35, -size * 0.72);
+  g.lineTo(size * 0.02, 0);
+  g.lineTo(-size * 0.35, size * 0.72);
   g.closePath();
   g.fillStyle = '#f2f4f8';
   g.fill();
@@ -275,9 +277,10 @@ export function drawVentArrow(g: CanvasRenderingContext2D, x: number, y: number,
   g.strokeStyle = WORLD.ink;
   g.stroke();
   g.beginPath();
-  g.moveTo(size * 0.7, 0);
-  g.lineTo(size * 0.05, -size * 0.38);
-  g.lineTo(size * 0.05, size * 0.38);
+  g.moveTo(size * 0.88, 0);
+  g.lineTo(-size * 0.02, -size * 0.36);
+  g.lineTo(size * 0.2, 0);
+  g.lineTo(-size * 0.02, size * 0.36);
   g.closePath();
   g.fillStyle = WORLD.vent;
   g.fill();
@@ -286,16 +289,46 @@ export function drawVentArrow(g: CanvasRenderingContext2D, x: number, y: number,
     g.font = `800 ${size * 0.62}px ui-sans-serif, system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    const ly = size * 1.55;
     const tw = g.measureText(label).width + size * 0.8;
+    // The label sits past the arrow tip (outward), so neighbouring arrows' labels separate.
+    const reach = size * 1.6 + Math.abs(Math.cos(angle)) * (tw / 2 - size * 0.4);
+    const lx = Math.cos(angle) * reach;
+    const ly = Math.sin(angle) * size * 1.7 + size * 0.25;
     g.beginPath();
-    g.roundRect(-tw / 2, ly - size * 0.46, tw, size * 0.92, size * 0.46);
+    g.roundRect(lx - tw / 2, ly - size * 0.46, tw, size * 0.92, size * 0.46);
     g.fillStyle = 'rgba(17,21,32,0.88)';
     g.fill();
     g.fillStyle = '#ffffff';
-    g.fillText(label, 0, ly + size * 0.03);
+    g.fillText(label, lx, ly + size * 0.03);
   }
   g.restore();
+}
+
+/**
+ * Spread directions so no two are closer than `min` radians (vent-travel arrows
+ * to vents that lie in a similar direction would otherwise sit on top of each other).
+ */
+export function spreadAngles(angles: number[], min = 0.9): number[] {
+  const n = angles.length;
+  if (n < 2) return angles.slice();
+  const out = angles.slice();
+  for (let it = 0; it < 12; it++) {
+    let moved = false;
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        let d = out[j]! - out[i]!;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) >= min) continue;
+        const push = (min - Math.abs(d)) / 2 + 1e-3;
+        const s = d >= 0 ? 1 : -1;
+        out[i] = out[i]! - push * s;
+        out[j] = out[j]! + push * s;
+        moved = true;
+      }
+    if (!moved) break;
+  }
+  return out;
 }
 
 export interface TagStyle {

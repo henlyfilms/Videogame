@@ -522,7 +522,10 @@ export function roomLabel(room: RoomDef): { text: string; x: number; y: number; 
 export function paintRoomNames(g: CanvasRenderingContext2D, map: CompiledMap, x0: number, y0: number, x1: number, y1: number, s: number, night: boolean): void {
   for (const room of map.def.rooms) {
     const L = roomLabel(room);
-    if (L.x + L.width / 2 < x0 || L.x - L.width / 2 > x1 || L.y + L.size < y0 || L.y - L.size > y1) continue;
+    // Cull on the room width (the tracked text can run wider than the estimate), so
+    // every chunk the name crosses paints its part and the name never looks cut.
+    const half = Math.max(L.width, room.rect[2]) / 2 + 1;
+    if (L.x + half < x0 || L.x - half > x1 || L.y + L.size < y0 || L.y - L.size > y1) continue;
     g.save();
     // Measure the real (tracked) width and shrink to fit the room.
     let fs = L.size * s;
