@@ -108,7 +108,8 @@ export function App() {
       <TopBar />
 
       {replayBar.mounted && (
-        <div className="pointer-events-none absolute inset-x-3 z-10 flex justify-center" style={below()}>
+        // Keeps left of an open side panel so the two never overlap.
+        <div className="pointer-events-none absolute inset-x-3 z-10 flex justify-center transition-[right] duration-200" style={{ ...below(), right: panelOpen && !small ? 384 : 12 }}>
           <div className="hq-anim-pop flex w-full justify-center" {...closingAttr(replayBar.closing)}>
             <ReplayBar />
           </div>
