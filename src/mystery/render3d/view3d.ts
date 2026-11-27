@@ -57,6 +57,8 @@ interface Actor {
   hullRev: number;
   /** Kill-target outline currently applied (red silhouette). */
   killOn: boolean;
+  /** Eased screen-space lift of the name tag (in tag heights) so crowded tags stack. */
+  tagLift: number;
 }
 
 /** Canvas → sprite with a fixed world height. */
@@ -381,7 +383,7 @@ export class ThreeDView implements ViewRenderer {
       this.scene.add(rig.group);
       const label = tagSprite(p);
       this.scene.add(label);
-      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false };
+      a = { rig, cosKey: key, pet: null, petPos: new THREE.Vector3(), label, labelKey, seen: 0, heading: 0, hulls: [], hullRev: -1, killOn: false, tagLift: 0 };
       this.actors.set(p.id, a);
     }
     if (a.labelKey !== labelKey) {
@@ -628,10 +630,13 @@ export class ThreeDView implements ViewRenderer {
     const ghostView = !!localPlayer?.ghost;
     if (f.night && f.mode === 'match' && !ghostView) {
       const hv = f.highVisibility ? 1.8 : 1;
-      this.hemi.intensity = (this.mode === 'fp' ? 0.34 : 0.24) * hv * flick;
-      this.hemi.color.set('#6b7bb8');
-      this.sun.intensity = 0.05 * hv;
       const cone = f.vision?.cone;
+      // Murderers' dark vision (no flashlight, wider sight radius, like the 2D view's cut-out):
+      // a cold moonlit ambient that fades out at the edge of that radius.
+      const darkVision = !cone && (f.vision?.radius ?? 0) > 1.6 ? f.vision!.radius : 0;
+      this.hemi.intensity = (darkVision ? 0.85 : this.mode === 'fp' ? 0.34 : 0.24) * hv * flick;
+      this.hemi.color.set(darkVision ? '#8a98d8' : '#6b7bb8');
+      this.sun.intensity = 0.05 * hv;
       this.flash.intensity = cone ? 16 * flick : 0;
       if (cone) {
         this.flash.angle = Math.min(Math.PI / 2.2, cone.halfAngle * 1.1);
@@ -640,7 +645,8 @@ export class ThreeDView implements ViewRenderer {
         const dir = this.mode === 'fp' ? this.yaw : cone.dir;
         this.flashTarget.position.set(f.focus.x + Math.cos(dir) * 4, this.mode === 'fp' ? 0.85 + Math.sin(this.pitch) * 4 : 0.3, f.focus.y + Math.sin(dir) * 4);
       }
-      this.setFog('#04060d', 1, (f.vision?.cone?.range ?? 3) + 6);
+      if (darkVision) this.setFog('#04060d', darkVision * 0.45, darkVision * 1.35 + 1);
+      else this.setFog('#04060d', 1, (f.vision?.cone?.range ?? 3) + 6);
       this.selfLight.intensity = 2.6 * hv * flick;
       this.selfLight.position.set(f.focus.x, 1.7, f.focus.y);
       // Nearest lamps become real lights (index sort, reused array).
@@ -708,6 +714,7 @@ export class ThreeDView implements ViewRenderer {
       this.camera.position.copy(this.camPos).add(new THREE.Vector3((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, 0));
       this.camera.lookAt(target);
     }
+    this.stackLabels(dt, f.reducedMotion);
     runtime.cameraYaw = this.yaw;
     // Props between the camera and your berry dissolve (third person only).
     OCCLUDER.uOccOn.value = !localPlayer ? 0 : this.mode === 'tp' ? (ghostView ? 0 : 1) : 2;
@@ -715,6 +722,39 @@ export class ThreeDView implements ViewRenderer {
     OCCLUDER.uOccB.value.set(f.focus.x, 0.7, f.focus.y);
     this.renderer.render(this.scene, this.camera);
     this.frameMs = performance.now() - t0;
+  }
+
+  /**
+   * Name tags of berries standing close together overlap on screen: the nearest
+   * keeps its place, the ones behind step up (sprite anchor shift, eased).
+   */
+  private stackLabels(dt: number, rm: boolean): void {
+    const H = this.canvas.clientHeight || 1;
+    const W = this.canvas.clientWidth || 1;
+    const k = 2 * Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
+    this.camera.updateMatrixWorld();
+    const tags: { a: Actor; x: number; y: number; w: number; h: number; d: number }[] = [];
+    for (const a of this.actors.values()) {
+      if (!a.label.visible) continue;
+      const v = this.tmpV.copy(a.label.position).applyMatrix4(this.camera.matrixWorldInverse);
+      const d = -v.z;
+      if (d <= 0.05) continue;
+      const h = (a.label.scale.y / (d * k)) * H;
+      const p = this.tmpV.copy(a.label.position).project(this.camera);
+      tags.push({ a, x: ((p.x + 1) / 2) * W, y: ((1 - p.y) / 2) * H, w: h * (a.label.scale.x / a.label.scale.y), h, d });
+    }
+    tags.sort((p, q) => p.d - q.d);
+    const ease = rm ? 1 : 1 - Math.exp(-dt * 14);
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const t of tags) {
+      let want = t.y;
+      for (let pass = 0; pass < 3; pass++)
+        for (const o of placed) if (Math.abs(o.x - t.x) < (o.w + t.w) / 2 && Math.abs(o.y - want) < (o.h + t.h) * 0.42) want = o.y - (o.h + t.h) * 0.42;
+      const lift = Math.min(3, (t.y - want) / Math.max(1, t.h));
+      t.a.tagLift += (lift - t.a.tagLift) * ease;
+      t.a.label.center.y = 0.5 - t.a.tagLift;
+      placed.push({ x: t.x, y: t.y - t.a.tagLift * t.h, w: t.w, h: t.h });
+    }
   }
 
   private setFog(color: string, near: number, far: number): void {
