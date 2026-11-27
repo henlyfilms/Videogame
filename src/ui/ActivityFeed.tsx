@@ -65,7 +65,7 @@ export function ActivityFeed({ onPanRoom, onPanBot }: { onPanRoom: (r: RoomId) =
         )}
       </header>
       {open && (
-        <ol className="hq-scroll max-h-[34vh] overflow-y-auto border-t border-line px-1 py-1" aria-live="polite">
+        <ol className="hq-scroll hq-anim-fade max-h-[34vh] overflow-y-auto border-t border-line px-1 py-1" aria-live="polite">
           {items.length === 0 && <li className="px-2 py-3 text-[11px] text-muted">Waiting for events…</li>}
           {items.map((f) => (
             <li key={f.id}>

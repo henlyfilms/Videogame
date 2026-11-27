@@ -7,6 +7,7 @@ import { RETIRED_BOTS } from '../data/bots';
 import type { Simulation } from '../engine/sim';
 import { propRect, TILE, type PropDef, type RoomDef } from '../engine/world';
 import type { ThemeTokens } from '../theme/tokens';
+import { drawArcadeDynamic, drawArcadeStatic } from './arcadeProps';
 import { drawBotSprite, hexA, roundRect, traceShape } from './sprites';
 import { MODEL_COLORS, SKILL_COLORS, type RenderView } from './view';
 import type { RelayModel, SkillId } from '../adapters/events';
@@ -24,6 +25,7 @@ export const ROOM_ACCENT: Record<RoomId, string> = {
   cutting: '#d946ef',
   mail: '#2f6fed',
   foundry: '#f97316',
+  arcade: '#ec4899',
 };
 
 export interface DynCtx {
@@ -67,6 +69,11 @@ export function drawPropStatic(ctx: Ctx, room: RoomDef, prop: PropDef, th: Theme
   const cx = r.x + r.w / 2;
   const cy = r.y + r.h / 2;
   switch (prop.kind) {
+    case 'arcade-cabinet':
+    case 'leaderboard':
+    case 'neon-sign':
+      drawArcadeStatic(ctx, prop, r, th);
+      break;
     case 'command-desk': {
       slab(ctx, r, th, 2, 8);
       screen(ctx, r.x + 14, r.y + 8, 40, 22, th);
@@ -94,22 +101,56 @@ export function drawPropStatic(ctx: Ctx, room: RoomDef, prop: PropDef, th: Theme
       break;
     }
     case 'plant': {
-      ctx.fillStyle = th.world.propDark;
-      roundRect(ctx, cx - 8, cy, 16, 12, 3);
+      // Terracotta pot with a rim, then a fan of two-tone leaves.
+      ctx.fillStyle = th.name === 'dark' ? '#7c4a32' : '#d08a5c';
+      roundRect(ctx, cx - 8, cy + 1, 16, 11, 3);
       ctx.fill();
-      ctx.fillStyle = '#4ade80';
-      for (const [dx, dy, s] of [
-        [-5, -4, 7],
-        [5, -5, 6],
-        [0, -10, 7],
-      ] as const) {
+      ctx.fillStyle = th.name === 'dark' ? '#93583c' : '#e3a073';
+      roundRect(ctx, cx - 9.5, cy - 1, 19, 4, 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a2a1e';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 7.5, 1.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const leaves: [number, number][] = [
+        [-2.3, 11],
+        [-1.6, 12],
+        [-0.9, 13],
+        [-0.25, 12],
+        [0.5, 12.5],
+        [1.2, 11],
+      ];
+      for (const [i, [a, len]] of leaves.entries()) {
+        ctx.save();
+        ctx.translate(cx, cy - 1);
+        ctx.rotate(a - Math.PI / 2 + Math.PI / 2);
+        ctx.fillStyle = i % 2 ? '#22c55e' : '#4ade80';
         ctx.beginPath();
-        ctx.arc(cx + dx, cy + dy, s, 0, Math.PI * 2);
+        ctx.ellipse(0, -len / 2 - 1, 3.4, len / 2 + 1, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(20,83,45,0.45)';
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -1);
+        ctx.lineTo(0, -len - 1);
+        ctx.stroke();
+        ctx.restore();
       }
       break;
     }
     case 'huddle-table': {
+      // Chairs tucked around the table (drawn first so the table overlaps them).
+      ctx.fillStyle = th.name === 'dark' ? '#253048' : th.name === 'soft' ? '#d7cfbf' : '#dde3ec';
+      ctx.strokeStyle = th.world.propLine;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const sx = r.x + 30 + i * ((r.w - 60) / 3);
+        for (const sy of [r.y - 2, r.y + r.h - 8]) {
+          roundRect(ctx, sx - 9, sy, 18, 10, 4);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
       roundRect(ctx, r.x + 4, r.y + 6, r.w - 8, r.h - 12, 40);
       ctx.fillStyle = th.world.prop;
       ctx.fill();
@@ -293,11 +334,35 @@ export function drawPropStatic(ctx: Ctx, room: RoomDef, prop: PropDef, th: Theme
       break;
     }
     case 'couch': {
-      roundRect(ctx, r.x + 2, r.y + 4, r.w - 4, r.h - 6, 8);
-      ctx.fillStyle = th.name === 'dark' ? '#3b2a1a' : '#e8c9a0';
+      const base = room.id === 'arcade' ? '#6d28d9' : th.name === 'dark' ? '#3b2a1a' : '#e8c9a0';
+      const back = room.id === 'arcade' ? '#5b21b6' : th.name === 'dark' ? '#2e2014' : '#d9b483';
+      const cushion = room.id === 'arcade' ? '#7c3aed' : th.name === 'dark' ? '#47331f' : '#f0d6b2';
+      // Frame + backrest along the far side.
+      roundRect(ctx, r.x + 2, r.y + 2, r.w - 4, r.h - 3, 8);
+      ctx.fillStyle = base;
       ctx.fill();
       ctx.strokeStyle = th.world.propLine;
+      ctx.lineWidth = 1;
       ctx.stroke();
+      roundRect(ctx, r.x + 4, r.y + 3, r.w - 8, 8, 4);
+      ctx.fillStyle = back;
+      ctx.fill();
+      // Seat cushions with a soft highlight and seams.
+      const n = Math.max(2, Math.round(r.w / 40));
+      const cw = (r.w - 16) / n;
+      for (let i = 0; i < n; i++) {
+        roundRect(ctx, r.x + 8 + i * cw + 1, r.y + 12, cw - 2, r.h - 17, 4);
+        ctx.fillStyle = cushion;
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(r.x + 8 + i * cw + 4, r.y + 13, cw - 8, 2);
+      }
+      // Armrests.
+      ctx.fillStyle = back;
+      roundRect(ctx, r.x + 2, r.y + 6, 6, r.h - 9, 3);
+      ctx.fill();
+      roundRect(ctx, r.x + r.w - 8, r.y + 6, 6, r.h - 9, 3);
+      ctx.fill();
       break;
     }
     case 'timeline-monitors': {
@@ -458,6 +523,11 @@ export function drawPropDynamic(ctx: Ctx, room: RoomDef, prop: PropDef, d: DynCt
   const cy = r.y + r.h / 2;
   const { t, theme: th, view, sim } = d;
   switch (prop.kind) {
+    case 'arcade-cabinet':
+    case 'leaderboard':
+    case 'neon-sign':
+      drawArcadeDynamic(ctx, prop, r, d);
+      break;
     case 'command-desk': {
       const daniel = sim.getBot('daniel');
       const active = daniel && daniel.state !== 'asleep';

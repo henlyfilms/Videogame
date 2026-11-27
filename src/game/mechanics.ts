@@ -4,6 +4,9 @@
  * keeps every mode consistent and makes the rules unit-testable.
  */
 import type {
+  ArcadeMode,
+  ArcadeResultRow,
+  ArcadeTeam,
   ClipBin,
   MailSlot,
   MarionEvent,
@@ -96,6 +99,43 @@ export interface Huddle {
   at: number;
 }
 
+export interface ArcadeStanding {
+  wins: number;
+  games: number;
+  mvps: number;
+}
+
+export interface ArcadeMatchResult {
+  id: string;
+  at: number;
+  mode: ArcadeMode;
+  map: string;
+  winningTeam: ArcadeTeam;
+  reason: string;
+  mvp: string | null;
+  results: ArcadeResultRow[];
+}
+
+export interface ArcadeLiveMatch {
+  id: string;
+  mode: ArcadeMode;
+  map: string;
+  players: number;
+  bots: string[];
+  at: number;
+}
+
+export interface ArcadeState {
+  /** Wins / games / MVPs per Marion bot id (and 'you' for the player). */
+  leaderboard: Record<string, ArcadeStanding>;
+  /** Most recent match results, newest last (capped at ARCADE_RECENT). */
+  recent: ArcadeMatchResult[];
+  /** Match currently being played (not persisted). */
+  live: ArcadeLiveMatch | null;
+  /** Bots currently queued/playing at the cabinets (not persisted). */
+  players: string[];
+}
+
 export interface MechanicsState {
   mail: {
     inbox: MailItem[];
@@ -112,6 +152,7 @@ export interface MechanicsState {
   foundry: { skills: SkillId[]; customBots: CustomBotSpec[] };
   command: { releases: number; version: string; tasks: Task[]; huddles: Huddle[]; brain: number; delegations: number; completed: number };
   progress: { streak: number; lastCheckDay: string | null; checkedTotal: number; polish: number };
+  arcade: ArcadeState;
 }
 
 export const MAX_QUEUE = 12;
@@ -120,6 +161,20 @@ export const NOISE_PILEUP = 6;
 export const MAX_CUSTOM = 4;
 export const RENDER_CORRECT = 0.25;
 export const RENDER_WRONG = 0.05;
+export const ARCADE_RECENT = 10;
+/** The id the human player uses on the arcade leaderboard. */
+export const ARCADE_YOU = 'you';
+
+export function initialArcade(): ArcadeState {
+  return { leaderboard: {}, recent: [], live: null, players: [] };
+}
+
+/** Leaderboard rows sorted by wins, then win rate, then games. */
+export function arcadeRanking(a: Pick<ArcadeState, 'leaderboard'>): ({ id: string } & ArcadeStanding)[] {
+  return Object.entries(a.leaderboard)
+    .map(([id, st]) => ({ id, ...st }))
+    .sort((x, y) => y.wins - x.wins || y.wins / Math.max(1, y.games) - x.wins / Math.max(1, x.games) || y.games - x.games || x.id.localeCompare(y.id));
+}
 
 export function initialMechanics(): MechanicsState {
   return {
@@ -136,6 +191,7 @@ export function initialMechanics(): MechanicsState {
     foundry: { skills: [], customBots: [] },
     command: { releases: 0, version: '1.0.0', tasks: [], huddles: [], brain: 0, delegations: 0, completed: 0 },
     progress: { streak: 0, lastCheckDay: null, checkedTotal: 0, polish: 0 },
+    arcade: initialArcade(),
   };
 }
 
@@ -400,6 +456,53 @@ export function reduceMechanics(s: MechanicsState, ev: MarionEvent): MechanicsSt
       const p = ev.payload;
       if (s.foundry.customBots.length >= MAX_CUSTOM || s.foundry.customBots.some((b) => b.botId === p.botId)) return s;
       return { ...s, foundry: { ...s.foundry, customBots: [...s.foundry.customBots, { ...p }] } };
+    }
+    // ------------------------------------------------------------ arcade
+    case 'arcade.player_joined': {
+      const id = ev.payload.botId;
+      if (s.arcade.players.includes(id)) return s;
+      return { ...s, arcade: { ...s.arcade, players: cap([...s.arcade.players, id], 16) } };
+    }
+    case 'arcade.match_started': {
+      const p = ev.payload;
+      const players = Array.from(new Set([...s.arcade.players, ...p.bots])).slice(-16);
+      return {
+        ...s,
+        arcade: { ...s.arcade, players, live: { id: p.matchId ?? ev.id, mode: p.mode, map: p.map, players: p.players, bots: [...p.bots], at: ev.ts } },
+      };
+    }
+    case 'arcade.match_ended': {
+      const p = ev.payload;
+      const id = p.matchId ?? s.arcade.live?.id ?? ev.id;
+      if (s.arcade.recent.some((r) => r.id === id)) return s; // once per match
+      const leaderboard = { ...s.arcade.leaderboard };
+      const seen = new Set<string>();
+      for (const r of p.results) {
+        if (seen.has(r.botId)) continue;
+        seen.add(r.botId);
+        const prev = leaderboard[r.botId] ?? { wins: 0, games: 0, mvps: 0 };
+        leaderboard[r.botId] = { wins: prev.wins + (r.won ? 1 : 0), games: prev.games + 1, mvps: prev.mvps + (p.mvp === r.botId ? 1 : 0) };
+      }
+      const result: ArcadeMatchResult = {
+        id,
+        at: ev.ts,
+        mode: p.mode,
+        map: p.map,
+        winningTeam: p.winningTeam,
+        reason: p.reason,
+        mvp: p.mvp ?? null,
+        results: p.results.map((r) => ({ botId: r.botId, won: r.won, role: r.role })),
+      };
+      return {
+        ...s,
+        arcade: {
+          leaderboard,
+          recent: cap([...s.arcade.recent, result], ARCADE_RECENT),
+          // Another match (e.g. yours) may still be running alongside a bots-only one.
+          live: s.arcade.live && s.arcade.live.id !== id ? s.arcade.live : null,
+          players: s.arcade.players.filter((b) => !seen.has(b)),
+        },
+      };
     }
     default:
       return s;

@@ -4,6 +4,7 @@ const PATHS: Record<string, string> = {
   pause: 'M8 5v14M16 5v14',
   sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   soft: 'M12 21a9 9 0 1 0 0-18v18z M12 3a9 9 0 0 1 0 18',
   volume: 'M4 9v6h4l5 4V5L8 9H4z M16 9a4 4 0 0 1 0 6 M18.5 6.5a8 8 0 0 1 0 11',
   mute: 'M4 9v6h4l5 4V5L8 9H4z M17 9l5 6 M22 9l-5 6',
@@ -20,6 +21,8 @@ const PATHS: Record<string, string> = {
   chevron: 'M6 9l6 6 6-6',
   restart: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5',
   download: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
+  more: 'M4 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z M10.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z M17 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z',
+  sliders: 'M4 6h10 M18 6h2 M16 4v4 M4 12h4 M12 12h8 M10 10v4 M4 18h12 M18 16v4 M18 18h2',
 };
 
 export function Icon({ name, size = 14, className = '' }: { name: keyof typeof PATHS | string; size?: number; className?: string }) {

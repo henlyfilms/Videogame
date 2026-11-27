@@ -53,3 +53,86 @@ body,
   background: rgb(var(--hq-line));
   border-radius: 6px;
 }
+
+/* ------------------------------------------------------------------ motion
+ * Enter / exit motion for HQ panels, popovers, dialogs and toasts. Exit
+ * classes are applied by `usePresence` (src/ui/motion.ts) while the element
+ * stays mounted for the out animation. Reduced motion: fades only.
+ */
+@keyframes hq-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hq-pop-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-6px) scale(0.97); }
+}
+@keyframes hq-side-in {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hq-side-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(18px); }
+}
+@keyframes hq-sheet-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hq-sheet-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(24px); }
+}
+@keyframes hq-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hq-rise-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(8px); }
+}
+@keyframes hq-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes hq-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes hq-dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hq-dialog-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.hq-anim-pop { animation: hq-pop-in 170ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; transform-origin: top right; }
+.hq-anim-pop[data-closing] { animation: hq-pop-out 130ms ease-in both; }
+.hq-anim-side { animation: hq-side-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hq-anim-side[data-closing] { animation: hq-side-out 150ms ease-in both; }
+.hq-anim-sheet { animation: hq-sheet-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hq-anim-sheet[data-closing] { animation: hq-sheet-out 160ms ease-in both; }
+.hq-anim-rise { animation: hq-rise-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hq-anim-rise[data-closing] { animation: hq-rise-out 150ms ease-in both; }
+.hq-anim-fade { animation: hq-fade-in 160ms ease-out both; }
+.hq-anim-fade[data-closing] { animation: hq-fade-out 140ms ease-in both; }
+.hq-anim-dialog { animation: hq-dialog-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hq-anim-dialog[data-closing] { animation: hq-dialog-out 140ms ease-in both; }
+/* A closing element no longer takes clicks. */
+[data-closing] { pointer-events: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hq-anim-pop, .hq-anim-side, .hq-anim-sheet, .hq-anim-rise, .hq-anim-dialog { animation-name: hq-fade-in; animation-duration: 120ms; }
+  .hq-anim-pop[data-closing], .hq-anim-side[data-closing], .hq-anim-sheet[data-closing], .hq-anim-rise[data-closing], .hq-anim-dialog[data-closing] { animation-name: hq-fade-out; animation-duration: 100ms; }
+  .hq-btn, .hq-press { transition: none !important; }
+}
+
+/* Press feedback for buttons (hover/focus styles live on .hq-btn). */
+.hq-btn, .hq-press { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: 120ms; }
+.hq-btn:active:not(:disabled), .hq-press:active:not(:disabled) { transform: scale(0.96); }
+
+/* Bigger hit targets for the top bar on touch screens. */
+@media (pointer: coarse) {
+  .hq-tb > button, .hq-tb > div > button { min-height: 34px; min-width: 34px; }
+}

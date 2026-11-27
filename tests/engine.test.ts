@@ -9,19 +9,28 @@ import { BubbleSystem, bubbleAlpha, layoutBubbles, rectsOverlap } from '../src/e
 import { Simulation } from '../src/engine/sim';
 import {
   buildGrid,
+  COURTYARDS,
+  CORRIDORS,
+  doorTilesLocal,
   hotspotAt,
+  isTerrace,
   isWalkable,
   MAP_H,
   MAP_W,
   pointAlong,
   polylineLength,
   propRect,
+  ROOM_BY_ID,
+  roomTileKind,
   ROOMS,
+  sideNormal,
   spotTile,
   Tile,
+  tubePort,
   TUBE_ROUTES,
   type Grid,
 } from '../src/engine/world';
+import { boxOutline, offsetPoly, pointInPoly, polyArea, traceMask } from '../src/engine/geometry';
 
 function seeded(seed = 42) {
   let s = seed;
@@ -33,9 +42,9 @@ function seeded(seed = 42) {
 
 describe('world / floorplan', () => {
   const grid = buildGrid();
-  it('has 9 rooms: 7 wings + bridge + huddle', () => {
-    expect(ROOMS).toHaveLength(9);
-    expect(new Set(ROOMS.map((r) => r.id)).size).toBe(9);
+  it('has 10 rooms: 7 wings + bridge + huddle + arcade', () => {
+    expect(ROOMS).toHaveLength(10);
+    expect(new Set(ROOMS.map((r) => r.id)).size).toBe(10);
   });
   it('every named spot is walkable and reachable from command', () => {
     const pf = new Pathfinder(grid);
@@ -51,14 +60,74 @@ describe('world / floorplan', () => {
   it('props never block door tiles and stay inside room interiors', () => {
     for (const room of ROOMS) {
       for (const p of room.props) {
-        expect(p.x).toBeGreaterThanOrEqual(1);
-        expect(p.y).toBeGreaterThanOrEqual(1);
-        expect(p.x + p.w).toBeLessThanOrEqual(room.w - 1);
-        expect(p.y + p.h).toBeLessThanOrEqual(room.h - 1);
+        for (let y = p.y; y < p.y + p.h; y++)
+          for (let x = p.x; x < p.x + p.w; x++) expect(roomTileKind(room, x, y), `${room.id}.${p.id} @${x},${y}`).toBe('floor');
       }
     }
     const doors = grid.tiles.filter((t) => t === Tile.Door).length;
-    expect(doors).toBe(9 * 8);
+    expect(doors).toBe(ROOMS.reduce((n, r) => n + doorTilesLocal(r).length, 0));
+    expect(doors).toBeGreaterThanOrEqual(ROOMS.length * 2);
+  });
+  it('every door opens from a walkable room tile onto a corridor', () => {
+    for (const room of ROOMS) {
+      expect(room.doors.length, room.id).toBeGreaterThan(0);
+      for (const d of room.doors) {
+        const n = sideNormal(d.side);
+        for (const t of d.tiles) {
+          expect(roomTileKind(room, t.x, t.y), `${room.id} door`).toBe('wall');
+          const gx = room.x + t.x;
+          const gy = room.y + t.y;
+          expect(grid.tiles[(gy + n.y) * MAP_W + gx + n.x], `${room.id}.${d.side} outside`).toBe(Tile.Corridor);
+          expect(isWalkable(grid, gx - n.x, gy - n.y), `${room.id}.${d.side} inside`).toBe(true);
+        }
+      }
+    }
+  });
+  it('all walkable tiles form one connected station (no stranded corridors)', () => {
+    const start = spotTile('command', 'center');
+    const seen = new Uint8Array(MAP_W * MAP_H);
+    const stack = [start];
+    seen[start.y * MAP_W + start.x] = 1;
+    while (stack.length) {
+      const c = stack.pop()!;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const x = c.x + dx;
+        const y = c.y + dy;
+        if (isWalkable(grid, x, y) && !seen[y * MAP_W + x]) {
+          seen[y * MAP_W + x] = 1;
+          stack.push({ x, y });
+        }
+      }
+    }
+    for (let i = 0; i < MAP_W * MAP_H; i++) if (isWalkable(grid, i % MAP_W, Math.floor(i / MAP_W))) expect(seen[i], `tile ${i % MAP_W},${Math.floor(i / MAP_W)}`).toBe(1);
+  });
+  it('is an irregular, hand-made layout rather than a grid of equal boxes', () => {
+    // Rooms come in many sizes; Command is the big central hub.
+    expect(new Set(ROOMS.map((r) => `${r.w}x${r.h}`)).size).toBeGreaterThanOrEqual(6);
+    const area = (id: (typeof ROOMS)[number]['id']) => Math.abs(polyArea(ROOM_BY_ID[id].outline));
+    for (const r of ROOMS) if (r.id !== 'command') expect(area('command')).toBeGreaterThan(area(r.id));
+    // Most rooms are not plain rectangles (notches, angled corners).
+    expect(ROOMS.filter((r) => r.outline.length > 4).length).toBeGreaterThanOrEqual(8);
+    expect(ROOM_BY_ID.command.outline.length).toBe(8); // octagon
+    // Corridors of several widths; rooms not aligned to a shared grid.
+    expect(new Set(CORRIDORS.map((c) => Math.min(c.w, c.h))).size).toBeGreaterThanOrEqual(3);
+    expect(new Set(ROOMS.map((r) => r.y)).size).toBeGreaterThanOrEqual(7);
+    expect(new Set(ROOMS.map((r) => r.x)).size).toBeGreaterThanOrEqual(6);
+  });
+  it('courtyard gardens sit on open ground between the wings', () => {
+    expect(COURTYARDS.length).toBeGreaterThanOrEqual(4);
+    for (const c of COURTYARDS)
+      for (let y = c.y; y < c.y + c.h; y++)
+        for (let x = c.x; x < c.x + c.w; x++) {
+          expect(grid.tiles[y * MAP_W + x], `courtyard ${x},${y}`).toBe(Tile.Void);
+          expect(isTerrace(x, y)).toBe(true);
+        }
+    expect(isTerrace(spotTile('command', 'center').x, spotTile('command', 'center').y)).toBe(false);
   });
   it('hotspots resolve from world coords', () => {
     const mail = ROOMS.find((r) => r.id === 'mail')!;
@@ -69,6 +138,10 @@ describe('world / floorplan', () => {
   it('tube routes are axis-aligned polylines with positive length', () => {
     for (const route of TUBE_ROUTES) {
       expect(polylineLength(route.points)).toBeGreaterThan(0);
+      const end = route.points[route.points.length - 1]!;
+      expect(end).toEqual(tubePort(route.to));
+      if (route.from !== 'outside') expect(route.points[0]).toEqual(tubePort(route.from));
+      else expect(route.points[0]!.y).toBe(0);
       for (let i = 1; i < route.points.length; i++) {
         const a = route.points[i - 1]!;
         const b = route.points[i]!;
@@ -81,6 +154,48 @@ describe('world / floorplan', () => {
     expect(pointAlong(pts, 0)).toEqual({ x: 0, y: 0 });
     expect(pointAlong(pts, 0.5)).toEqual({ x: 10, y: 0 });
     expect(pointAlong(pts, 1)).toEqual({ x: 10, y: 10 });
+  });
+});
+
+describe('floorplan geometry helpers', () => {
+  it('builds chamfered and notched outlines', () => {
+    expect(boxOutline(4, 3)).toEqual([
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 4, y: 3 },
+      { x: 0, y: 3 },
+    ]);
+    const oct = boxOutline(10, 8, { tl: { chamfer: 2 }, tr: { chamfer: 2 }, br: { chamfer: 2 }, bl: { chamfer: 2 } });
+    expect(oct).toHaveLength(8);
+    expect(polyArea(oct)).toBe(10 * 8 - 4 * 2);
+    const ell = boxOutline(6, 6, { br: { notch: [3, 2] } });
+    expect(ell).toHaveLength(6);
+    expect(polyArea(ell)).toBe(36 - 6);
+  });
+  it('tests points strictly inside (edges excluded unless inclusive)', () => {
+    const sq = boxOutline(4, 4, { tl: { chamfer: 2 } });
+    expect(pointInPoly({ x: 2, y: 2 }, sq)).toBe(true);
+    expect(pointInPoly({ x: 0.5, y: 0.5 }, sq)).toBe(false);
+    expect(pointInPoly({ x: 1, y: 1 }, sq)).toBe(false); // on the chamfer
+    expect(pointInPoly({ x: 1, y: 1 }, sq, true)).toBe(true);
+  });
+  it('offsets polygons inward and outward', () => {
+    const sq = boxOutline(4, 4);
+    expect(offsetPoly(sq, 1)).toEqual([
+      { x: 1, y: 1 },
+      { x: 3, y: 1 },
+      { x: 3, y: 3 },
+      { x: 1, y: 3 },
+    ]);
+    expect(Math.abs(polyArea(offsetPoly(sq, -1)))).toBeCloseTo(36);
+  });
+  it('traces tile masks into clockwise loops (with holes)', () => {
+    const ring = (x: number, y: number) => x >= 0 && y >= 0 && x < 3 && y < 3 && !(x === 1 && y === 1);
+    const loops = traceMask(ring, 3, 3);
+    expect(loops).toHaveLength(2);
+    const areas = loops.map(polyArea).sort((a, b) => a - b);
+    expect(areas[0]).toBe(-1); // the hole runs the other way
+    expect(areas[1]).toBe(9);
   });
 });
 
@@ -171,7 +286,7 @@ describe('A* pathfinding', () => {
     const t0 = performance.now();
     for (let i = 0; i < 50; i++) findPath(g, spotTile('engine', 't1'), spotTile('foundry', 'retired'));
     expect(performance.now() - t0).toBeLessThan(1500);
-    expect(MAP_W * MAP_H).toBe(66 * 48);
+    expect(MAP_W * MAP_H).toBe(g.tiles.length);
   });
 });
 
@@ -291,6 +406,30 @@ function run(sim: Simulation, seconds: number) {
 }
 
 describe('simulation', () => {
+  it('every bot tours every wing along the winding halls without getting stuck', () => {
+    const sim = makeSim();
+    const ids = CORE_BOTS.map((b) => b.id);
+    for (let round = 0; round < ROOMS.length; round++) {
+      const goals = new Map<string, { x: number; y: number }>();
+      ids.forEach((id, i) => {
+        const room = ROOMS[(round + i) % ROOMS.length]!;
+        const spot = room.spots[(round * 3 + i) % room.spots.length]!.name;
+        expect(sim.send(id, { room: room.id, spot, arrive: 'idle' }), `${id} → ${room.id}.${spot}`).toBe(true);
+        goals.set(id, spotTile(room.id, spot));
+      });
+      // Each bot must reach (the free tile next to) its goal within 45 s of sim time.
+      const pending = new Set(ids);
+      for (let step = 0; step < 60 * 45 && pending.size; step++) {
+        sim.update(1 / 60);
+        for (const id of [...pending]) {
+          const t = sim.botTile(sim.bots.get(id)!);
+          const g = goals.get(id)!;
+          if (Math.max(Math.abs(t.x - g.x), Math.abs(t.y - g.y)) <= 2) pending.delete(id);
+        }
+      }
+      expect([...pending], `round ${round}: bots that never reached their goal`).toEqual([]);
+    }
+  });
   it('spawns all bots on distinct walkable tiles', () => {
     const sim = makeSim();
     const keys = new Set<string>();

@@ -1,7 +1,7 @@
 /**
  * Human-readable one-liners for the Activity Feed.
  */
-import type { MarionEvent } from '../adapters/events';
+import type { ArcadeMode, ArcadeTeam, MarionEvent } from '../adapters/events';
 import { STATE_LABEL } from '../engine/fsm';
 import { MODEL_LABELS, SKILL_LABELS } from '../render/view';
 
@@ -65,7 +65,30 @@ export function describeEvent(ev: MarionEvent, name: NameOf): string {
       return `${ev.payload.name} spawned in the Foundry`;
     case 'settings.llm':
       return `Sift switched to ${ev.payload.mode === 'local' ? 'Local' : 'Cloud'} LLM`;
+    case 'arcade.player_joined':
+      return `${name(ev.payload.botId)} hopped on a cabinet in the Arcade 🕹`;
+    case 'arcade.match_started': {
+      const p = ev.payload;
+      const who = p.bots.length ? ` with ${p.bots.map(name).join(', ')}` : '';
+      return `Marion Mystery started: ${ARCADE_MODE_LABEL[p.mode]} on ${mapLabel(p.map)} (${p.players} players${who})`;
+    }
+    case 'arcade.match_ended': {
+      const p = ev.payload;
+      const winners = p.results.filter((r) => r.won).map((r) => name(r.botId));
+      const team = ARCADE_TEAM_LABEL[p.winningTeam];
+      const mvp = p.mvp ? ` · MVP ${name(p.mvp)}` : '';
+      return `Marion Mystery: ${team} ${p.winningTeam === 'draw' ? '' : 'win '}${winners.length ? `(${winners.slice(0, 4).join(', ')}${winners.length > 4 ? '…' : ''})` : ''}${mvp}`.replace(/\s+/g, ' ').trim();
+    }
   }
+}
+
+export const ARCADE_MODE_LABEL: Record<ArcadeMode, string> = { classic: 'Classic', lightsout: 'Lights Out', hideseek: 'Hide & Seek' };
+export const ARCADE_TEAM_LABEL: Record<ArcadeTeam, string> = { crew: 'Crew', murderers: 'Murderers', neutral: 'Neutral', draw: 'Draw' };
+
+/** 'greenhouse' → 'Greenhouse'. */
+export function mapLabel(map: string): string {
+  const known: Record<string, string> = { hq: 'Marion HQ', greenhouse: 'Greenhouse', express: 'Express', manor: 'Manor' };
+  return known[map] ?? (map ? map.charAt(0).toUpperCase() + map.slice(1) : 'Unknown map');
 }
 
 /** Events we keep out of the feed because they're too chatty. */

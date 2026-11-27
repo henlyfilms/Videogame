@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CORE_EVENT_TYPES, makeEvent, nextId, parseMarionEvent, type EventPayloads, type MarionEventType } from '../adapters/events';
+import { planBotMatch } from '../arcade/botMatch';
+import { launchMystery } from '../arcade/state';
+import { ARCADE_EVENT_TYPES, CORE_EVENT_TYPES, makeEvent, nextId, parseMarionEvent, type EventPayloads, type MarionEventType } from '../adapters/events';
 import { SCENARIOS } from '../adapters/scenarios';
 import { CORE_BOTS, type RoomId } from '../data/bots';
 import { actions } from '../game/actions';
 import { hq } from '../game/hq';
 import { manager } from '../game/runtime';
 import { ROOMS } from '../engine/world';
-import { SKILLS } from '../game/content';
+import { mulberry32, SKILLS } from '../game/content';
 import { SKILL_LABELS } from '../render/view';
 import { SPEEDS, useGame } from '../store/gameStore';
 import { THEME_ORDER, THEMES } from '../theme/tokens';
 import { Icon } from './Icon';
+import { closingAttr, usePresence } from './motion';
 
 export interface PaletteCommand {
   id: string;
@@ -58,6 +61,30 @@ export function sampleEvent(type: MarionEventType): EventPayloads[MarionEventTyp
   return samples[type] as EventPayloads[MarionEventType];
 }
 
+const arcadeRng = mulberry32(0xa5cade);
+
+/** Sample payloads for the arcade injector presets (a coherent bots-only match). */
+export function sampleArcadeEvent(type: MarionEventType): EventPayloads[MarionEventType] {
+  const plan = planBotMatch(arcadeRng);
+  const live = useGame.getState().mech.arcade.live;
+  if (type === 'arcade.player_joined') return plan.joins[0]!;
+  if (type === 'arcade.match_started') return plan.started;
+  // End the running match when there is one, so the leaderboard updates coherently.
+  if (live) {
+    const results = live.bots.length ? live.bots.map((botId, i) => ({ botId, won: i % 2 === 0, role: i === 1 ? 'murderer' : 'crewmate' })) : plan.ended.results;
+    return { ...plan.ended, matchId: live.id, mode: live.mode, map: live.map, winningTeam: 'crew', results, mvp: results.find((r) => r.won)?.botId };
+  }
+  return plan.ended;
+}
+
+/** Play a whole bots-only match over ~20 s of wall time. */
+export function runBotMatchDemo(): void {
+  const plan = planBotMatch(arcadeRng);
+  plan.joins.forEach((j, i) => setTimeout(() => hq.emit('arcade.player_joined', j), i * 600));
+  setTimeout(() => hq.emit('arcade.match_started', plan.started), 4000);
+  setTimeout(() => hq.emit('arcade.match_ended', plan.ended), 20000);
+}
+
 export function buildCommands(toast: (m: string) => void): PaletteCommand[] {
   const s = useGame.getState();
   const cmds: PaletteCommand[] = [];
@@ -89,6 +116,9 @@ export function buildCommands(toast: (m: string) => void): PaletteCommand[] {
   add('View', s.paused ? 'Resume' : 'Pause', () => s.togglePause(), 'Space');
   for (const sp of SPEEDS) add('View', `Speed ${sp}×`, () => s.setSpeed(sp));
   add('View', 'Show controls', () => s.setHelp(true), '?');
+  add('View', 'Time of day: follow the clock', () => (hq.clockOverride = null));
+  for (const [label, h] of [['Morning', 7.2], ['Noon', 12], ['Dusk', 18.9], ['Night', 23]] as const)
+    add('View', `Time of day: ${label}`, () => (hq.clockOverride = h));
 
   add('Source', 'Use live simulation', () => manager.use('live'));
   add('Source', 'Connect WebSocket stream', () => manager.use('ws'));
@@ -99,6 +129,14 @@ export function buildCommands(toast: (m: string) => void): PaletteCommand[] {
   });
 
   for (const type of CORE_EVENT_TYPES) add('Inject', `Inject ${type}`, () => hq.publish(makeEvent(type, sampleEvent(type))));
+
+  add('Arcade', 'Play Marion Mystery', () => launchMystery({ kind: 'menu' }));
+  add('Arcade', 'Quick Play Marion Mystery vs bots', () => launchMystery({ kind: 'quick' }));
+  add('Arcade', 'Bots play a Marion Mystery match', () => {
+    runBotMatchDemo();
+    toast('🕹 The bots are heading to the Arcade');
+  });
+  for (const type of ARCADE_EVENT_TYPES) add('Arcade', `Inject ${type}`, () => hq.publish(makeEvent(type, sampleArcadeEvent(type))));
   return cmds;
 }
 
@@ -114,7 +152,8 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
     setActive(0);
   };
 
-  const commands = useMemo(() => (open ? buildCommands(toast) : []), [open, toast]);
+  const shown = usePresence(open);
+  const commands = useMemo(() => (shown.mounted ? buildCommands(toast) : []), [shown.mounted, toast]);
 
   const jsonMode = q.trim().startsWith('{') || q.trim().startsWith('[');
   const parsed = jsonMode ? parseMarionEvent(q.trim()) : null;
@@ -135,7 +174,7 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
   }, [open]);
   useEffect(() => setActive(0), [q]);
 
-  if (!open) return null;
+  if (!shown.mounted) return null;
 
   const runAt = (i: number) => {
     const c = results[i];
@@ -168,8 +207,8 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
 
   let lastGroup = '';
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-3 pt-[12vh] backdrop-blur-[2px]" onPointerDown={close} role="presentation">
-      <div className="hq-card w-full max-w-[560px] overflow-hidden" role="dialog" aria-modal="true" aria-label="Command palette" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="hq-anim-fade fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-3 pt-[min(12vh,96px)] backdrop-blur-[2px]" onPointerDown={close} role="presentation" {...closingAttr(shown.closing)}>
+      <div className="hq-card hq-anim-dialog flex max-h-[calc(100dvh-min(12vh,96px)-12px)] w-full max-w-[560px] flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Command palette" onPointerDown={(e) => e.stopPropagation()} {...closingAttr(shown.closing)}>
         <div className="flex items-center gap-2 border-b border-line px-3">
           <Icon name="command" size={14} className="text-muted" />
           <input
@@ -197,7 +236,7 @@ export function CommandPalette({ toast }: { toast: (m: string) => void }) {
             )}
           </div>
         ) : (
-          <ul className="hq-scroll max-h-[52vh] overflow-y-auto py-1" role="listbox">
+          <ul className="hq-scroll max-h-[52vh] min-h-0 overflow-y-auto py-1" role="listbox">
             {results.length === 0 && <li className="px-4 py-3 text-xs text-muted">No matches.</li>}
             {results.map((c, i) => {
               const header = c.group !== lastGroup ? c.group : null;

@@ -66,6 +66,11 @@ describe('App smoke test (jsdom)', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     });
+    // It plays its exit animation, then unmounts.
+    expect(host.querySelector('[aria-label="Command palette"]')?.hasAttribute('data-closing')).toBe(true);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 260));
+    });
     expect(host.querySelector('[aria-label="Command palette"]')).toBeNull();
   });
 

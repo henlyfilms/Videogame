@@ -49,6 +49,17 @@ const CHORDS: readonly number[][] = [
 ];
 const midi = (n: number) => 440 * 2 ** ((n - 69) / 12);
 
+/**
+ * True once the page has had a user gesture (sticky user activation), so an
+ * AudioContext can start without the browser's autoplay warning. Browsers
+ * without the UserActivation API (older Safari, tests) report true and rely
+ * on resume() from the gesture handlers.
+ */
+export function audioGestureSeen(): boolean {
+  const ua = typeof navigator !== 'undefined' ? (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation : undefined;
+  return ua ? ua.hasBeenActive : true;
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -73,6 +84,7 @@ export class AudioEngine {
   /** Create the graph (call from a user gesture). Safe to call repeatedly. */
   private ensure(): boolean {
     if (this.ctx) return true;
+    if (!audioGestureSeen()) return false;
     const Ctor = audioCtor();
     if (!Ctor) return false;
     try {
@@ -99,6 +111,12 @@ export class AudioEngine {
       this.ctx = null;
       return false;
     }
+  }
+
+  /** Resume a context created before the first user gesture. */
+  resume(): void {
+    if (!this.ctx && !this.inputs.muted) this.update(this.inputs);
+    else void this.ctx?.resume?.();
   }
 
   update(inputs: MusicInputs): void {
