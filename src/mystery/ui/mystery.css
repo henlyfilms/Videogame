@@ -5005,6 +5005,187 @@
   }
 }
 
+/* short landscape phones (iPhone sideways): everything side by side, no page scroll */
+@media (orientation: landscape) and (max-height: 500px) {
+  .mmw {
+    gap: 6px;
+    overflow: hidden;
+    padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  .mmw-top {
+    width: 100%;
+    gap: 8px;
+  }
+  .mmw-top .mm-round {
+    width: 38px;
+    height: 38px;
+  }
+  .mmw-tab {
+    min-width: 0;
+    padding: 4px 14px;
+    font-size: 1em;
+  }
+  .mmw-body {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .mmw-body > .mmce {
+    flex: 1;
+    height: auto;
+  }
+  .mmsh-wallet {
+    min-height: 36px;
+    padding: 2px 12px 2px 5px;
+  }
+  .mmsh-wallet-glyph {
+    width: 28px;
+    height: 28px;
+  }
+  .mmsh-wallet-n {
+    font-size: 1.25em;
+  }
+  .mml-wallet {
+    display: none;
+  }
+  /* shop preview column: preview, name, price chip + Purchase all visible */
+  .mmsh .mmsh-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 0 6px;
+  }
+  .mmsh .mmsh-canvaswrap {
+    position: relative;
+    grid-row: auto;
+    flex: 1;
+    min-height: 60px;
+  }
+  .mmsh .mmsh-canvaswrap .mmce-canvas {
+    height: auto;
+  }
+  .mmsh .mmsh-info {
+    padding: 0 8px;
+    min-height: 0;
+    text-align: center;
+  }
+  .mmsh .mmsh-name {
+    font-size: 1.1em;
+  }
+  .mmsh .mmsh-sub {
+    margin-top: 1px;
+    font-size: 0.78em;
+  }
+  .mmsh .mmsh-buy {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px 0;
+    gap: 3px 6px;
+  }
+  .mmsh .mmsh-buy-price {
+    position: static;
+    transform: none;
+    animation-name: mm-pop;
+  }
+  .mmsh .mmsh-why {
+    flex-basis: 100%;
+  }
+  .mmsh .mmsh-buy-price .mmsh-price {
+    font-size: 0.95em;
+  }
+  .mmsh .mmsh-purchase {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 10px;
+    font-size: 1.08em;
+    letter-spacing: 0.04em;
+  }
+  .mmsh .mmsh-why {
+    min-height: 0;
+    font-size: 0.72em;
+    text-align: center;
+  }
+  .mmsh .mmsh-bundles {
+    gap: 8px;
+  }
+  .mmsh .mmsh-bundle {
+    min-height: 92px;
+    padding: 6px 10px;
+  }
+  .mmsh .mmsh-bundle-items {
+    min-height: 56px;
+  }
+  .mmsh .mmsh-bundle-it img {
+    height: 54px;
+  }
+  .mmsh .mmsh-bundle-it.nameplate img {
+    height: 26px;
+    margin-bottom: 12px;
+  }
+  .mmsh .mmsh-bundle-name {
+    font-size: 0.95em;
+  }
+  .mmsh .mmsh-bundle-foot .mmsh-price {
+    font-size: 0.9em;
+  }
+  .mmsh-cele-rays {
+    width: 240px;
+    height: 240px;
+  }
+  .mmsh-cele-tag {
+    font-size: 1.15em;
+    padding: 4px 14px;
+  }
+  /* buy confirmation: thumbnails beside the numbers */
+  .mmsh-confirm-back {
+    padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .mmsh-confirm {
+    width: min(560px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-areas: 't t' 'th d' 'b b';
+    gap: 8px 12px;
+    padding: 12px 14px;
+  }
+  .mmsh-confirm-t {
+    grid-area: t;
+    font-size: 1.2em;
+  }
+  .mmsh-confirm-thumbs {
+    grid-area: th;
+    flex-wrap: wrap;
+    align-content: center;
+    padding: 4px;
+  }
+  .mmsh-confirm-thumbs img {
+    height: 60px;
+  }
+  .mmsh-confirm-d {
+    grid-area: d;
+  }
+  .mmsh-confirm-d p {
+    margin-bottom: 4px;
+    font-size: 0.85em;
+    text-align: left;
+  }
+  .mmsh-confirm-row {
+    padding: 3px 2px;
+  }
+  .mmsh-confirm-btns {
+    grid-area: b;
+  }
+  .mmsh-confirm-btns .mm-btn {
+    min-height: 42px;
+    font-size: 1.05em;
+  }
+}
+
 /* results: Seeds earned (top of the right column; first on phones) */
 .mmr-grid > .mmr-seeds {
   grid-column: 2;

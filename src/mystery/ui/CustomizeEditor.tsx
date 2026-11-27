@@ -253,6 +253,31 @@ export const EDITOR_CSS = `
 @keyframes mmce-item{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:none}}
 @keyframes mmce-page{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 @keyframes mmce-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+@media (orientation:landscape) and (max-height:500px){
+  .mmce{grid-template-columns:116px minmax(0,1fr) minmax(176px,29%);grid-template-rows:minmax(0,1fr);grid-template-areas:"tabs main stage";
+    gap:8px;padding:8px;max-width:none;height:calc(100dvh - 78px);border-radius:12px}
+  .mm-modal .mmce{height:calc(92dvh - 84px)}
+  .mmce-tabs{flex-direction:column;overflow-x:hidden;overflow-y:auto;min-height:0;gap:5px;padding:2px 10px 2px 2px}
+  .mmce-tab{min-height:36px;padding:0 8px;font-size:13px;letter-spacing:.04em;gap:6px}
+  .mmce-tab[aria-selected=true]{transform:translateX(4px)}
+  .mmce-main{min-height:0;grid-template-columns:minmax(0,1fr) 26px;gap:4px}
+  .mmce-panel{max-height:none;height:100%;min-height:0;gap:8px}
+  .mmce-grid{grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:7px}
+  .mmce-grid.wide{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  .mmce-grid.swatches{grid-template-columns:repeat(auto-fill,minmax(54px,1fr))}
+  .mmce-sw{width:34px;height:34px}
+  .mmce-label{font-size:11px}
+  .mmce-stage{position:relative;top:auto;min-height:0}
+  .mmce-canvas{height:auto;flex:1;min-height:70px}
+  .mmce-stagebar{grid-template-columns:1fr auto;gap:5px;padding:6px}
+  .mmce-stagebar .mmce-name,.mmce-stagebar .mmce-done{grid-column:1/-1}
+  .mmce-name{min-height:34px;font-size:14px;padding:0 10px}
+  .mmce-btn{min-height:34px;min-width:34px;padding:0 8px;font-size:13px}
+  .mmce-done{min-height:40px;font-size:18px}
+  .mmce-pager{padding:0}
+  .mmce-arrow{width:26px;height:26px}.mmce-arrow svg{width:20px;height:20px}
+  .mmce-dots{gap:6px}.mmce-dot{width:8px;height:8px}
+}
 @media (prefers-reduced-motion:reduce){.mmce *{animation:none!important;transition:none!important}}
 .mm-reduced .mmce *{animation:none!important;transition:none!important}
 `;
