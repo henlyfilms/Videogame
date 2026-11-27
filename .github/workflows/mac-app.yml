@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       MARION_BUILD: ${{ github.run_number }}
       MARION_COMMIT: ${{ github.sha }}
