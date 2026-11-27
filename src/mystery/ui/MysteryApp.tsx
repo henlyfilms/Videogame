@@ -13,7 +13,7 @@ import { installDebugHook, useMystery } from '../client/store';
 import { normalizeCode, isValidCode } from '../net/protocol';
 import { sfx } from '../audio/sfx';
 import { BerryAvatar, MIcon } from './common';
-import { EnergySlash, starfield } from './kit';
+import { EnergySlash, starfield, useViewport } from './kit';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { BrowseScreen, HowToScreen, JoinScreen, ProfileScreen, SettingsScreen, TitleScreen } from './Menus';
@@ -86,6 +86,57 @@ function DeathCinematic() {
       )}
       <div className="mmd-title">{title}</div>
       <div className="mmd-sub">{sub}</div>
+    </div>
+  );
+}
+
+const ROTATE_STARS = starfield(41, 90);
+
+/** Phones only (touch, short side under 520 px): the game is played sideways. */
+function isPhone(vp: { w: number; h: number }): boolean {
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  return coarse && Math.min(vp.w, vp.h) < 520;
+}
+
+/**
+ * Marion Mystery is a landscape game on phones. iOS Safari can't lock the
+ * orientation from a web page, so an upright phone gets a full-screen card
+ * asking to turn it sideways (the match keeps running underneath).
+ */
+function RotateGate() {
+  const vp = useViewport();
+  const reduced = useMystery((s) => s.prefs.reducedMotion);
+  const show = vp.portrait && isPhone(vp);
+  const [mounted, setMounted] = useState(show);
+  useEffect(() => {
+    if (show) {
+      setMounted(true);
+      return;
+    }
+    const t = setTimeout(() => setMounted(false), reduced ? 0 : 260);
+    return () => clearTimeout(t);
+  }, [show, reduced]);
+  useEffect(() => {
+    if (show) sfx.play('ui.open');
+  }, [show]);
+  if (!mounted) return null;
+  return (
+    <div className="mm-rotate" data-state={show ? 'in' : 'out'} style={{ backgroundImage: ROTATE_STARS }} role="alertdialog" aria-modal="true" aria-labelledby="mm-rotate-title">
+      <div className="mm-rotate-phone" aria-hidden>
+        <svg viewBox="0 0 120 120" width="132" height="132">
+          <g className="mm-rotate-device">
+            <rect x="38" y="14" width="44" height="92" rx="10" fill="#13161b" stroke="#f1f3f6" strokeWidth="5" />
+            <rect x="45" y="24" width="30" height="66" rx="4" fill="#2f6fed" />
+            <circle cx="60" cy="98" r="3.4" fill="#f1f3f6" />
+          </g>
+          <path className="mm-rotate-arrow" d="M96 40a40 40 0 0 1 4 34" fill="none" stroke="#ffd23f" strokeWidth="6" strokeLinecap="round" />
+          <path className="mm-rotate-arrow" d="M92 70l8 6 5-9" fill="none" stroke="#ffd23f" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <div className="mm-rotate-title" id="mm-rotate-title">
+        Turn your phone sideways
+      </div>
+      <div className="mm-rotate-sub">Marion Mystery is played in landscape. If the screen doesn’t turn, switch off Portrait Orientation Lock in Control Center.</div>
     </div>
   );
 }
@@ -205,7 +256,16 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
     sfx.configure({ muted: prefs.muted, volume: prefs.volume, music: prefs.music, menuTrack: prefs.menuTrack });
   }, [prefs.muted, prefs.volume, prefs.music, prefs.menuTrack]);
   useEffect(() => {
-    const unlock = () => sfx.unlock();
+    const unlock = () => {
+      sfx.unlock();
+      // Where the browser allows it (Android, installed app), hold landscape. iOS refuses; the rotate card covers it.
+      try {
+        const o = window.screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+        if (o?.lock && isPhone({ w: innerWidth, h: innerHeight })) o.lock('landscape').catch(() => {});
+      } catch {
+        /* unsupported */
+      }
+    };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     const vis = () => {
@@ -260,6 +320,7 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       )}
       <Toasts />
       <Captions />
+      <RotateGate />
     </div>
   );
 }

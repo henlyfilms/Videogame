@@ -107,7 +107,7 @@ export function TutorialCoach() {
   const leave = useMystery((s) => s.leave);
   const [done, setDone] = useState<Set<string>>(new Set());
   // Phones start collapsed (one 'next step' line) so the coach doesn't cover play.
-  const [open, setOpen] = useState(() => typeof innerWidth === 'undefined' || innerWidth >= 640);
+  const [open, setOpen] = useState(() => typeof innerWidth === 'undefined' || (innerWidth >= 640 && innerHeight > 500));
   const walked = useRef(0);
   const last = useRef<{ x: number; y: number } | null>(null);
   const role = room?.practice ?? 'crewmate';

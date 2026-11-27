@@ -564,6 +564,11 @@
     opacity: 1;
   }
 }
+@keyframes mm-fade-in {
+  from {
+    opacity: 0;
+  }
+}
 @keyframes mm-fade-out {
   to {
     opacity: 0;
@@ -4526,7 +4531,7 @@
 }
 
 /* =========================================================== responsive */
-@media (max-width: 900px) {
+@media (max-width: 900px) and (min-height: 501px), (max-width: 900px) and (orientation: portrait) {
   .mmx-grid {
     grid-template-columns: 1fr;
     gap: 18px;
@@ -4602,7 +4607,7 @@
     display: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (orientation: landscape) and (max-height: 500px) {
   .mml-left {
     top: 64px;
     bottom: auto;
@@ -4774,7 +4779,7 @@
     display: none;
   }
 }
-@media (max-width: 900px) {
+@media (max-width: 900px) and (min-height: 501px), (max-width: 900px) and (orientation: portrait) {
   .mmm-body {
     display: flex;
     flex-direction: column;
@@ -4842,5 +4847,230 @@
   .mm-root .mml-count-num,
   .mm-root .mmh-timer {
     animation: none !important;
+  }
+}
+
+/* -- rotate gate (phones held upright) */
+.mm-rotate {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 28px calc(24px + env(safe-area-inset-bottom, 0px));
+  background-color: #070b18;
+  background-repeat: no-repeat;
+  text-align: center;
+  color: #fff;
+  animation: mm-fade-in 0.25s ease both;
+  touch-action: none;
+}
+.mm-rotate[data-state='out'] {
+  animation: mm-fade-out 0.25s ease both;
+}
+.mm-rotate-title {
+  font-family: var(--mm-display);
+  font-weight: 700;
+  font-size: 30px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+  text-shadow: 0 3px 0 #000;
+  animation: mm-pop 0.4s var(--ease-spring) 0.05s both;
+}
+.mm-rotate-sub {
+  max-width: 300px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #c9d2e3;
+}
+.mm-rotate-device {
+  transform-origin: 60px 60px;
+  animation: mm-rotate-turn 2.4s var(--ease-spring) infinite;
+}
+.mm-rotate-arrow {
+  animation: mm-rotate-arrow 2.4s ease infinite;
+}
+@keyframes mm-rotate-turn {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  55%,
+  85% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+@keyframes mm-rotate-arrow {
+  0%,
+  15% {
+    opacity: 1;
+  }
+  45%,
+  90% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.mm-reduced .mm-rotate-device,
+.mm-reduced .mm-rotate-arrow {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-rotate-device,
+  .mm-rotate-arrow {
+    animation: none;
+  }
+}
+
+/* ============================================================ phone landscape
+ * Phones play sideways (portrait phones get the rotate card), so short,
+ * wide screens keep the two-column desktop layouts in a compact form. */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Title: logo and you on the left, the menu on the right. */
+  .mmx-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+    gap: 16px;
+    align-items: center;
+  }
+  .mmx-logo-top {
+    font-size: 13px;
+  }
+  .mmx-logo-main {
+    font-size: clamp(44px, 15vh, 72px);
+    text-shadow: -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 3px 3px 0 #fff, 0 -3px 0 #fff, 0 3px 0 #fff, 0 8px 0 #000;
+  }
+  .mmx-logo-haz {
+    width: min(320px, 40vw);
+    height: 10px;
+    margin-top: 8px;
+  }
+  .mmx-logo-tag {
+    margin-top: 6px;
+    font-size: 0.62em;
+  }
+  .mmx-avatar canvas {
+    width: 84px !important;
+    height: 84px !important;
+  }
+  .mmx-pedestal {
+    width: 100px;
+    height: 18px;
+    margin-top: -14px;
+  }
+  .mmx-name {
+    margin-top: 4px;
+    width: min(220px, 36vw);
+  }
+  .mmx-name .mm-input {
+    font-size: 1em;
+  }
+  .mmx-menu {
+    padding: 10px;
+    gap: 6px;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+  .mmx-menu > .mm-btn,
+  .mmx-row2 .mm-btn {
+    min-height: 40px;
+    font-size: 1em;
+  }
+  .mmx-play {
+    min-height: 48px !important;
+    font-size: 1.15em !important;
+  }
+  /* HUD: the task list scrolls instead of running into the action buttons. */
+  .mmh-tl {
+    width: min(270px, 36vw);
+  }
+  .mmh-tasks {
+    max-height: calc(100dvh - 200px);
+    overflow-y: auto;
+  }
+  /* Meeting: ballot and chat side by side. */
+  .mmm-body {
+    grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr);
+    gap: 10px;
+  }
+  .mmm-ballot {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    overflow-y: auto;
+  }
+  .mmm-chat {
+    min-height: 0;
+    padding: 8px;
+  }
+  .mmm-chatlog {
+    flex: 1;
+    min-height: 48px;
+  }
+  .mmm-quick-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mmm-quick-row .mm-btn {
+    flex: none;
+  }
+  .mmm-quick .mm-input {
+    min-height: 30px;
+    padding: 2px 8px;
+    font-size: 0.85em;
+  }
+  /* Tablet map: map on the left, task list on the right, full height. */
+  .mmt-screen {
+    width: min(600px, 60vw);
+    height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    padding: 8px;
+  }
+  .mmt-list {
+    width: 210px;
+  }
+  /* Action buttons: three per row (so at most two rows), so the stack never reaches the minimap. */
+  .mmh-sec {
+    max-height: 184px;
+  }
+  .mmh-actions.touch .mmh-sec {
+    width: 206px;
+  }
+  /* Sabotage: cards in a column beside the door map. */
+  .mmh-sabwrap {
+    display: grid;
+    grid-template-columns: minmax(170px, 0.7fr) auto;
+    gap: 12px;
+    align-items: start;
+  }
+  .mmh-sabwrap .mmh-sabgrid {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mmh-sabwrap .mmh-sabcard {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .mmh-sabdoors .mm-label {
+    margin-top: 0 !important;
+  }
+  /* Practice coach: top centre, between the role badge and the round buttons, clear of the thumbs. */
+  .mm-coach {
+    top: max(6px, env(safe-area-inset-top, 0px));
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max(190px, calc(100vw - 560px));
+    max-width: 320px;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    font-size: 0.8em;
   }
 }

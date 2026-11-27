@@ -142,6 +142,8 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
   useTick(120);
   const coarse = useCoarsePointer();
   const vp = useViewport();
+  /** Phone held sideways: short and wide, so panels go side by side. */
+  const shortLand = vp.h <= 500 && vp.w > vp.h;
   const prefs = useMystery((s) => s.prefs);
   const act = useMystery((s) => s.act);
   const taskStation = useMystery((s) => s.taskStation);
@@ -158,7 +160,8 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState<null | 'chat' | 'emote'>(null);
   const [holding, setHolding] = useState<string | null>(null);
-  const [tasksOpen, setTasksOpen] = useState(() => typeof innerWidth !== 'number' || innerWidth > 640);
+  // Phones (narrow, or short when held sideways) start with the list folded: it covers the joystick zone.
+  const [tasksOpen, setTasksOpen] = useState(() => typeof innerWidth !== 'number' || (innerWidth > 640 && innerHeight > 500));
   const tc = teamColors(prefs.colorblind !== 'none');
   const map = getMap(snap.map);
   const you = snap.you;
@@ -733,6 +736,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       {sabMap && (
         <div style={{ pointerEvents: 'auto' }}>
           <Modal title="Sabotage" onClose={() => setSabMap(false)} wide>
+            <div className="mmh-sabwrap">
             <div className="mmh-sabgrid">
               {(['lights', 'comms', 'meltdown', 'pressure'] as SabotageId[]).map((k, i) => {
                 const enabled = k === 'lights' ? settings.sabLights : k === 'comms' ? settings.sabComms : k === 'meltdown' ? settings.sabMeltdown : settings.sabPressure;
@@ -763,15 +767,15 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
               )}
             </div>
             {settings.sabDoors && (
-              <>
+              <div className="mmh-sabdoors">
                 <div className="mm-label" style={{ margin: '12px 0 6px' }}>
                   Tap a room to slam its doors for 10s {snap.sabotage.doorCd! > 0 ? `(ready in ${Math.ceil(snap.sabotage.doorCd!)}s)` : ''}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <SchematicMap
                     map={map}
-                    width={Math.min(860, vp.w * 0.84)}
-                    height={Math.min(420, vp.h * 0.5)}
+                    width={shortLand ? vp.w * 0.5 : Math.min(860, vp.w * 0.84)}
+                    height={shortLand ? vp.h - 150 : Math.min(420, vp.h * 0.5)}
                     theme="killer"
                     labels
                     markers={markers}
@@ -783,8 +787,9 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
                     }}
                   />
                 </div>
-              </>
+              </div>
             )}
+            </div>
           </Modal>
         </div>
       )}
