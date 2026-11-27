@@ -26,6 +26,14 @@ Safety nets:
   previous version automatically and never offers that build again.
 - **Help → Reset to Built-in Version…** removes downloaded updates.
 
+## Marion Mystery in the Mac app
+
+Open Mystery from the HQ (the Arcade wing). **Quick Play vs Marion Bots**, Freeplay and the
+tutorial run entirely inside the app, offline. Online rooms (Create / Join / Browse) need the
+Mystery game server: run `npm run start:server` on this Mac, and the app connects to it at
+`ws://localhost:8787/mystery`. iPhones on the same Wi-Fi join through the LAN address that
+command prints (see `docs/mystery/HOSTING.md`).
+
 ## How it works
 
 The `.app` is a small Electron shell that rarely changes. The game itself (the Vite

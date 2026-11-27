@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanError, type MarionDesktop, type UpdateStatus } from '../src/desktop';
 import { UpdateButton } from '../src/ui/UpdateButton';
+import { defaultServerUrl } from '../src/mystery/client/transport';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,5 +80,24 @@ describe('desktop Update button', () => {
 
   it('strips Electron IPC error prefixes', () => {
     expect(cleanError(new Error("Error invoking remote method 'updater:update': Error: Download failed (500)"))).toBe('Download failed (500)');
+  });
+});
+
+describe('Marion Mystery inside the Mac app', () => {
+  it('looks for the game server on this Mac when served from app://', () => {
+    vi.stubGlobal('location', new URL('app://hq/index.html?mystery'));
+    try {
+      expect(defaultServerUrl()).toBe('ws://localhost:8787/mystery');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('still derives the server from the page on the web', () => {
+    vi.stubGlobal('location', new URL('https://marion.example/?mystery'));
+    try {
+      expect(defaultServerUrl()).toBe('wss://marion.example/mystery');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

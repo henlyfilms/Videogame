@@ -23,6 +23,9 @@ export function defaultServerUrl(): string {
   if (typeof location === 'undefined') return 'ws://localhost:8787/mystery';
   const q = new URLSearchParams(location.search).get('server');
   if (q) return q;
+  // The Mac app serves the client from app://hq, which has no game server behind it:
+  // look for one on this Mac (npm run start:server) instead.
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return 'ws://localhost:8787/mystery';
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // Vite dev server (5173) → game server on 8787 of the same host.
   const port = location.port === '5173' || location.port === '4173' ? '8787' : location.port;
