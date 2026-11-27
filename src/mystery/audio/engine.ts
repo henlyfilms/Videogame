@@ -336,7 +336,10 @@ export class AudioEngine {
     const sum = ctx.createGain();
     sum.connect(dest);
     this.sends(sum, opts.rev ?? 0.35, opts.del ?? 0);
+    const nyquist = ctx.sampleRate / 2;
     for (const [ratio, amp, decay] of partials) {
+      // Partials above Nyquist would alias (and warn); high notes just lose them.
+      if (f * ratio >= nyquist * 0.9) continue;
       const o = ctx.createOscillator();
       o.frequency.value = f * ratio;
       const g = ctx.createGain();
