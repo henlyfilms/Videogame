@@ -48,9 +48,10 @@ const OCC_FRAG = /* glsl */ `
     vec3 ab = uOccB - uOccA;
     float t = clamp(dot(vOccW - uOccA, ab) / max(1e-4, dot(ab, ab)), 0.0, 1.0);
     float d = length(vOccW - (uOccA + ab * t));
-    float k = (1.0 - smoothstep(uOccR * 0.5, uOccR, d)) * (1.0 - smoothstep(0.8, 0.94, t));
+    // uOccOn 1: third person (sight line + lens), 2: first person (lens only).
+    float k = uOccOn < 1.5 ? (1.0 - smoothstep(uOccR * 0.5, uOccR, d)) * (1.0 - smoothstep(0.8, 0.94, t)) : 0.0;
     // Anything brushing the camera lens dissolves too.
-    k = max(k, 1.0 - smoothstep(0.7, 1.5, distance(vOccW, uOccA)));
+    k = max(k, uOccOn < 1.5 ? 1.0 - smoothstep(0.7, 1.5, distance(vOccW, uOccA)) : 1.0 - smoothstep(0.25, 0.55, distance(vOccW, uOccA)));
     int bi = int(mod(gl_FragCoord.x, 4.0)) + 4 * int(mod(gl_FragCoord.y, 4.0));
     if (k > (OCC_BAYER[bi] + 0.5) / 16.0) discard;
   }`;

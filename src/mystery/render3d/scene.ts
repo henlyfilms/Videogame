@@ -670,7 +670,7 @@ function outdoorDressing(map: CompiledMap, info: ReturnType<typeof worldInfo>, n
   };
   const shapes = {
     tuft: { geo: () => merge([blade(0.26, 0.25, 0), blade(0.2, -0.35, 1.1), blade(0.22, 0.4, 2.3), blade(0.17, -0.2, 3.7)]), color: night ? '#26443a' : '#4f8f62' },
-    flower: { geo: () => merge([sph(0.055, 0.27, 1, 0.7, 1, 0.03, 0), sph(0.045, 0.22, 1, 0.7, 1, -0.07, 0.05)]), color: night ? '#5a4060' : '#e98fb0' },
+    flower: { geo: () => merge([sph(0.055, 0.27, 1, 0.7, 1, 0.03, 0), sph(0.045, 0.22, 1, 0.7, 1, -0.07, 0.05)]), color: night ? '#5a4060' : '#ffffff' },
     mound: { geo: () => sph(0.3, 0, 1.4, 0.35, 1), color: night ? mix(WORLD.snow, '#0b1022', 0.5) : WORLD.snow },
     pebble: { geo: () => sph(0.09, 0.02, 1.3, 0.6, 1), color: night ? mix(WORLD.rockDark, '#0b1022', 0.4) : WORLD.rockHi },
   } as const;
@@ -687,7 +687,7 @@ function outdoorDressing(map: CompiledMap, info: ReturnType<typeof worldInfo>, n
     list.forEach((p, k) => {
       q.setFromAxisAngle(up, p.r);
       inst.setMatrixAt(k, m4.compose(pv.set(p.x, 0, p.y), q, sv.setScalar(p.s)));
-      if (kind === 'flower' && !night && k % 2) inst.setColorAt(k, new THREE.Color(WORLD.guideYellow));
+      if (kind === 'flower' && !night) inst.setColorAt(k, new THREE.Color(k % 2 ? WORLD.guideYellow : '#e98fb0'));
     });
     if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
     grp.add(inst);

@@ -164,6 +164,7 @@ export class ThreeDView implements ViewRenderer {
   private camDistGoal = 5.2;
   private tmpV = new THREE.Vector3();
   private tmpCam = new THREE.Vector3();
+  private lastDt = 0;
   /** One fog object, retuned every frame (no per-frame allocation). */
   private fog = new THREE.Fog('#141a33', 10, 40);
   private static readonly LAMP_WARM = new THREE.Color('#ffd89a');
@@ -420,6 +421,7 @@ export class ThreeDView implements ViewRenderer {
   render(f: FrameData, dt: number): void {
     if (this.lost) return;
     const t0 = performance.now();
+    this.lastDt = dt;
     this.ensureMap(f.map, f.night);
     const ms = this.mapScene!;
     // Camera look input (touch / right stick).
@@ -708,7 +710,7 @@ export class ThreeDView implements ViewRenderer {
     }
     runtime.cameraYaw = this.yaw;
     // Props between the camera and your berry dissolve (third person only).
-    OCCLUDER.uOccOn.value = this.mode === 'tp' && localPlayer && !ghostView ? 1 : 0;
+    OCCLUDER.uOccOn.value = !localPlayer ? 0 : this.mode === 'tp' ? (ghostView ? 0 : 1) : 2;
     OCCLUDER.uOccA.value.copy(this.camera.position);
     OCCLUDER.uOccB.value.set(f.focus.x, 0.7, f.focus.y);
     this.renderer.render(this.scene, this.camera);
@@ -897,7 +899,8 @@ export class ThreeDView implements ViewRenderer {
       o.ripple.visible = !rm;
       o.ripple.scale.setScalar(1 + w * 2.2);
       (o.ripple.material as THREE.MeshBasicMaterial).opacity = (1 - w) * fade * 0.7;
-      if (pg.from) {
+      // Your own pointer beam in first person would start under the lens: pin + rings only.
+      if (pg.from && !(pg.local && this.mode === 'fp')) {
         const a = this.actors.get(pg.id);
         const hand = this.tmpV.set(pg.from.x, (a?.rig.height ?? 1.05) * 0.62, pg.from.y);
         const tip = new THREE.Vector3(pg.to.x, 0.06, pg.to.y);
@@ -968,7 +971,14 @@ export class ThreeDView implements ViewRenderer {
         setSprite(obj, e, alpha);
       } else if (type === 'report') {
         const b = f.bodies.find((q) => q.id === id);
-        if (b) obj.position.set(b.pos.x, 0.95 + (rm ? 0 : Math.sin(t * 4) * 0.04), b.pos.y);
+        if (b) {
+          // Someone standing on the body: ease the badge up over their name tag.
+          const covered = f.players.some((p) => !p.ghost && Math.abs(p.pos.x - b.pos.x) < 0.6 && Math.abs(p.pos.y - b.pos.y) < 0.6);
+          const prev = (obj.userData.lift as number | undefined) ?? 0.95;
+          const lift = prev + ((covered ? 2.05 : 0.95) - prev) * (rm ? 1 : Math.min(1, this.lastDt * 10));
+          obj.userData.lift = lift;
+          obj.position.set(b.pos.x, lift + (rm ? 0 : Math.sin(t * 4) * 0.04), b.pos.y);
+        }
         setSprite(obj, e, alpha);
       } else if (type === 'invent') {
         const v0 = f.map.ventById.get(id);

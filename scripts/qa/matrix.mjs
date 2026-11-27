@@ -7,6 +7,7 @@
 //   node scripts/qa/matrix.mjs --base http://127.0.0.1:5175 --out /tmp/qa \
 //     [--views 2d,3d-tp,3d-fp] [--maps hq,greenhouse,express,manor] [--modes classic,lightsout,hideseek]
 //     [--devices desktop,iphone,iphone844] [--stops 6] [--plan full|smoke|all] [--quality high] [--sheet]
+//     [--only 3d-fp_classic_manor_murderer_desktop,...] [--reduced]
 //
 // --plan full  = every mode × map × role in 2D on the first device plus one run on another device;
 //                every mode × map once in each 3D view, rotating role and device.
@@ -81,7 +82,9 @@ function plan() {
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 mkdirSync(OUT, { recursive: true });
 const report = [];
-const combos = plan();
+// --only view_mode_map_role_device[,...] reruns just those combinations (e.g. ones that timed out).
+const ONLY = args.only ? new Set(args.only.split(',')) : null;
+const combos = plan().filter((c) => !ONLY || ONLY.has(`${c.view}_${c.mode}_${c.map}_${c.role}_${c.device}`));
 console.log(`${combos.length} combinations`);
 
 for (const [i, c] of combos.entries()) {
@@ -182,7 +185,7 @@ for (const [i, c] of combos.entries()) {
       if (s.vent && c.role === 'murderer') await page.evaluate((v) => window.__mm.store.getState().act({ a: 'vent.enter', vent: v }), s.vent);
       await sleep(is3d ? 2500 : 500);
       const file = join(dir, `${String(k).padStart(2, '0')}-${s.label}.png`);
-      await page.screenshot({ path: file });
+      await page.screenshot({ path: file, timeout: 120000 });
       shots.push(file);
       k++;
     }

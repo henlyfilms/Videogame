@@ -182,6 +182,10 @@ export class Renderer2D {
   private fader = new PromptFader();
   private bitmaps = new Map<string, { c: HTMLCanvasElement | OffscreenCanvas; used: number }>();
   private frameNo = 0;
+  private lastDt = 0;
+  private vignette: { w: number; h: number; g: CanvasGradient } | null = null;
+  /** Eased vertical offset per name tag (crowd de-overlap). */
+  private tagShift = new Map<string, number>();
   private w = 0;
   private h = 0;
   private dpr = 1;
@@ -353,6 +357,7 @@ export class Renderer2D {
   render(f: FrameData, dt: number): void {
     const t0 = performance.now();
     this.frameNo++;
+    this.lastDt = dt;
     const ctx = this.ctx;
     const s = this.scale(f.zoom);
     // Camera: smooth follow + look-ahead.
@@ -601,10 +606,11 @@ export class Renderer2D {
         },
       });
     // Wall caps in front of anyone standing just north of a wall.
+    const petPos = [...this.pets.values()];
     for (const run of capRuns(f.map)) {
       if (run.x1 < view.x0 || run.x0 > view.x1 || run.y < view.y0 || run.y > view.y1 + 1) continue;
       const near = (p: Vec2) => p.y > run.y - 1.6 && p.y < run.y && p.x > run.x0 - 1 && p.x < run.x1 + 1;
-      if (!f.players.some((p) => near(p.pos)) && !f.bodies.some((b) => near(b.pos)) && ![...this.pets.values()].some(near)) continue;
+      if (!f.players.some((p) => near(p.pos)) && !f.bodies.some((b) => near(b.pos)) && !petPos.some(near)) continue;
       ents.push({ y: run.y - 0.01, draw: () => this.blitCapRun(run, s) });
     }
     ents.sort((a, b) => a.y - b.y);
@@ -660,10 +666,14 @@ export class Renderer2D {
     if (f.vision && !f.vision.all) this.drawFog(f, s, cx, cy);
     else if (f.night && f.mode === 'match') this.drawNightTint(0.25);
     {
-      const v = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.72);
-      v.addColorStop(0, 'rgba(5,8,22,0)');
-      v.addColorStop(1, 'rgba(5,8,22,0.38)');
-      ctx.fillStyle = v;
+      // Vignette gradient is rebuilt only when the view size changes.
+      if (!this.vignette || this.vignette.w !== this.w || this.vignette.h !== this.h) {
+        const v = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.72);
+        v.addColorStop(0, 'rgba(5,8,22,0)');
+        v.addColorStop(1, 'rgba(5,8,22,0.38)');
+        this.vignette = { w: this.w, h: this.h, g: v };
+      }
+      ctx.fillStyle = this.vignette.g;
       ctx.fillRect(0, 0, this.w, this.h);
     }
     if (f.critical) {
@@ -694,13 +704,34 @@ export class Renderer2D {
     const pop = (k: number) => (rm ? Math.min(1, k) : easeOutBack(k));
     // Name tags (dark pill, avatar dot, local player outlined green).
     const tagH = Math.max(13, s * 0.34);
+    const localGhost = !!f.players.find((q) => q.local)?.ghost;
+    const tags: { id: string; st: TagStyle; tw: number; x: number; y: number }[] = [];
     for (const p of f.players) {
-      if (!inView(p.pos, 3) || (p.ghost && !p.local && !f.players.find((q) => q.local)?.ghost)) continue;
+      if (!inView(p.pos, 3) || (p.ghost && !p.local && !localGhost)) continue;
       const lift = p.emote ? 1.95 : 1.5;
       const st = tagStyleFor(p);
-      const tw = measureTagCached(ctx, st.name, tagH) + 8;
-      this.blit(`tag|${st.name}|${st.color}|${st.avatar}|${st.ring.join()}|${st.local ? 1 : 0}|${st.ghost ? 1 : 0}`, p.pos.x * s, p.pos.y * s - s * lift, tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, st));
+      tags.push({ id: p.id, st, tw: measureTagCached(ctx, st.name, tagH) + 8, x: p.pos.x * s, y: p.pos.y * s - s * lift });
     }
+    // Berries standing close together: stack their tags (the one in front keeps its
+    // place, the ones behind step up) and ease the shift so nothing jumps.
+    tags.sort((a, b) => b.y - a.y);
+    const gap = tagH + 5;
+    const k = rm ? 1 : 1 - Math.exp(-this.lastDt * 14);
+    for (let i = 0; i < tags.length; i++) {
+      const t = tags[i]!;
+      let want = t.y;
+      for (let pass = 0; pass < 3; pass++)
+        for (let j = 0; j < i; j++) {
+          const o = tags[j]!;
+          if (Math.abs(o.x - t.x) < (o.tw + t.tw) / 2 + 2 && Math.abs(o.y - want) < gap) want = o.y - gap;
+        }
+      const prev = this.tagShift.get(t.id) ?? 0;
+      const shift = prev + (want - t.y - prev) * k;
+      this.tagShift.set(t.id, shift);
+      t.y += shift;
+    }
+    for (const t of tags) this.blit(`tag|${t.st.name}|${t.st.color}|${t.st.avatar}|${t.st.ring.join()}|${t.st.local ? 1 : 0}|${t.st.ghost ? 1 : 0}`, t.x, t.y, t.tw, tagH + 8, 1, (g) => drawNameTag(g, 0, -2, tagH, t.st));
+    if (this.tagShift.size > 64) this.tagShift.clear();
     // Task arrows (bob over the dotted ring) + "use" key hint on the station in reach.
     for (const st of f.map.def.stations) {
       if (!inView(st)) continue;
@@ -734,7 +765,12 @@ export class Renderer2D {
       ctx.globalAlpha = Math.min(1, k * 1.4);
       const e = pop(k);
       const bob = rm ? 0 : Math.sin(f.t * 4) * s * 0.05;
-      ctx.translate(b.pos.x * s, b.pos.y * s - s * 1.05 + bob);
+      // Someone standing on the body: lift the badge over their name tag instead of their face.
+      const covered = f.players.some((p) => !p.ghost && Math.abs(p.pos.x - b.pos.x) < 0.6 && Math.abs(p.pos.y - b.pos.y) < 0.6);
+      const liftKey = `body:${b.id}`;
+      const lift = (this.tagShift.get(liftKey) ?? 1.05) + ((covered ? 2.25 : 1.05) - (this.tagShift.get(liftKey) ?? 1.05)) * (rm ? 1 : 1 - Math.exp(-this.lastDt * 10));
+      this.tagShift.set(liftKey, lift);
+      ctx.translate(b.pos.x * s, b.pos.y * s - s * lift + bob);
       ctx.scale(e, e);
       const rk = keys?.report ?? '';
       this.blit(`report|${rk}`, 0, 0, s * 1.1, s * 1.1, 1, (g) => drawReportBadge(g, 0, 0, s * 0.42, 0, rk, true));
