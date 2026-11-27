@@ -342,15 +342,17 @@ export function MysteryApp({ onExit }: { onExit?: () => void }) {
       {!inRoom && screen === 'freeplay' && <FreeplayScreen />}
       {!inRoom && screen === 'wardrobe' && <Wardrobe />}
       {!inRoom && screen === 'room' && (
-        <div className="mm-loading">
-          <BerryAvatar cosmetics={prefs.cosmetics} size={110} moving />
-          <div className="mm-label">Connecting…</div>
-          <div className="mm-loadbar" aria-hidden>
-            <i />
+        <div className="mm-loading mm-loading-screen" role="status">
+          <div className="mm-panel mm-loadcard mm-in-pop">
+            <BerryAvatar cosmetics={prefs.cosmetics} size={110} moving />
+            <div className="mm-loadcard-t">Connecting…</div>
+            <div className="mm-loadbar" aria-hidden>
+              <i />
+            </div>
+            <button className="mm-btn mm-pill" onClick={() => setScreen('title')}>
+              <MIcon name="close" size={16} /> Cancel
+            </button>
           </div>
-          <button className="mm-btn" onClick={() => setScreen('title')}>
-            Cancel
-          </button>
         </div>
       )}
       {inRoom && (stage === 'lobby' || stage === 'countdown') && <WaitingRoom />}

@@ -92,7 +92,7 @@ export function RoleReveal({ snap }: { snap: Snapshot }) {
             {use3d ? (
               <div className="mm-in-pop">
                 <Suspense fallback={<BerryAvatar cosmetics={me.cosmetics} size={170} />}>
-                  <Stage3D actors={revealActors} width={Math.min(560, vp.w - 24)} height={240} light={role.color} reducedMotion={prefs.reducedMotion} />
+                  <Stage3D actors={revealActors} width={Math.min(560, vp.w - 24)} height={Math.min(240, Math.round(vp.h * 0.38))} light={role.color} reducedMotion={prefs.reducedMotion} />
                 </Suspense>
                 <div className="mmv-name mm-nocase">
                   {me.name}
@@ -543,10 +543,14 @@ export function EjectOverlay({ snap, settings }: { snap: Snapshot; settings: Set
         </div>
       )}
       <div className="mme-text">
-        <div className="mme-line mm-nocase" aria-live="polite">
-          {typed}
-          <span className="mme-caret" style={{ opacity: typed.length < msg.length ? 1 : 0 }}>
+        {/* The untyped rest is laid out invisibly so the centred line doesn't drift while it types. */}
+        <div className="mme-line mm-nocase" role="status" aria-label={msg}>
+          <span aria-hidden>{typed}</span>
+          <span className="mme-caret" aria-hidden style={{ opacity: typed.length < msg.length ? 1 : 0 }}>
             ▌
+          </span>
+          <span className="mme-rest" aria-hidden>
+            {msg.slice(typed.length)}
           </span>
         </div>
         {ejected && <div className="mme-sub mm-nocase">{ejected.name} was {scene.label}.</div>}
@@ -573,6 +577,21 @@ const REASON: Record<string, string> = {
   'hiders-survived': 'The hiders outlasted the clock!',
   'all-found': 'Every hider was found.',
   abandoned: 'The other side left the match.',
+};
+
+const EV_ICON: Partial<Record<string, string>> = {
+  kill: 'knife',
+  report: 'megaphone',
+  emergency: 'siren',
+  eject: 'door2',
+  sabotage: 'bolt',
+  fixed: 'wrench',
+  misfire: 'crosshair',
+  'gun.pickup': 'gun',
+  poison: 'vial',
+  'shield.hit': 'shield',
+  blackout: 'flashlight',
+  final: 'timer',
 };
 
 /** Rubber-stamp tally (original art: jagged badge + icon + count). */
@@ -676,9 +695,23 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
           </button>
         </div>
       </div>
-      <div className="mms-tabs mmr-tabs" role="tablist" aria-label="Results sections">
+      <div
+        className="mms-tabs mmr-tabs"
+        role="tablist"
+        aria-label="Results sections"
+        onKeyDown={(e) => {
+          const order = ['summary', 'timeline', 'heatmap'] as const;
+          const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+          if (!d) return;
+          e.preventDefault();
+          const n = (order.indexOf(tab) + d + order.length) % order.length;
+          setTab(order[n]!);
+          (e.currentTarget.children[n] as HTMLElement | undefined)?.focus();
+        }}
+      >
         {(['summary', 'timeline', 'heatmap'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className="mms-tab" onClick={() => setTab(t)}>
+          <button key={t} role="tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} className="mms-tab" onClick={() => setTab(t)}>
+            <MIcon name={t === 'summary' ? 'stats' : t === 'timeline' ? 'timer' : 'map'} size={18} />
             {t === 'summary' ? 'Board' : t === 'timeline' ? 'Timeline' : 'Heatmap'}
           </button>
         ))}
@@ -799,59 +832,62 @@ export function ResultsScreen({ snap }: { snap: Snapshot }) {
             {res.timeline.map((e, i) => (
               <div key={i} className="mmr-ev" style={{ ['--i' as string]: Math.min(i, 30) }}>
                 <span className="mmr-ev-t">{fmtTime(e.t)}</span>
+                <span className="mmr-ev-ic" data-type={e.type}>
+                  <MIcon name={EV_ICON[e.type] ?? 'flag'} size={16} stroke={2.4} />
+                </span>
                 <span className="mm-nocase">
                   {e.type === 'kill' && (
                     <>
-                      🔪 <b>{nameOf(e.actor)}</b> {e.detail === 'gun' ? 'shot' : e.detail === 'poison' ? 'poisoned' : 'eliminated'} <b>{nameOf(e.target)}</b>
+                      <b>{nameOf(e.actor)}</b> {e.detail === 'gun' ? 'shot' : e.detail === 'poison' ? 'poisoned' : 'eliminated'} <b>{nameOf(e.target)}</b>
                     </>
                   )}
                   {e.type === 'report' && (
                     <>
-                      📣 <b>{nameOf(e.actor)}</b> reported {nameOf(e.target)}’s body
+                      <b>{nameOf(e.actor)}</b> reported {nameOf(e.target)}’s body
                     </>
                   )}
                   {e.type === 'emergency' && (
                     <>
-                      🚨 <b>{nameOf(e.actor)}</b> called an emergency meeting
+                      <b>{nameOf(e.actor)}</b> called an emergency meeting
                     </>
                   )}
-                  {e.type === 'eject' && <>🚀 {e.target ? `${nameOf(e.target)} was ejected` : `No one was ejected (${e.detail || 'skip'})`}</>}
+                  {e.type === 'eject' && <>{e.target ? `${nameOf(e.target)} was ejected` : `No one was ejected (${e.detail || 'skip'})`}</>}
                   {e.type === 'sabotage' && (
                     <>
-                      ⚡ <b>{nameOf(e.actor)}</b> sabotaged {e.detail}
+                      <b>{nameOf(e.actor)}</b> sabotaged {e.detail}
                     </>
                   )}
                   {e.type === 'fixed' && (
                     <>
-                      🔧 <b>{nameOf(e.actor)}</b> fixed {e.detail}
+                      <b>{nameOf(e.actor)}</b> fixed {e.detail}
                     </>
                   )}
                   {e.type === 'misfire' && (
                     <>
-                      💥 <b>{nameOf(e.actor)}</b> misfired at {nameOf(e.target)}
+                      <b>{nameOf(e.actor)}</b> misfired at {nameOf(e.target)}
                     </>
                   )}
                   {e.type === 'gun.pickup' && (
                     <>
-                      🦸 <b>{nameOf(e.actor)}</b> picked up the gun
+                      <b>{nameOf(e.actor)}</b> picked up the gun
                     </>
                   )}
                   {e.type === 'poison' && (
                     <>
-                      🧪 <b>{nameOf(e.actor)}</b> poisoned {nameOf(e.target)}
+                      <b>{nameOf(e.actor)}</b> poisoned {nameOf(e.target)}
                     </>
                   )}
                   {e.type === 'shield.hit' && (
                     <>
-                      🛡 {nameOf(e.target)}’s shield blocked {nameOf(e.actor)}
+                      {nameOf(e.target)}’s shield blocked {nameOf(e.actor)}
                     </>
                   )}
                   {e.type === 'blackout' && (
                     <>
-                      🌑 <b>{nameOf(e.actor)}</b> caused a blackout
+                      <b>{nameOf(e.actor)}</b> caused a blackout
                     </>
                   )}
-                  {e.type === 'final' && <>⏱ Final countdown began</>}
+                  {e.type === 'final' && <>Final countdown began</>}
                 </span>
               </div>
             ))}

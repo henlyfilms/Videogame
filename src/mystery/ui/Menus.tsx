@@ -24,9 +24,21 @@ export function ViewPicker({ value, onChange, compact = false }: { value: ViewMo
     { v: '2d', label: '2D Simplified', sub: 'Top-down & light', icon: 'map' },
   ];
   return (
-    <div role="radiogroup" aria-label="View mode" className={`mm-seg${compact ? ' compact' : ''}`}>
+    <div
+      role="radiogroup"
+      aria-label="View mode"
+      className={`mm-seg${compact ? ' compact' : ''}`}
+      onKeyDown={(e) => {
+        const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        const i = (opts.findIndex((o) => o.v === value) + d + opts.length) % opts.length;
+        onChange(opts[i]!.v);
+        (e.currentTarget.children[i] as HTMLElement | undefined)?.focus();
+      }}
+    >
       {opts.map((o) => (
-        <button key={o.v} role="radio" aria-checked={value === o.v} className="mm-seg-opt" onClick={() => onChange(o.v)}>
+        <button key={o.v} role="radio" aria-checked={value === o.v} tabIndex={value === o.v ? 0 : -1} className="mm-seg-opt" onClick={() => onChange(o.v)}>
           <MIcon name={o.icon} size={compact ? 18 : 22} />
           <span className="mm-seg-label">{o.label}</span>
           {!compact && <span className="mm-seg-sub">{o.sub}</span>}
@@ -157,8 +169,8 @@ export function JoinScreen() {
   const keys = CODE_ALPHABET.split('');
   return (
     <div className="mm-safe mm-center-screen">
-      <div className="mm-panel mm-card mm-in-pop" style={{ width: 'min(540px, 100%)' }}>
-        <div className="mm-card-head">
+      <div className="mm-panel mm-card mm-in-pop mmj">
+        <div className="mm-card-head mmj-head">
           <button className="mm-round" aria-label="Back" onClick={() => setScreen('title')}>
             <MIcon name="back" />
           </button>
@@ -178,7 +190,7 @@ export function JoinScreen() {
           ))}
         </div>
         <input
-          className="mm-input"
+          className="mm-input mmj-paste"
           placeholder="…or paste a code / invite link"
           aria-label="Paste code"
           onChange={(e) => {
@@ -186,7 +198,6 @@ export function JoinScreen() {
             const m = v.match(/room=([A-Za-z0-9]+)/);
             setCode(normalizeCode(m ? m[1]! : v));
           }}
-          style={{ marginBottom: 12, textAlign: 'center' }}
         />
         <div className="mmj-keys">
           {keys.map((k) => (
@@ -194,21 +205,23 @@ export function JoinScreen() {
               {k}
             </button>
           ))}
-          <button className="mmj-key wide" onClick={() => setCode((c) => c.slice(0, -1))} aria-label="Delete">
-            ⌫
-          </button>
-          <button className="mmj-key wide" onClick={() => setCode('')}>
+          <button className="mmj-key clear" onClick={() => setCode('')} aria-label="Clear">
             Clear
           </button>
+          <button className="mmj-key wide" onClick={() => setCode((c) => c.slice(0, -1))} aria-label="Delete">
+            <MIcon name="backspace" size={22} />
+          </button>
         </div>
-        {error && (
-          <div role="alert" className="mm-error">
-            {error}
-          </div>
-        )}
-        <button className="mm-btn mm-btn-primary mm-pill" style={{ width: '100%', marginTop: 14, minHeight: 54 }} disabled={code.length !== CODE_LENGTH} onClick={() => joinRoom(code)}>
-          Join {code.length === CODE_LENGTH ? code : ''}
-        </button>
+        <div className="mmj-go">
+          {error && (
+            <div role="alert" className="mm-error">
+              {error}
+            </div>
+          )}
+          <button className="mm-btn mm-btn-primary mm-pill mmj-join" disabled={code.length !== CODE_LENGTH} onClick={() => joinRoom(code)}>
+            Join {code.length === CODE_LENGTH ? code : ''}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -549,78 +562,120 @@ export function ProfileScreen() {
   );
 }
 
+const HOWTO_TABS = [
+  { id: 'modes', label: 'Modes', icon: 'flag' },
+  { id: 'roles', label: 'Roles', icon: 'mask' },
+  { id: 'controls', label: 'Controls', icon: 'pad' },
+] as const;
+type HowToTab = (typeof HOWTO_TABS)[number]['id'];
+
 export function HowToScreen() {
   const setScreen = useMystery((s) => s.setScreen);
   const cb = useMystery((s) => s.prefs.colorblind !== 'none');
+  const k = useMystery((s) => s.prefs.keys);
   const tc = teamColors(cb);
-  const [tab, setTab] = useState<'modes' | 'roles' | 'controls'>('modes');
+  const [tab, setTab] = useState<HowToTab>('modes');
+  const onTabKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const i = HOWTO_TABS.findIndex((t) => t.id === tab);
+    const n = e.key === 'ArrowRight' ? (i + 1) % HOWTO_TABS.length : e.key === 'ArrowLeft' ? (i + HOWTO_TABS.length - 1) % HOWTO_TABS.length : -1;
+    if (n < 0) return;
+    e.preventDefault();
+    setTab(HOWTO_TABS[n]!.id);
+    (e.currentTarget.children[n] as HTMLElement | undefined)?.focus();
+  };
+  const L = (c: string) => keyLabel(c);
+  const keyboard = [
+    `${L(k.up)} ${L(k.left)} ${L(k.down)} ${L(k.right)} / arrows — move`,
+    'Mouse — look (3D, click to lock)',
+    `${L(k.use)} or Space — use / task`,
+    `${L(k.kill)} — kill / tag`,
+    `${L(k.report)} — report`,
+    `${L(k.vent)} — vent`,
+    `${L(k.sabotage)} — sabotage map`,
+    `${L(k.map)} — map`,
+    `${L(k.flashlight)} — flashlight`,
+    `${L(k.ping)} or middle-click — ping a spot`,
+    `${L(k.chat)} — chat (meetings)`,
+    '1–4 — emotes',
+  ];
   return (
     <Modal title="How to play" onClose={() => setScreen('title')} wide>
-      <div className="mms-tabs" role="tablist" aria-label="How to play sections" style={{ marginBottom: 14 }}>
-        {(['modes', 'roles', 'controls'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className="mms-tab" onClick={() => setTab(t)}>
-            {t}
-          </button>
-        ))}
-      </div>
-      {tab === 'modes' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-          {MODE_LIST.map((m) => (
-            <div key={m.id} className="mm-panel-solid" style={{ padding: 16, background: `linear-gradient(90deg, ${m.colors[1]} 0 5px, var(--mm-panel-solid) 5px)` }}>
-              <div style={{ fontWeight: 900, fontSize: '1.2em' }}>{m.name}</div>
-              <div style={{ color: m.colors[1], fontWeight: 700, marginBottom: 8 }}>{m.tagline}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {m.howTo.map((h) => (
-                  <li key={h}>{h}</li>
-                ))}
-              </ul>
-            </div>
+      <div className="mms mmh2">
+        <div className="mms-tabs" role="tablist" aria-label="How to play sections" onKeyDown={onTabKey}>
+          {HOWTO_TABS.map((t) => (
+            <button key={t.id} role="tab" id={`mmh2-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="mmh2-panel" tabIndex={tab === t.id ? 0 : -1} className="mms-tab" onClick={() => setTab(t.id)}>
+              <MIcon name={t.icon} size={18} />
+              {t.label}
+            </button>
           ))}
         </div>
-      )}
-      {tab === 'roles' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-          {(Object.keys(ROLES) as RoleId[]).map((r) => {
-            const d = ROLES[r];
-            return (
-              <div key={r} className="mm-panel-solid" style={{ padding: 14, borderColor: tc[d.team] + '66' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <b style={{ color: d.color }}>{d.name}</b>
-                  <span className="mm-chip" style={{ color: tc[d.team] }}>
-                    {d.team}
-                  </span>
-                </div>
-                <div style={{ margin: '6px 0', fontSize: '0.92em' }}>{d.help}</div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {d.abilities.map((a) => (
-                    <span key={a} className="mm-chip">
-                      {a}
-                    </span>
-                  ))}
-                </div>
+        <div className="mms-panel" id="mmh2-panel" role="tabpanel" aria-labelledby={`mmh2-tab-${tab}`}>
+          <div key={tab} className="mms-page">
+            {tab === 'modes' && (
+              <div className="mmh2-grid wide">
+                {MODE_LIST.map((m) => (
+                  <div key={m.id} className="mm-panel-solid mmh2-card" style={{ ['--c' as string]: m.colors[1] }}>
+                    <div className="mmh2-name">{m.name}</div>
+                    <div className="mmh2-tag">{m.tagline}</div>
+                    <ul className="mmh2-list">
+                      {m.howTo.map((h) => (
+                        <li key={h}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      )}
-      {tab === 'controls' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-          {[
-            ['Keyboard & mouse', ['WASD / arrows — move', 'Mouse — look (3D, click to lock)', 'E or Space — use / task', 'Q — kill / tag', 'R — report', 'V — vent', 'X — sabotage map', 'Tab — map', 'F — flashlight', 'Z or middle-click — ping a spot', 'Enter — chat (meetings)', '1–4 — emotes']],
-            ['Touch (iPhone)', ['Left thumb — joystick', 'Right side drag — look (3D)', 'Big buttons — context actions', 'Ping button — mark the spot ahead', 'Tap the map icon for the map', 'Pinch disabled — no accidental zoom']],
-            ['Controller', ['Left stick — move', 'Right stick — look', 'A — use', 'B — report', 'X — kill', 'Y — vent', 'RB — sabotage · LB — map', 'LT — flashlight · RT — shoot']],
-          ].map(([t, items]) => (
-            <div key={t as string} className="mm-panel-solid" style={{ padding: 14 }}>
-              <b>{t}</b>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                {(items as string[]).map((i) => (
-                  <li key={i}>{i}</li>
+            )}
+            {tab === 'roles' && (
+              <div className="mmh2-grid">
+                {(Object.keys(ROLES) as RoleId[]).map((r) => {
+                  const d = ROLES[r];
+                  return (
+                    <div key={r} className="mm-panel-solid mmh2-card" style={{ ['--c' as string]: tc[d.team] }}>
+                      <div className="mmh2-rolehead">
+                        <b style={{ color: d.color }}>{d.name}</b>
+                        <span className="mm-chip" style={{ color: tc[d.team] }}>
+                          {d.team}
+                        </span>
+                      </div>
+                      <div className="mmh2-help">{d.help}</div>
+                      <div className="mmh2-chips">
+                        {d.abilities.map((a) => (
+                          <span key={a} className="mm-chip">
+                            {a}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {tab === 'controls' && (
+              <div className="mmh2-grid">
+                {(
+                  [
+                    ['Keyboard & mouse', 'keypad', keyboard],
+                    ['Touch (iPhone)', 'tablet', ['Left thumb — joystick', 'Right side drag — look (3D)', 'Big buttons — context actions', 'Ping button — mark the spot ahead', 'Tap the map icon for the map', 'Pinch disabled — no accidental zoom']],
+                    ['Controller', 'pad', ['Left stick — move', 'Right stick — look', 'A — use', 'B — report', 'X — kill', 'Y — vent', 'RB — sabotage · LB — map', 'LT — flashlight · RT — shoot']],
+                  ] as [string, string, string[]][]
+                ).map(([t, icon, items]) => (
+                  <div key={t} className="mm-panel-solid mmh2-card">
+                    <div className="mmh2-name">
+                      <MIcon name={icon} size={18} /> {t}
+                    </div>
+                    <ul className="mmh2-list">
+                      {items.map((i) => (
+                        <li key={i}>{i}</li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
-            </div>
-          ))}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </Modal>
   );
 }

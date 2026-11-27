@@ -21,46 +21,49 @@ export function FreeplayScreen() {
   const [role, setRole] = useState<RoleId>('crewmate');
   return (
     <Modal title="Freeplay & tutorial" onClose={() => setScreen('title')} wide>
-      <p className="mm-muted" style={{ marginTop: 0 }}>
-        Walk any map alone, try every task, and practise a role on dummies that stand still. A coach walks you through the basics. Nothing here counts toward your stats.
-      </p>
-      <h4 className="mm-muted" style={{ fontSize: '0.78em', letterSpacing: '0.08em' }}>
-        MAP
-      </h4>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
-        {availableMaps().map((m) => (
-          <button key={m.id} className="mm-btn" onClick={() => setMap(m.id as MapId)} style={{ flexDirection: 'column', padding: 8, borderColor: map === m.id ? 'var(--mm-accent2)' : undefined }}>
-            <MapThumb map={getMap(m.id as MapId)} height={70} />
-            <b>{m.name}</b>
+      <div className="mmf">
+        <p className="mm-muted mmf-intro">Walk any map alone, try every task, and practise a role on dummies that stand still. A coach walks you through the basics. Nothing here counts toward your stats.</p>
+        <h4 className="mm-label mmf-h">Map</h4>
+        <div className="mmf-maps" role="radiogroup" aria-label="Map">
+          {availableMaps().map((m, i) => (
+            <button key={m.id} type="button" role="radio" aria-checked={map === m.id} className="mmf-map" data-on={map === m.id} style={{ ['--i' as string]: i }} onClick={() => setMap(m.id as MapId)}>
+              <MapThumb map={getMap(m.id as MapId)} height={70} />
+              <b>{m.name}</b>
+            </button>
+          ))}
+        </div>
+        <div className="mmf-row">
+          <div className="mmf-light">
+            <h4 className="mm-label mmf-h">Lighting</h4>
+            <div className="mmf-opts" role="radiogroup" aria-label="Lighting">
+              {(['classic', 'lightsout'] as ModeId[]).map((m) => (
+                <button key={m} type="button" role="radio" aria-checked={mode === m} className="mmf-opt" data-on={mode === m} onClick={() => setMode(m)}>
+                  <MIcon name={m === 'classic' ? 'bolt' : 'flashlight'} size={16} />
+                  {m === 'classic' ? 'Bright' : 'Dark'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mmf-roles">
+            <h4 className="mm-label mmf-h">Role to practise</h4>
+            <div className="mmf-opts" role="radiogroup" aria-label="Role to practise">
+              {PRACTICE_ROLES.map((r) => (
+                <button key={r} type="button" role="radio" aria-checked={role === r} className="mmf-opt" data-on={role === r} onClick={() => setRole(r)} style={{ ['--rc' as string]: ROLES[r].color }}>
+                  {ROLES[r].name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mmf-foot">
+          <div className="mmf-help" key={role}>
+            <b style={{ color: ROLES[role].color }}>{ROLES[role].name}</b> · {ROLES[role].help}
+          </div>
+          <button className="mm-btn mm-btn-primary mm-pill mmf-start" onClick={() => startFreeplay({ map, mode, role })}>
+            <MIcon name="play" /> Start practice
           </button>
-        ))}
+        </div>
       </div>
-      <h4 className="mm-muted" style={{ fontSize: '0.78em', letterSpacing: '0.08em' }}>
-        LIGHTING
-      </h4>
-      <div style={{ display: 'flex', gap: 8 }}>
-        {(['classic', 'lightsout'] as ModeId[]).map((m) => (
-          <button key={m} className={`mm-btn ${mode === m ? 'mm-btn-primary' : ''}`} onClick={() => setMode(m)}>
-            {m === 'classic' ? 'Bright (Classic)' : 'Dark (Lights Out)'}
-          </button>
-        ))}
-      </div>
-      <h4 className="mm-muted" style={{ fontSize: '0.78em', letterSpacing: '0.08em' }}>
-        ROLE TO PRACTISE
-      </h4>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {PRACTICE_ROLES.map((r) => (
-          <button key={r} className={`mm-btn ${role === r ? 'mm-btn-primary' : ''}`} onClick={() => setRole(r)} style={{ color: role === r ? undefined : ROLES[r].color }}>
-            {ROLES[r].name}
-          </button>
-        ))}
-      </div>
-      <div className="mm-muted" style={{ margin: '8px 0 12px' }}>
-        {ROLES[role].help}
-      </div>
-      <button className="mm-btn mm-btn-primary" style={{ width: '100%', minHeight: 52 }} onClick={() => startFreeplay({ map, mode, role })}>
-        <MIcon name="play" /> Start practice
-      </button>
     </Modal>
   );
 }

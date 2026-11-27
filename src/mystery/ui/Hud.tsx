@@ -90,7 +90,10 @@ function BigAction({ a }: { a: ActionDef }) {
         {cooling && <CdRing cd={a.cd!} max={a.cdMax ?? a.cd!} />}
         {cooling && <span className="mmh-cd">{Math.ceil(a.cd!)}</span>}
       </span>
-      <span className="mmh-big-label">{a.label}</span>
+      {/* long labels ("Admin map", "Door log") step down a size so they stay inside the screen edge */}
+      <span className="mmh-big-label" data-long={a.label.length > 7}>
+        {a.label}
+      </span>
       {a.hotkey && <Kbd k={a.hotkey} className="mmh-big-key" />}
     </button>
   );
@@ -313,7 +316,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
   const sabName = (k: SabotageId | null) => (k === 'lights' ? 'Lights out' : k === 'comms' ? 'Comms down' : k === 'meltdown' ? map.def.criticalNames.meltdown : k === 'pressure' ? map.def.criticalNames.pressure : '');
   const canTalk = (you.alive ? settings.proximityChat : settings.ghostChat) && (settings.chat || settings.quickChat);
   const playChat = chat.filter((c) => c.t >= 0).slice(-6);
-  const miniW = coarse ? Math.min(150, vp.w * 0.36) : vp.w < 900 ? 220 : 280;
+  const miniW = coarse ? Math.min(140, vp.w * 0.34) : vp.w < 900 ? 220 : 280;
   const miniH = Math.round(miniW * 0.66);
 
   return (
@@ -436,7 +439,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
       </div>
 
       {/* ---------------- Top-right: round buttons, timer, meters ---------------- */}
-      <div className="mmh-tr mm-safe">
+      <div className={`mmh-tr mm-safe${coarse ? ' touch' : ''}`} style={{ ['--mini-w' as string]: `${miniW}px`, ['--mini-h' as string]: `${miniH}px` }}>
         <div className="mmh-sqrow mm-in-right">
           <SqButton icon="chat" label="Chat" onClick={() => setDrawer((d) => (d === 'chat' ? null : 'chat'))} hotkey="chat" active={drawer === 'chat'} />
           <SqButton icon="emote" label="Emotes" className="mmh-sq-emote" onClick={() => setDrawer((d) => (d === 'emote' ? null : 'emote'))} hotkey="emote" active={drawer === 'emote'} />
@@ -450,7 +453,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
           </div>
         )}
         {mode.flashlights && !killerTeam && you.alive && (
-          <div className="mmh-meter">
+          <div className="mmh-meter battery">
             <MIcon name="battery" size={18} />
             <div style={{ flex: 1 }}>
               <Bar value={you.battery} color={you.battery < 0.2 ? '#ff4040' : '#ffd426'} height={10} label="Battery" />
@@ -629,7 +632,7 @@ export function Hud({ snap, settings }: { snap: Snapshot; settings: Settings }) 
                 Close
               </button>
             </div>
-            {sec.admin && <SchematicMap map={map} width={Math.min(620, vp.w - 60)} height={Math.min(260, vp.h * 0.35)} theme="admin" labels counts={Object.fromEntries(sec.admin.filter((a) => a.count).map((a) => [a.room, String(a.count)]))} reducedMotion={prefs.reducedMotion} />}
+            {sec.admin && <SchematicMap map={map} width={shortLand ? Math.min(460, vp.w * 0.62) : Math.min(620, vp.w - 60)} height={shortLand ? Math.max(120, vp.h - 140) : Math.min(260, vp.h * 0.35)} theme="admin" labels counts={Object.fromEntries(sec.admin.filter((a) => a.count).map((a) => [a.room, String(a.count)]))} reducedMotion={prefs.reducedMotion} />}
             {sec.vitals && (
               <div className="mmh-vitals">
                 {sec.vitals.map((v, i) => {
