@@ -15,6 +15,57 @@ import { Diag, lavaAt, paintFace, roomLabel, vnoise, type WallKind, type WorldIn
 
 const hullCache = new Map<string, THREE.ShaderMaterial>();
 
+// ---------------------------------------------------------------------------
+// Third-person occluder fade: map props (and their ink) between the camera and
+// the player dissolve with an ordered dither, so trees, hedges and shelves never
+// hide your berry. One shared uniform set, updated by the view every frame.
+
+export const OCCLUDER = {
+  uOccA: { value: new THREE.Vector3() },
+  uOccB: { value: new THREE.Vector3() },
+  uOccR: { value: 0.95 },
+  uOccOn: { value: 0 },
+};
+
+const OCC_VERT_PARS = 'varying vec3 vOccW;';
+const OCC_VERT = /* glsl */ `
+  {
+    vec4 occW = vec4(position, 1.0);
+    #ifdef USE_INSTANCING
+      occW = instanceMatrix * occW;
+    #endif
+    vOccW = (modelMatrix * occW).xyz;
+  }`;
+const OCC_FRAG_PARS = /* glsl */ `
+  varying vec3 vOccW;
+  uniform vec3 uOccA;
+  uniform vec3 uOccB;
+  uniform float uOccR;
+  uniform float uOccOn;
+  const float OCC_BAYER[16] = float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.);`;
+const OCC_FRAG = /* glsl */ `
+  if (uOccOn > 0.5 && vOccW.y > 0.12) {
+    vec3 ab = uOccB - uOccA;
+    float t = clamp(dot(vOccW - uOccA, ab) / max(1e-4, dot(ab, ab)), 0.0, 1.0);
+    float d = length(vOccW - (uOccA + ab * t));
+    float k = (1.0 - smoothstep(uOccR * 0.5, uOccR, d)) * (1.0 - smoothstep(0.8, 0.94, t));
+    // Anything brushing the camera lens dissolves too.
+    k = max(k, 1.0 - smoothstep(0.7, 1.5, distance(vOccW, uOccA)));
+    int bi = int(mod(gl_FragCoord.x, 4.0)) + 4 * int(mod(gl_FragCoord.y, 4.0));
+    if (k > (OCC_BAYER[bi] + 0.5) / 16.0) discard;
+  }`;
+
+/** Patch a built-in material (toon / basic / standard) with the occluder fade. */
+export function occluderFade<T extends THREE.Material>(mat: T): T {
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, OCCLUDER);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${OCC_VERT_PARS}`).replace('#include <project_vertex>', `#include <project_vertex>\n${OCC_VERT}`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${OCC_FRAG_PARS}`).replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${OCC_FRAG}`);
+  };
+  mat.customProgramCacheKey = () => 'occ1';
+  return mat;
+}
+
 /**
  * Back-face hull pushed out along the view-space normal (scaled by the
  * normal attribute's length, 1 for ordinary meshes). Thickness grows a
@@ -23,8 +74,8 @@ const hullCache = new Map<string, THREE.ShaderMaterial>();
  * pushed hull above the floor plane, so soles don't get a ragged line where
  * the floor would clip it.
  */
-export function hullMaterial(color: string, thickness = 0.03, shared = true, floorY?: number): THREE.ShaderMaterial {
-  const key = `${color}|${thickness}|${floorY ?? ''}`;
+export function hullMaterial(color: string, thickness = 0.03, shared = true, floorY?: number, occlude = false): THREE.ShaderMaterial {
+  const key = `${color}|${thickness}|${floorY ?? ''}|${occlude ? 1 : 0}`;
   const hit = shared ? hullCache.get(key) : undefined;
   if (hit) return hit;
   const m = new THREE.ShaderMaterial({
@@ -33,6 +84,7 @@ export function hullMaterial(color: string, thickness = 0.03, shared = true, flo
       uniform float uThick;
       uniform float uFloor;
       #include <fog_pars_vertex>
+      ${occlude ? OCC_VERT_PARS : ''}
       void main() {
         vec4 pos = vec4(position, 1.0);
         vec3 n = normal;
@@ -52,13 +104,16 @@ export function hullMaterial(color: string, thickness = 0.03, shared = true, flo
           mvPosition = viewMatrix * vec4(w, 1.0);
         }
         gl_Position = projectionMatrix * mvPosition;
+        ${occlude ? OCC_VERT : ''}
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
       uniform float uAlpha;
       #include <fog_pars_fragment>
+      ${occlude ? OCC_FRAG_PARS : ''}
       void main() {
+        ${occlude ? OCC_FRAG : ''}
         gl_FragColor = vec4(uColor, uAlpha);
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -67,6 +122,7 @@ export function hullMaterial(color: string, thickness = 0.03, shared = true, flo
     fog: true,
     transparent: false,
   });
+  if (occlude) Object.assign(m.uniforms, OCCLUDER);
   if (shared) hullCache.set(key, m);
   return m;
 }

@@ -48,6 +48,8 @@ export interface BerryPose {
   alpha?: number;
   hold?: 'gun' | 'knife' | 'flashlight' | null;
   flashlightOn?: boolean;
+  /** Vertical aim of a held gun / flashlight, -1 (up the screen) … 1 (down), so the beam matches the facing. */
+  aimY?: number;
   scared?: boolean;
   blink?: boolean;
 }
@@ -729,7 +731,7 @@ function computeAnim(pose: BerryPose, seed: number): Anim {
     a.tilt = Math.sin(t * 1.3) * 0.06 + (pose.moving ? 0.12 : 0);
   }
   if (pose.hold === 'gun' || pose.hold === 'flashlight') {
-    a.armF = 1.45 + Math.sin(t * 2) * 0.03;
+    a.armF = 1.45 - Math.max(-1, Math.min(1, pose.aimY ?? 0)) * 0.85 + Math.sin(t * 2) * 0.03;
     a.bendF = 0.05;
   } else if (pose.hold === 'knife') {
     a.armF = 1.05 + Math.sin(t * 3) * 0.08;

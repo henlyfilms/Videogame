@@ -128,6 +128,42 @@ interface Particle {
 
 const CHUNK = 16;
 
+/**
+ * Wall runs whose lifted cap hangs over the floor to their north: a berry
+ * standing against such a wall must be drawn behind its cap (2.5D depth),
+ * so these runs are y-sorted with the entities and re-blitted from the baked
+ * chunks. One entry per horizontal run of straight wall tiles.
+ */
+interface CapRun {
+  y: number;
+  x0: number;
+  x1: number; // exclusive
+}
+const capRunCache = new WeakMap<CompiledMap, CapRun[]>();
+function capRuns(map: CompiledMap): CapRun[] {
+  let runs = capRunCache.get(map);
+  if (runs) return runs;
+  runs = [];
+  const info = worldInfo(map);
+  const { w, h, cells } = map;
+  for (let ty = 1; ty < h; ty++) {
+    let start = -1;
+    for (let tx = 0; tx <= w; tx++) {
+      const i = ty * w + tx;
+      const on = tx < w && info.wall[i] === 1 && !info.diag[i] && cells[(ty - 1) * w + tx] !== Cell.Void;
+      if (on && start < 0) start = tx;
+      if (!on && start >= 0) {
+        // Corner tiles at either end (the wall turning north) overlap the berry too.
+        const wallAt = (x: number) => x >= 0 && x < w && info.wall[ty * w + x] === 1;
+        runs.push({ y: ty, x0: wallAt(start - 1) ? start - 1 : start, x1: wallAt(tx) ? tx + 1 : tx });
+        start = -1;
+      }
+    }
+  }
+  capRunCache.set(map, runs);
+  return runs;
+}
+
 export class Renderer2D {
   private ctx: CanvasRenderingContext2D;
   private fog: HTMLCanvasElement;
@@ -533,6 +569,7 @@ export class Renderer2D {
             ghost: p.ghost,
             hold: p.hasGun ? ('gun' as const) : p.flashlight !== undefined && f.night ? ('flashlight' as const) : null,
             flashlightOn: !!p.flashlight,
+            aimY: Math.sin(p.facing),
             scared: p.scared,
           };
           const kk = fade(`kill:${p.id}`);
@@ -563,6 +600,13 @@ export class Renderer2D {
           ctx.restore();
         },
       });
+    // Wall caps in front of anyone standing just north of a wall.
+    for (const run of capRuns(f.map)) {
+      if (run.x1 < view.x0 || run.x0 > view.x1 || run.y < view.y0 || run.y > view.y1 + 1) continue;
+      const near = (p: Vec2) => p.y > run.y - 1.6 && p.y < run.y && p.x > run.x0 - 1 && p.x < run.x1 + 1;
+      if (!f.players.some((p) => near(p.pos)) && !f.bodies.some((b) => near(b.pos)) && ![...this.pets.values()].some(near)) continue;
+      ents.push({ y: run.y - 0.01, draw: () => this.blitCapRun(run, s) });
+    }
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
     // Pings sit over the scene (they are callouts, not props).
@@ -622,8 +666,9 @@ export class Renderer2D {
       ctx.fillStyle = v;
       ctx.fillRect(0, 0, this.w, this.h);
     }
-    if (f.critical && !f.reducedMotion) {
-      const a = 0.12 + 0.1 * Math.sin(f.t * 6);
+    if (f.critical) {
+      // Red alert edge: pulses, or holds steady with reduced motion (never hidden).
+      const a = f.reducedMotion ? 0.18 : 0.12 + 0.1 * Math.sin(f.t * 6);
       const g = ctx.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.3, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
       g.addColorStop(0, 'rgba(239,68,68,0)');
       g.addColorStop(1, `rgba(239,68,68,${a})`);
@@ -771,6 +816,31 @@ export class Renderer2D {
     this.ctx.drawImage(e.c as CanvasImageSource, x - sw / 2, y - sh / 2, sw, sh);
   }
 
+  /** Re-draw a wall run's cap (and its top ink edge) from the baked chunks. */
+  private blitCapRun(run: CapRun, s: number): void {
+    const ink = Math.max(1.5, s * 0.075) / 2 / s; // half the wall ink width, in tiles
+    // Slightly see-through, so whoever stands behind still reads as a silhouette.
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.8;
+    const wy0 = run.y - WALL_H - ink;
+    const wy1 = run.y + 1 - WALL_H + ink;
+    for (let cy = Math.floor(wy0 / CHUNK); cy <= Math.floor(wy1 / CHUNK); cy++)
+      for (let cx = Math.floor(run.x0 / CHUNK); cx <= Math.floor((run.x1 - 0.001) / CHUNK); cx++) {
+        const c = this.chunks.get(`${cx},${cy}`);
+        if (!c) continue;
+        const ox = cx * CHUNK;
+        const oy = cy * CHUNK;
+        const ax = Math.max(run.x0, ox);
+        const bx = Math.min(run.x1, ox + CHUNK);
+        const ay = Math.max(wy0, oy);
+        const by = Math.min(wy1, oy + CHUNK);
+        if (bx <= ax || by <= ay) continue;
+        const k = c.canvas.width / CHUNK; // chunk px per tile
+        this.ctx.drawImage(c.canvas as CanvasImageSource, (ax - ox) * k, (ay - oy) * k, (bx - ax) * k, (by - ay) * k, ax * s, ay * s, (bx - ax) * s, (by - ay) * s);
+      }
+    this.ctx.restore();
+  }
+
   private drawNightTint(a: number): void {
     this.ctx.fillStyle = `rgba(5,8,20,${a})`;
     this.ctx.fillRect(0, 0, this.w, this.h);
@@ -840,9 +910,19 @@ export class Renderer2D {
       fg.fill();
     };
     if (v.radius > 0.05) cut(poly(v.radius, 0, Math.PI * 2, 120), v.radius);
+    // Flashlight: three nested cuts (the outer ones fainter) feather the beam's edges.
+    let beam: Vec2[] | null = null;
     if (v.cone) {
-      const pts = poly(v.cone.range, v.cone.dir - v.cone.halfAngle, v.cone.dir + v.cone.halfAngle, 40);
-      cut(pts, v.cone.range);
+      const { dir, halfAngle, range } = v.cone;
+      for (const [k, a] of [
+        [1, 0.45],
+        [0.8, 0.6],
+        [0.6, 1],
+      ] as const) {
+        const pts = poly(range, dir - halfAngle * k, dir + halfAngle * k, Math.round(44 * k));
+        if (k === 0.8) beam = pts;
+        cut(pts, range, o, a);
+      }
     }
     // World light pools (Lights Out): lamps, lanterns, recharge stations.
     if (f.night) {
@@ -867,7 +947,8 @@ export class Renderer2D {
     fg.globalCompositeOperation = 'source-over';
     this.ctx.drawImage(this.fog, 0, 0, this.w, this.h);
     // Warm additive glow for flashlight beam.
-    if (v.cone && f.night) {
+    // Warm additive glow for the flashlight beam, clipped by the same rays (never through walls).
+    if (v.cone && f.night && beam) {
       const ctx = this.ctx;
       const ox = this.w / 2 + (origin.x - cx) * s;
       const oy = this.h / 2 + (origin.y - cy) * s;
@@ -879,7 +960,7 @@ export class Renderer2D {
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(ox, oy);
-      ctx.arc(ox, oy, v.cone.range * s, v.cone.dir - v.cone.halfAngle, v.cone.dir + v.cone.halfAngle);
+      for (const p of beam) ctx.lineTo(p.x / fs, p.y / fs);
       ctx.closePath();
       ctx.fill();
       ctx.restore();

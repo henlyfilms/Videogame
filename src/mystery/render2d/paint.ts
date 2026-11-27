@@ -196,6 +196,40 @@ export function paintWorldFloor(ctx: CanvasRenderingContext2D, style: FloorStyle
         ctx.ellipse(x + s * hash2(tx + 3, ty), y + s * hash2(tx, ty + 5), s * 0.28, s * 0.16, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+      if (r > 0.3 && r < 0.42) {
+        // Sunlit moss tuft.
+        ctx.fillStyle = 'rgba(160,210,150,0.16)';
+        ctx.beginPath();
+        ctx.ellipse(x + s * 0.5, y + s * 0.5, s * 0.42, s * 0.24, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (r < 0.07) {
+        // Tiny wildflowers: inked dots with a light centre.
+        const fx = x + s * (0.25 + hash2(tx + 11, ty) * 0.5);
+        const fy = y + s * (0.25 + hash2(tx, ty + 11) * 0.5);
+        const col = r < 0.035 ? '#f2c230' : '#e98fb0';
+        for (let i = 0; i < 3; i++) {
+          const px = fx + Math.cos(i * 2.1 + r * 40) * s * 0.11;
+          const py = fy + Math.sin(i * 2.1 + r * 40) * s * 0.08;
+          ctx.fillStyle = 'rgba(20,25,38,0.55)';
+          ctx.beginPath();
+          ctx.arc(px, py, s * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(px, py, s * 0.034, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (r > 0.9) {
+        // Pebble.
+        ctx.fillStyle = rgba(WORLD.rockDark, 0.55);
+        ctx.beginPath();
+        ctx.ellipse(x + s * 0.62, y + s * 0.4, s * 0.09, s * 0.06, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = rgba(WORLD.rockHi, 0.6);
+        ctx.beginPath();
+        ctx.ellipse(x + s * 0.6, y + s * 0.38, s * 0.05, s * 0.03, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.strokeStyle = 'rgba(40,70,55,0.45)';
       ctx.lineWidth = lw;
       for (let i = 0; i < 3; i++) {
@@ -737,17 +771,58 @@ export function paintPropShape(ctx: CanvasRenderingContext2D, p: PropDef, s: num
     case 'tree':
     case 'hedge': {
       const big = p.kind === 'tree' ? 1.2 : p.kind === 'hedge' ? 1 : 0.75;
-      if (p.kind === 'planter' || p.kind === 'plant') {
+      if (p.kind === 'planter') {
+        // Wooden box with a soil bed and a row of shrubs along the long side.
         ctx.fillStyle = dim('#8a5a3c');
-        if (p.kind === 'planter') rr(ctx, x, y, w, h, s * 0.12);
-        else {
+        rr(ctx, x, y, w, h, s * 0.12);
+        ctx.fill();
+        ctx.fillStyle = dim('#a8714b');
+        ctx.fillRect(x + s * 0.06, y + s * 0.05, w - s * 0.12, s * 0.06);
+        const inset = Math.min(w, h) * 0.16;
+        ctx.fillStyle = dim('#4a3328');
+        rr(ctx, x + inset, y + inset, w - inset * 2, h - inset * 2, s * 0.08);
+        ctx.fill();
+        const long = Math.max(w, h);
+        const short = Math.min(w, h);
+        const n = Math.max(1, Math.round(long / short));
+        const horiz = w >= h;
+        const greens = ['#3c8a5e', '#4fa06d', '#69b77f'];
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n;
+          const bx = horiz ? x + w * t : cx;
+          const by = horiz ? cy : y + h * t;
+          const r0 = short * 0.3;
+          for (let j = 0; j < 3; j++) {
+            const a = j * 2.1 + i;
+            ctx.fillStyle = dim(greens[(i + j) % 3]!);
+            ctx.beginPath();
+            ctx.arc(bx + Math.cos(a) * r0 * 0.35, by + Math.sin(a) * r0 * 0.3, r0 * (0.75 - j * 0.08), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
           ctx.beginPath();
-          ctx.arc(cx, cy + h * 0.1, Math.min(w, h) * 0.3, 0, Math.PI * 2);
+          ctx.arc(bx - r0 * 0.3, by - r0 * 0.35, r0 * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          // A few blossoms (original palette).
+          if (!night && (i + Math.round(p.x)) % 2 === 0) {
+            ctx.fillStyle = i % 3 === 0 ? '#f2c230' : '#e2588b';
+            for (let k = 0; k < 3; k++) {
+              ctx.beginPath();
+              ctx.arc(bx + Math.cos(k * 2.3 + i) * r0 * 0.55, by + Math.sin(k * 2.3 + i) * r0 * 0.45, s * 0.045, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
         }
+        break;
+      }
+      if (p.kind === 'plant') {
+        ctx.fillStyle = dim('#8a5a3c');
+        ctx.beginPath();
+        ctx.arc(cx, cy + h * 0.1, Math.min(w, h) * 0.3, 0, Math.PI * 2);
         ctx.fill();
       }
       const greens = p.kind === 'hedge' ? ['#2f6b4f', '#3a7d5c', '#4c936c'] : ['#3c8a5e', '#4fa06d', '#69b77f'];
-      const blobs = p.kind === 'hedge' ? Math.max(3, Math.round((w + h) / s) * 2) : p.kind === 'planter' ? 4 : 5;
+      const blobs = p.kind === 'hedge' ? Math.max(3, Math.round((w + h) / s) * 2) : 5;
       for (let i = 0; i < blobs; i++) {
         const a = (i / blobs) * Math.PI * 2;
         const rad = (Math.min(w, h) / 2) * big * 0.55;

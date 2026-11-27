@@ -8,9 +8,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CompiledMap, FloorStyle, PropDef, PropKind, Rect } from '../core/map';
 import { rectsOf } from '../core/map';
-import { mix, paintWorldFloor, stationStyle, WORLD, worldFloorBase } from '../render2d/paint';
+import { hash2, mix, paintWorldFloor, stationStyle, WORLD, worldFloorBase } from '../render2d/paint';
 import { Diag, worldInfo, type WallKind } from '../render2d/world';
-import { addHull, cornerPoints, diagPrisms, groundTexture, hallStrips, hullMaterial, inkLines, roomNameDecals, solidRingTexture, ventGlowTexture, ventTexture, wallBoundary, wallTexture } from './worldkit';
+import { addHull, occluderFade, cornerPoints, diagPrisms, groundTexture, hallStrips, hullMaterial, inkLines, roomNameDecals, solidRingTexture, ventGlowTexture, ventTexture, wallBoundary, wallTexture } from './worldkit';
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -30,11 +30,12 @@ export function toon(color: string | THREE.Color, extra: THREE.MeshToonMaterialP
 }
 
 const floorTexCache = new Map<string, THREE.CanvasTexture>();
-function floorTexture(style: FloorStyle, night: boolean): THREE.CanvasTexture {
-  const key = `${style}:${night}`;
+function floorTexture(style: FloorStyle, night: boolean, quality: Quality): THREE.CanvasTexture {
+  // 128 px per tile on high quality: first person looks at floor tiles up close.
+  const s = quality === 'high' ? 128 : 64;
+  const key = `${style}:${night}:${s}`;
   const hit = floorTexCache.get(key);
   if (hit) return hit;
-  const s = 64;
   const n = 4;
   const c = document.createElement('canvas');
   c.width = c.height = s * n;
@@ -290,8 +291,9 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
   const disposables: { dispose(): void }[] = [];
   const track = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
   const inkOn = quality !== 'low';
-  const ink = hullMaterial(night ? '#04060c' : WORLD.ink, 0.04);
-  const inkThin = hullMaterial(night ? '#04060c' : WORLD.ink, 0.028);
+  // Map ink (props, stations, doors) takes part in the third-person occluder fade.
+  const ink = hullMaterial(night ? '#04060c' : WORLD.ink, 0.04, true, undefined, true);
+  const inkThin = hullMaterial(night ? '#04060c' : WORLD.ink, 0.028, true, undefined, true);
   // Floors: one merged mesh per floor style.
   const byStyle = new Map<FloorStyle, THREE.BufferGeometry[]>();
   const add = (style: FloorStyle, geo: THREE.BufferGeometry) => {
@@ -316,7 +318,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     const geo = track(mergeGeometries(geos)!);
     const mat = track(
       new THREE.MeshToonMaterial({
-        map: floorTexture(style, night),
+        map: floorTexture(style, night, quality),
         vertexColors: true,
         gradientMap: toonGradient(),
         side: THREE.DoubleSide,
@@ -421,7 +423,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     const shape = shapeFor(kind);
     shape.parts.forEach((part, pi) => {
       const mat = track(
-        toon(night ? mix(part.color, '#0b1022', 0.35) : part.color, part.emissive ? { emissive: new THREE.Color(part.emissive), emissiveIntensity: night ? 1.2 : 0.6 } : {}),
+        occluderFade(toon(night ? mix(part.color, '#0b1022', 0.35) : part.color, part.emissive ? { emissive: new THREE.Color(part.emissive), emissiveIntensity: night ? 1.2 : 0.6 } : {})),
       );
       const inst = new THREE.InstancedMesh(part.geo, mat, props.length);
       props.forEach((p, i) => {
@@ -443,6 +445,8 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
       if (inkOn && part.height > 0.12) group.add(addHull(inst, part.height > 1.2 ? ink : inkThin));
     });
   }
+  // Outdoor ground dressing: grass tufts + wildflowers, snow mounds, pebbles.
+  if (quality !== 'low') group.add(outdoorDressing(map, info, night, track));
   // Stations: themed consoles with glowing screens.
   const stationMeshes = new Map<string, THREE.Object3D>();
   const stBase = track(rbox(0.6, 1, 0.45, 0.08));
@@ -459,7 +463,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
       g.add(body);
       g.add(new THREE.Mesh(btnDome, track(toon('#e8364a', { emissive: new THREE.Color('#ef4444'), emissiveIntensity: 0.5 }))));
     } else if (style.icon === 'mirror') {
-      body = new THREE.Mesh(track(rbox(0.9, 1.8, 0.12, 0.3)), track(toon(WORLD.pink)));
+      body = new THREE.Mesh(track(rbox(0.9, 1.8, 0.12, 0.3)), track(occluderFade(toon(WORLD.pink))));
       g.add(body);
       g.add(new THREE.Mesh(track(rbox(0.7, 1.5, 0.04, 0.25, 0.15).translate(0, 0, 0.07)), track(new THREE.MeshStandardMaterial({ color: '#dbeafe', metalness: 0.9, roughness: 0.1 }))));
     } else {
@@ -531,14 +535,35 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
   // Lamp glows (cheap additive sprites).
   const lamps = map.def.lamps.map((l) => ({ pos: new THREE.Vector3(l.x, 2.1, l.y), color: new THREE.Color(l.color), r: l.r }));
   const glowTex = track(radialTexture());
+  // Indoor lamps hang from the ceiling (first person only: with no ceiling they would float);
+  // outdoor lamps stand on an inked post so they are anchored in every view.
+  const ceilingLamps = new THREE.Group();
+  const fixtureGeo = track(cyl(0.25, 0.32, 0.1, 0, 12));
+  const fixtureMat = track(occluderFade(new THREE.MeshBasicMaterial({ color: night ? '#fde68a' : '#fffbeb' })));
+  const postGeo = track(cyl(0.05, 0.07, wallH - 0.05, 0, 8));
+  const postMat = track(occluderFade(toon(night ? '#1c2433' : '#2b3c4a')));
+  const headGeo = track(sph(0.16, wallH - 0.02));
   for (const l of map.def.lamps) {
+    const tx = Math.floor(l.x);
+    const ty = Math.floor(l.y);
+    const outside = tx >= 0 && ty >= 0 && tx < map.w && ty < map.h && info.extFloor[ty * map.w + tx] === 1;
     const spr = new THREE.Sprite(track(new THREE.SpriteMaterial({ map: glowTex, color: l.color, transparent: true, opacity: night ? 0.55 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending })));
-    spr.position.set(l.x, 2.25, l.y);
+    spr.position.set(l.x, outside ? wallH - 0.02 : 2.25, l.y);
     spr.scale.setScalar(night ? 1.6 : 1.2);
     group.add(spr);
-    const fixture = new THREE.Mesh(track(cyl(0.25, 0.32, 0.1, 0, 12)), track(new THREE.MeshBasicMaterial({ color: night ? '#fde68a' : '#fffbeb' })));
-    fixture.position.set(l.x, wallH - 0.05, l.y);
-    group.add(fixture);
+    if (outside) {
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(l.x, 0, l.y);
+      if (inkOn) post.add(addHull(new THREE.Mesh(postGeo), inkThin));
+      const head = new THREE.Mesh(headGeo, fixtureMat);
+      head.position.set(l.x, 0, l.y);
+      if (inkOn) head.add(addHull(new THREE.Mesh(headGeo), inkThin));
+      group.add(post, head);
+    } else {
+      const fixture = new THREE.Mesh(fixtureGeo, fixtureMat);
+      fixture.position.set(l.x, wallH - 0.05, l.y);
+      ceilingLamps.add(fixture);
+    }
   }
   // Ceiling (first person): dark slabs over indoor rooms and halls, with
   // dashed light lightStrips down corridors and panel lights in rooms.
@@ -585,6 +610,7 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
     ceiling.add(lm);
     for (const g of lightStrips) g.dispose();
   }
+  ceiling.add(ceilingLamps);
   group.add(ceiling);
   return {
     group,
@@ -600,6 +626,73 @@ export function buildMapScene(map: CompiledMap, quality: Quality, night: boolean
       for (const d of disposables) d.dispose();
     },
   };
+}
+
+/**
+ * Small instanced details scattered over outdoor floors (seeded per tile), kept
+ * clear of stations, vents and props so prompts stay readable. Purely visual.
+ */
+function outdoorDressing(map: CompiledMap, info: ReturnType<typeof worldInfo>, night: boolean, track: <T extends { dispose(): void }>(x: T) => T): THREE.Group {
+  const grp = new THREE.Group();
+  const keepOut: { x: number; y: number; r: number }[] = [
+    ...map.def.stations.map((st) => ({ x: st.x, y: st.y, r: 1.3 })),
+    ...map.def.vents.map((v) => ({ x: v.x, y: v.y, r: 1.1 })),
+    ...map.def.props.map((p) => ({ x: p.x, y: p.y, r: Math.max(p.w ?? 1, p.h ?? 1) / 2 + 0.4 })),
+  ];
+  const clear = (x: number, y: number) => keepOut.every((k) => (k.x - x) ** 2 + (k.y - y) ** 2 > k.r * k.r);
+  const spots: Record<'tuft' | 'flower' | 'mound' | 'pebble', { x: number; y: number; r: number; s: number }[]> = { tuft: [], flower: [], mound: [], pebble: [] };
+  for (let y = 0; y < map.h; y++)
+    for (let x = 0; x < map.w; x++) {
+      const i = y * map.w + x;
+      if (!info.extFloor[i] || map.cells[i] !== 1) continue;
+      const ri = map.roomIdx[i]!;
+      const style: FloorStyle = ri >= 0 ? map.def.rooms[ri]!.floor : 'grass';
+      const r = hash2(x * 3 + 17, y * 5 + 3);
+      const px = x + 0.2 + hash2(x + 7, y) * 0.6;
+      const py = y + 0.2 + hash2(x, y + 7) * 0.6;
+      if (!clear(px, py)) continue;
+      const rot = hash2(x + 1, y + 2) * Math.PI * 2;
+      const sc = 0.75 + hash2(x + 3, y + 4) * 0.5;
+      if (style === 'grass') {
+        if (r < 0.05) spots.flower.push({ x: px, y: py, r: rot, s: sc });
+        if (r < 0.26) spots.tuft.push({ x: px, y: py, r: rot, s: sc });
+      } else if (style === 'snow') {
+        if (r < 0.12) spots.mound.push({ x: px, y: py, r: rot, s: sc });
+        else if (r < 0.16) spots.pebble.push({ x: px, y: py, r: rot, s: sc });
+      } else if (r < 0.1) spots.pebble.push({ x: px, y: py, r: rot, s: sc });
+    }
+  const blade = (h: number, lean: number, ang: number) => {
+    const g = new THREE.ConeGeometry(0.035, h, 4);
+    g.translate(0, h / 2, 0);
+    g.rotateZ(lean);
+    g.rotateY(ang);
+    return g;
+  };
+  const shapes = {
+    tuft: { geo: () => merge([blade(0.26, 0.25, 0), blade(0.2, -0.35, 1.1), blade(0.22, 0.4, 2.3), blade(0.17, -0.2, 3.7)]), color: night ? '#26443a' : '#4f8f62' },
+    flower: { geo: () => merge([sph(0.055, 0.27, 1, 0.7, 1, 0.03, 0), sph(0.045, 0.22, 1, 0.7, 1, -0.07, 0.05)]), color: night ? '#5a4060' : '#e98fb0' },
+    mound: { geo: () => sph(0.3, 0, 1.4, 0.35, 1), color: night ? mix(WORLD.snow, '#0b1022', 0.5) : WORLD.snow },
+    pebble: { geo: () => sph(0.09, 0.02, 1.3, 0.6, 1), color: night ? mix(WORLD.rockDark, '#0b1022', 0.4) : WORLD.rockHi },
+  } as const;
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const sv = new THREE.Vector3();
+  const pv = new THREE.Vector3();
+  for (const kind of ['tuft', 'flower', 'mound', 'pebble'] as const) {
+    const list = spots[kind];
+    if (!list.length) continue;
+    const geo = track(shapes[kind].geo());
+    const inst = new THREE.InstancedMesh(geo, track(toon(shapes[kind].color)), list.length);
+    list.forEach((p, k) => {
+      q.setFromAxisAngle(up, p.r);
+      inst.setMatrixAt(k, m4.compose(pv.set(p.x, 0, p.y), q, sv.setScalar(p.s)));
+      if (kind === 'flower' && !night && k % 2) inst.setColorAt(k, new THREE.Color(WORLD.guideYellow));
+    });
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    grp.add(inst);
+  }
+  return grp;
 }
 
 export function radialTexture(): THREE.CanvasTexture {
